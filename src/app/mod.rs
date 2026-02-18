@@ -125,18 +125,65 @@ impl App {
 
     fn rebuild_visible(&mut self) {
         self.visible.clear();
-        let mut collapsed_below: Option<usize> = None;
-
-        for (i, node) in self.all_nodes.iter().enumerate() {
-            if let Some(cd) = collapsed_below {
-                if node.depth > cd {
-                    continue;
+        
+        // Check if search filtering is active
+        let query = if self.search.is_empty() {
+            None
+        } else {
+            Some(self.search.to_lowercase())
+        };
+        
+        if let Some(ref q) = query {
+            // Search mode: optimized single pass
+            let mut include = vec![false; self.all_nodes.len()];
+            
+            // Find matches and mark parents in one pass
+            for i in 0..self.all_nodes.len() {
+                if self.all_nodes[i].text.to_lowercase().contains(q) {
+                    include[i] = true;
+                    
+                    // Mark parents, but stop early if already marked
+                    let target_depth = self.all_nodes[i].depth;
+                    if target_depth > 0 {
+                        let mut parent_depth = target_depth - 1;
+                        for j in (0..i).rev() {
+                            if self.all_nodes[j].depth == parent_depth {
+                                if include[j] {
+                                    break; // Parent already marked, its parents are also marked
+                                }
+                                include[j] = true;
+                                if parent_depth == 0 {
+                                    break;
+                                }
+                                parent_depth -= 1;
+                            }
+                        }
+                    }
                 }
-                collapsed_below = None;
             }
-            self.visible.push(i);
-            if node.has_children && !node.expanded {
-                collapsed_below = Some(node.depth);
+            
+            // Build visible list
+            for (i, &should_include) in include.iter().enumerate() {
+                if should_include {
+                    self.visible.push(i);
+                }
+            }
+        } else {
+            // Normal mode: respect collapse state
+            let mut collapsed_below: Option<usize> = None;
+            
+            for (i, node) in self.all_nodes.iter().enumerate() {
+                if let Some(cd) = collapsed_below {
+                    if node.depth > cd {
+                        continue;
+                    }
+                    collapsed_below = None;
+                }
+                
+                self.visible.push(i);
+                if node.has_children && !node.expanded {
+                    collapsed_below = Some(node.depth);
+                }
             }
         }
     }
@@ -299,24 +346,28 @@ impl App {
     // -------------------------------------------------------------------
 
     pub(crate) fn update_search(&mut self) {
-        self.search_matches.clear();
+        // Rebuild visible list which will now filter by search
+        self.rebuild_visible();
+        
+        // Update match count and status
+        let n = self.visible.len();
         if self.search.is_empty() {
             self.status.clear();
-            return;
-        }
-        let query = self.search.to_lowercase();
-        for (vi, &idx) in self.visible.iter().enumerate() {
-            if self.all_nodes[idx].text.to_lowercase().contains(&query) {
-                self.search_matches.push(vi);
+            self.search_matches.clear();
+        } else {
+            self.status = format!("{n} match{}", if n == 1 { "" } else { "es" });
+            
+            // Build search_matches to contain all visible indices for compatibility
+            self.search_matches.clear();
+            for i in 0..self.visible.len() {
+                self.search_matches.push(i);
             }
         }
+        
+        // Reset cursor to first visible item
         self.search_match_cursor = 0;
-        if let Some(&first) = self.search_matches.first() {
-            self.cursor = first;
-            self.detail_scroll = 0;
-        }
-        let n = self.search_matches.len();
-        self.status = format!("{n} match{}", if n == 1 { "" } else { "es" });
+        self.cursor = 0;
+        self.detail_scroll = 0;
     }
 
     pub(crate) fn next_search_match(&mut self) {

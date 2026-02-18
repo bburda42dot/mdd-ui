@@ -17,6 +17,8 @@ impl App {
                 self.search.clear();
                 self.search_matches.clear();
                 self.status.clear();
+                // Rebuild visible list to show all nodes again
+                self.rebuild_visible();
             }
             KeyCode::Enter => {
                 self.searching = false;

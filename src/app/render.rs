@@ -85,8 +85,6 @@ impl App {
         let viewport_height = inner.height as usize;
         self.ensure_cursor_visible(viewport_height);
 
-        let is_search_active = !self.search.is_empty() && !self.search_matches.is_empty();
-
         let lines: Vec<Line> = self
             .visible
             .iter()
@@ -95,11 +93,7 @@ impl App {
             .take(viewport_height)
             .map(|(vi, &node_idx)| {
                 let node = &self.all_nodes[node_idx];
-                let row_style = row_style(
-                    node,
-                    vi == self.cursor,
-                    is_search_active && self.search_matches.contains(&vi),
-                );
+                let row_style = row_style(node, vi == self.cursor);
 
                 let indent = "  ".repeat(node.depth);
                 let icon = expand_icon(node);
@@ -590,14 +584,12 @@ fn split_into_sections(details: &[String]) -> Vec<DetailSection> {
     sections
 }
 
-fn row_style(node: &TreeNode, is_cursor: bool, is_match: bool) -> Style {
+fn row_style(node: &TreeNode, is_cursor: bool) -> Style {
     if is_cursor {
         Style::default()
             .bg(Color::DarkGray)
             .fg(Color::White)
             .add_modifier(Modifier::BOLD)
-    } else if is_match {
-        Style::default().fg(Color::Yellow)
     } else {
         node_style(node)
     }

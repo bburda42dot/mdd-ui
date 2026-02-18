@@ -1,6 +1,6 @@
 # MDD-UI - Diagnostic Database Viewer
 
-A terminal-based user interface for browsing and exploring ODX (Open Diagnostic Data Exchange) diagnostic databases. Built with Rust and [ratatui](https://ratatui.rs/), this tool provides an efficient way to navigate ECU diagnostic services, parameters, and metadata.
+A terminal-based user interface for browsing and exploring MDD (Marvelous Diagnostic Data) diagnostic databases. Built with Rust and [ratatui](https://ratatui.rs/), this tool provides an efficient way to navigate ECU diagnostic services, parameters, and metadata.
 
 **DISCLAIMER** 
 This tool is 99% vibe coded, and this is pretty visible in the codebase, anyhow it works, which is good enough for now.
@@ -36,8 +36,7 @@ Use at your own risk. Contributions and feedback are welcome to help improve the
 ## Installation
 
 ### Prerequisites
-- Rust 1.70 or later
-- Access to ODX diagnostic database files
+- Rust 1.88 or later
 
 ### Build from Source
 ```bash

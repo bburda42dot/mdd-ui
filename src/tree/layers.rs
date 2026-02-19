@@ -62,12 +62,6 @@ impl TreeBuilder {
         _expand: bool,
         variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
     ) {
-        // Admin Data
-        self.add_admin_data(layer, depth, layer_name);
-        
-        // Company Datas (if available)
-        self.add_company_datas(layer, depth, layer_name);
-        
         // Base Variants (if this is a variant)
         // Note: Base variants would be handled at the container level
         
@@ -161,45 +155,6 @@ impl TreeBuilder {
     // ------------------------------------------------------------------
     // Structured DiagLayer Sections
     // ------------------------------------------------------------------
-
-    pub(super) fn add_admin_data(&mut self, layer: &DiagLayer<'_>, depth: usize, layer_name: &str) {
-        // Admin data typically includes short_name, long_name, etc.
-        let mut has_content = false;
-        let mut content = Vec::new();
-        
-        if let Some(sn) = layer.short_name() {
-            content.push(format!("Short Name: {sn}"));
-            has_content = true;
-        }
-        if let Some(ln) = layer.long_name().and_then(|l| l.value()) {
-            content.push(format!("Long Name: {ln}"));
-            has_content = true;
-        }
-        
-        if has_content {
-            let sec = super::lines_to_single_section("Admin Data", content);
-            self.push_details_structured(
-                depth,
-                "Admin Data".to_string(),
-                false,
-                false,
-                NodeId::Static(format!("layer_{layer_name}_admin")),
-                vec![sec],
-                NodeType::Default,
-            );
-        }
-    }
-
-    pub(super) fn add_company_datas(&mut self, _layer: &DiagLayer<'_>, depth: usize, layer_name: &str) {
-        // Company datas API not available in current version
-        // Adding as placeholder
-        self.push_leaf(
-            depth,
-            "Company Datas".to_string(),
-            NodeId::Static(format!("layer_{layer_name}_company_datas")),
-            NodeType::Default,
-        );
-    }
 
     fn add_functional_classes(&mut self, _layer: &DiagLayer<'_>, depth: usize, layer_name: &str) {
         // Functional classes API not directly available

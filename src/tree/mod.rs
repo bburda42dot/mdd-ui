@@ -215,15 +215,6 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 NodeType::Container,
             );
 
-            // Add Admin Data and Company Datas at container level
-            if let Some(dl) = vw.diag_layer() {
-                let layer = DiagLayer(dl);
-                let layer_name = name.as_str();
-                
-                b.add_admin_data(&layer, 2, layer_name);
-                b.add_company_datas(&layer, 2, layer_name);
-            }
-
             // Add Base Variants section
             if is_base {
                 if let Some(dl) = vw.diag_layer() {
@@ -277,9 +268,6 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                         NodeType::Container,
                     );
                     
-                    b.add_admin_data(&layer, 2, name);
-                    b.add_company_datas(&layer, 2, name);
-                    
                     b.push(
                         2,
                         "Functional Group Content".to_string(),
@@ -326,7 +314,7 @@ fn ecu_summary(
     }
 
     for kv in ecu_data.metadata().into_iter().flatten() {
-        if let (Some(k), Some(v)) = (kv.key(), kv.value()) {
+       if let (Some(k), Some(v)) = (kv.key(), kv.value()) {
             d.push(format!("{k}: {v}"));
         }
     }

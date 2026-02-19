@@ -110,6 +110,21 @@ impl App {
         app.rebuild_visible();
         app
     }
+    
+    /// Get the actual section index accounting for semantic header offset
+    fn get_section_index(&self) -> usize {
+        // Check if current node has a semantic section (state chart)
+        if let Some(&idx) = self.visible.get(self.cursor) {
+            let sections = &self.all_nodes[idx].detail_sections;
+            if sections.len() > 1 
+                && sections[0].title == "Semantic" 
+                && matches!(&sections[0].content, crate::tree::DetailContent::PlainText(_)) {
+                // Has semantic section, so selected_tab needs offset of 1
+                return self.selected_tab + 1;
+            }
+        }
+        self.selected_tab
+    }
 
     // -------------------------------------------------------------------
     // Event loop

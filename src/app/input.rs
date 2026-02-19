@@ -128,9 +128,10 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.detail_focused {
                     // Move cursor up in the selected tab
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = 
-                            self.section_cursors[self.selected_tab].saturating_sub(1);
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = 
+                            self.section_cursors[section_idx].saturating_sub(1);
                     }
                 } else {
                     self.move_up();
@@ -139,9 +140,10 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => {
                 if self.detail_focused {
                     // Move cursor down in the selected tab (will be clamped during render)
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = 
-                            self.section_cursors[self.selected_tab].saturating_add(1);
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = 
+                            self.section_cursors[section_idx].saturating_add(1);
                     }
                 } else {
                     self.move_down();
@@ -150,9 +152,10 @@ impl App {
             KeyCode::PageUp => {
                 if self.detail_focused {
                     // Move cursor up by page in selected tab
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = 
-                            self.section_cursors[self.selected_tab].saturating_sub(20);
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = 
+                            self.section_cursors[section_idx].saturating_sub(20);
                     }
                 } else {
                     self.page_up(20);
@@ -161,9 +164,10 @@ impl App {
             KeyCode::PageDown => {
                 if self.detail_focused {
                     // Move cursor down by page in selected tab
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = 
-                            self.section_cursors[self.selected_tab].saturating_add(20);
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = 
+                            self.section_cursors[section_idx].saturating_add(20);
                     }
                 } else {
                     self.page_down(20);
@@ -172,8 +176,9 @@ impl App {
             KeyCode::Home => {
                 if self.detail_focused {
                     // Move cursor to top of selected tab
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = 0;
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = 0;
                     }
                 } else {
                     self.home();
@@ -182,8 +187,9 @@ impl App {
             KeyCode::End => {
                 if self.detail_focused {
                     // Move cursor to bottom of selected tab (will be clamped during render)
-                    if self.selected_tab < self.section_cursors.len() {
-                        self.section_cursors[self.selected_tab] = usize::MAX;
+                    let section_idx = self.get_section_index();
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = usize::MAX;
                     }
                 } else {
                     self.end();

@@ -127,28 +127,97 @@ impl TreeBuilder {
         for (ci, chart) in charts.iter().enumerate() {
             let chart_name = chart.short_name().unwrap_or("unnamed");
             let prefix = format!("layer_{layer_name}_sc_{ci}");
-            self.push(depth + 1, chart_name.to_owned(), false, true, NodeId::Static(prefix.clone()), NodeType::Default);
-
-            for (si, state) in chart.states().into_iter().flatten().enumerate() {
-                let sn = state.short_name().unwrap_or("?");
-                self.push_leaf(
-                    depth + 2,
-                    format!("State: {sn}"),
-                    NodeId::Static(format!("{prefix}_state_{si}")),
-                    NodeType::Default,
-                );
-            }
-
-            for (ti, tr) in chart.state_transitions().into_iter().flatten().enumerate() {
-                let src = tr.source_short_name_ref().unwrap_or("?");
-                let tgt = tr.target_short_name_ref().unwrap_or("?");
-                self.push_leaf(
-                    depth + 2,
-                    format!("Transition: {src} -> {tgt}"),
-                    NodeId::Static(format!("{prefix}_tr_{ti}")),
-                    NodeType::Default,
-                );
-            }
+            
+            // Get semantic description if available
+            let semantic = chart.semantic().unwrap_or("");
+            
+            // Build State Transitions table
+            let transitions: Vec<_> = chart.state_transitions().into_iter().flatten().enumerate()
+                .map(|(_ti, tr)| {
+                    let name = tr.short_name().unwrap_or("?");
+                    let src = tr.source_short_name_ref().unwrap_or("?");
+                    let tgt = tr.target_short_name_ref().unwrap_or("?");
+                    DetailRow {
+                        cells: vec![name.to_string(), src.to_string(), tgt.to_string()],
+                        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                        indent: 0,
+                    }
+                })
+                .collect();
+            
+            let transitions_section = DetailSectionData {
+                title: "State Transitions".to_string(),
+                content: if transitions.is_empty() {
+                    DetailContent::PlainText(vec!["No state transitions".to_string()])
+                } else {
+                    DetailContent::Table {
+                        header: DetailRow {
+                            cells: vec!["Name".to_string(), "Source".to_string(), "Target".to_string()],
+                            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                            indent: 0,
+                        },
+                        rows: transitions,
+                        constraints: vec![
+                            ColumnConstraint::Percentage(34),
+                            ColumnConstraint::Percentage(33),
+                            ColumnConstraint::Percentage(33),
+                        ],
+                    }
+                },
+            };
+            
+            // Build States table
+            let states: Vec<_> = chart.states().into_iter().flatten().enumerate()
+                .map(|(_si, state)| {
+                    let sn = state.short_name().unwrap_or("?");
+                    DetailRow {
+                        cells: vec![sn.to_string()],
+                        cell_types: vec![CellType::Text],
+                        indent: 0,
+                    }
+                })
+                .collect();
+            
+            let states_section = DetailSectionData {
+                title: "States".to_string(),
+                content: if states.is_empty() {
+                    DetailContent::PlainText(vec!["No states".to_string()])
+                } else {
+                    DetailContent::Table {
+                        header: DetailRow {
+                            cells: vec!["Name".to_string()],
+                            cell_types: vec![CellType::Text],
+                            indent: 0,
+                        },
+                        rows: states,
+                        constraints: vec![ColumnConstraint::Percentage(100)],
+                    }
+                },
+            };
+            
+            // Create sections list with semantic header (always, even if empty)
+            let mut sections = vec![];
+            
+            // Add semantic information as first section (not a tab)
+            sections.push(DetailSectionData {
+                title: "Semantic".to_string(),
+                content: DetailContent::PlainText(vec![format!("Semantic: {}", semantic)]),
+            });
+            
+            // Add the two tab sections
+            sections.push(transitions_section);
+            sections.push(states_section);
+            
+            // Push the state chart as a non-expandable node with detail sections
+            self.push_details_structured(
+                depth + 1,
+                chart_name.to_owned(),
+                false,
+                false, // Not expandable - no tree children
+                NodeId::Static(prefix.clone()),
+                sections,
+                NodeType::Default,
+            );
         }
     }
 

@@ -20,7 +20,6 @@ use super::App;
 
 fn node_style(node: &TreeNode) -> Style {
     match node.node_type {
-        NodeType::Ecu => style(Color::Cyan, true),
         NodeType::Container => style(Color::Blue, true),
         NodeType::SectionHeader => style(Color::Yellow, true),
         NodeType::Service => Style::default().fg(Color::White),
@@ -69,10 +68,29 @@ fn expand_icon(node: &TreeNode) -> &'static str {
 
 impl App {
     pub(super) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
+        // Extract ECU name from General section details if available
+        let ecu_name = self.all_nodes.first()
+            .and_then(|node| {
+                if node.text == "General" {
+                    node.detail_sections.first()
+                        .and_then(|sec| {
+                            if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
+                                lines.first()
+                                    .and_then(|line| line.strip_prefix("ECU Name: "))
+                            } else {
+                                None
+                            }
+                        })
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("Tree");
+        
         let tree_block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(!self.detail_focused))
-            .title(" Tree ");
+            .title(format!(" {} ", ecu_name));
 
         let tree_inner = tree_block.inner(area);
         frame.render_widget(tree_block, area);
@@ -115,10 +133,11 @@ impl App {
             return;
         };
 
+        let node_text = self.all_nodes[node_idx].text.clone();
         let detail_sections = self.all_nodes[node_idx].detail_sections.clone();
 
         if !detail_sections.is_empty() {
-            self.draw_detail_panes(frame, area, &detail_sections);
+            self.draw_detail_panes(frame, area, &detail_sections, &node_text);
         } else {
             let block = Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)).title(" Details ");
             frame.render_widget(block, area);
@@ -316,7 +335,7 @@ impl App {
         frame.render_widget(paragraph, inner);
     }
 
-    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData]) {
+    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData], node_name: &str) {
         use ratatui::{
             layout::{Constraint, Direction, Layout},
         };
@@ -325,9 +344,25 @@ impl App {
             return;
         }
 
-        // Clamp selected_tab to valid range
-        if self.selected_tab >= sections.len() {
-            self.selected_tab = sections.len().saturating_sub(1);
+        // Check if first section is "Semantic" with PlainText - render it above tabs
+        let (semantic_section, tab_sections) = if sections.len() > 1 
+            && sections[0].title == "Semantic" 
+            && matches!(&sections[0].content, DetailContent::PlainText(_)) {
+            (Some(&sections[0]), &sections[1..])
+        } else {
+            (None, sections)
+        };
+        
+        // Determine if this is a state chart based on having a semantic section
+        let detail_title = if semantic_section.is_some() {
+            format!(" State Chart - {} ", node_name)
+        } else {
+            " Details ".to_string()
+        };
+
+        // Clamp selected_tab to valid range (relative to tab_sections)
+        if self.selected_tab >= tab_sections.len() {
+            self.selected_tab = tab_sections.len().saturating_sub(1);
         }
 
         // Ensure section_scrolls and section_cursors have enough entries
@@ -338,47 +373,92 @@ impl App {
             self.section_cursors.push(0);
         }
 
-        let show_tabs = sections.len() > 1;
-        
-        // Calculate how many lines of tabs we need
+        // Calculate layout: semantic (if exists) + tabs + content
+        let mut constraints = vec![];
+        let semantic_height = if let Some(sem) = semantic_section {
+            if let DetailContent::PlainText(lines) = &sem.content {
+                // Height: 1 line per text line + 2 for borders
+                let height = (lines.len() as u16 + 2).min(area.height / 4);
+                constraints.push(Constraint::Length(height));
+                Some(height)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let show_tabs = tab_sections.len() > 1;
         let tab_lines_needed = if show_tabs {
-            let tab_titles: Vec<String> = sections.iter().map(|s| s.title.clone()).collect();
+            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
             self.calculate_tab_lines(&tab_titles, area.width.saturating_sub(2) as usize)
         } else {
             0
         };
         
-        let (tab_area, content_area) = if show_tabs {
-            // Split area into tabs bar and content, with dynamic tab height
+        if show_tabs {
             let tab_height = (tab_lines_needed as u16 + 2).min(area.height.saturating_sub(3));
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Length(tab_height), // Dynamic tab bar height
-                    Constraint::Min(0),              // Content area
-                ])
-                .split(area);
-            (Some(chunks[0]), chunks[1])
+            constraints.push(Constraint::Length(tab_height));
+        }
+        constraints.push(Constraint::Min(0)); // Content area
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(area);
+
+        let mut chunk_idx = 0;
+        
+        // Render semantic section if it exists
+        let semantic_area = if semantic_height.is_some() {
+            let area = chunks[chunk_idx];
+            chunk_idx += 1;
+            Some(area)
         } else {
-            (None, area)
+            None
+        };
+
+        if let (Some(area), Some(sem)) = (semantic_area, semantic_section) {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(border(self.detail_focused))
+                .title(detail_title.clone());
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+
+            if let DetailContent::PlainText(lines) = &sem.content {
+                let text = lines.join("\n");
+                let para = Paragraph::new(text).style(Style::default().fg(Color::White));
+                frame.render_widget(para, inner);
+            }
+        }
+
+        let (tab_area, content_area) = if show_tabs {
+            let tab_area = chunks[chunk_idx];
+            chunk_idx += 1;
+            let content_area = chunks[chunk_idx];
+            (Some(tab_area), content_area)
+        } else {
+            (None, chunks[chunk_idx])
         };
 
         // Cache tab area and titles for mouse handling
         self.tab_area = tab_area;
         if show_tabs {
-            self.tab_titles = sections.iter().map(|s| s.title.clone()).collect();
+            self.tab_titles = tab_sections.iter().map(|s| s.title.clone()).collect();
         } else {
             self.tab_titles.clear();
         }
 
-        // Render tabs if there are multiple sections
+        // Render tabs if there are multiple tab sections
         if let Some(tab_area) = tab_area {
-            let tab_titles: Vec<String> = sections.iter().map(|s| s.title.clone()).collect();
+            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
             self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.selected_tab, self.detail_focused);
         }
 
-        // Render the selected tab's content
-        let section = &sections[self.selected_tab];
+        // Render the selected tab's content (accounting for semantic offset)
+        let section_offset = if semantic_section.is_some() { 1 } else { 0 };
+        let section = &tab_sections[self.selected_tab];
         let help_text = if self.detail_focused { 
             " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:DOP  Esc:close " 
         } else { 
@@ -388,6 +468,7 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(self.detail_focused))
+            .title(if semantic_section.is_none() { detail_title.as_str() } else { "" })
             .title_bottom(help_text);
 
         let inner = block.inner(content_area);
@@ -405,7 +486,7 @@ impl App {
                 frame.render_widget(para, inner);
             }
             DetailContent::Table { header, rows, constraints } => {
-                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab);
+                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset);
             }
             DetailContent::Composite(subsections) => {
                 self.render_composite_content(frame, inner, subsections);
@@ -513,8 +594,6 @@ impl App {
     }
 
     fn render_table_content(&mut self, frame: &mut Frame, inner: Rect, area: Rect, header: &DetailRow, rows: &[DetailRow], constraints: &[crate::tree::ColumnConstraint], section_idx: usize) {
-        use ratatui::text::Text;
-        
         let viewport_height = inner.height as usize;
         let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
 
@@ -585,6 +664,7 @@ impl App {
         
         // Create header cells with arrow indicator for focused column
         let header_cells: Vec<Cell> = header.cells.iter().enumerate().map(|(idx, c)| {
+            use ratatui::text::Text;
             let text = if self.detail_focused && idx == focused_col {
                 // Prepend arrow to the existing header text
                 format!("▼\n{}", c)

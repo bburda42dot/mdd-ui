@@ -10,7 +10,6 @@ use cda_database::datatypes::{DiagLayer, DiagnosticDatabase, EcuDb, Variant as V
 /// Type of node for styling purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NodeType {
-    Ecu,
     Container,
     SectionHeader,
     Service,
@@ -159,8 +158,7 @@ fn lines_to_single_section(title: &str, lines: Vec<String>) -> DetailSectionData
 }
 
 /// Identifies a node. Kept around for potential future use (e.g. bookmarks).
-pub(crate) enum NodeId {
-    Root,
+pub(crate) enum NodeId { // todo alexmohr remove
     #[allow(dead_code)]
     Static(String),
 }
@@ -175,14 +173,17 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
     let mut b = TreeBuilder::new();
 
     let ecu_name = db.ecu_name().unwrap_or_else(|_| "Unknown ECU".into());
-    let ecu_details = ecu_summary(db, &ecu_name);
-    let ecu_section = lines_to_single_section("Summary", ecu_details.clone());
-
-    b.push_details_structured(0, format!("ECU: {ecu_name}"), true, true, NodeId::Root, vec![ecu_section], NodeType::Ecu);
 
     if let Ok(ecu_data) = db.ecu_data() {
         let ecu = EcuDb(*ecu_data);
-        add_containers(&mut b, &ecu);
+        
+        // Add General section with ECU info
+        let ecu_details = ecu_summary(db, &ecu_name);
+        let ecu_section = lines_to_single_section("Summary", ecu_details.clone());
+        b.push_details_structured(0, "General".to_string(), false, false, NodeId::Static("general".to_string()), vec![ecu_section], NodeType::SectionHeader);
+        
+        add_variants(&mut b, &ecu, &ecu_name);
+        add_functional_groups(&mut b, &ecu);
     }
 
     b.finish()
@@ -192,9 +193,19 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
 // Container-based structure
 // -----------------------------------------------------------------------
 
-fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
-    // Add each variant as a container
+fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>, ecu_name: &str) {
+    // Add Variants section
     if let Some(variants) = ecu.variants() {
+        b.push(
+            0,
+            "Variants".to_string(),
+            true,
+            true,
+            NodeId::Static("variants".to_string()),
+            NodeType::SectionHeader,
+        );
+        
+        // Add each variant
         for (vi, variant) in variants.iter().enumerate() {
             let vw = VariantWrap(variant);
             let mut name = vw
@@ -229,10 +240,21 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             }
         }
     }
+}
 
-    // Add functional groups as containers
+fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
+    // Add functional groups as separate section
     if let Some(groups) = ecu.functional_groups() {
         if !groups.is_empty() {
+            b.push(
+                0,
+                "Functional Groups".to_string(),
+                false,
+                true,
+                NodeId::Static("functional_groups".to_string()),
+                NodeType::SectionHeader,
+            );
+            
             for (gi, fg) in groups.iter().enumerate() {
                 if let Some(dl) = fg.diag_layer() {
                     let layer = DiagLayer(dl);
@@ -240,23 +262,15 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                     
                     b.push(
                         1,
-                        format!("{} [functional group]", name),
+                        name.to_string(),
                         false,
                         true,
                         NodeId::Static(format!("fg_{gi}")),
                         NodeType::Container,
                     );
                     
-                    b.push(
-                        2,
-                        "Functional Group Content".to_string(),
-                        false,
-                        true,
-                        NodeId::Static(format!("container_fg_{gi}_content")),
-                        NodeType::SectionHeader,
-                    );
                     // Functional groups don't have parent refs like variants
-                    b.add_diag_layer_structured(&layer, 3, name, false, None::<std::iter::Empty<cda_database::datatypes::ParentRef>>);
+                    b.add_diag_layer_structured(&layer, 2, name, false, None::<std::iter::Empty<cda_database::datatypes::ParentRef>>);
                 }
             }
         }

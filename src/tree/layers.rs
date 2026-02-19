@@ -1,15 +1,66 @@
-use cda_database::datatypes::{DiagComm, DiagLayer, DiagService, Parameter, Request, Response};
+use cda_database::datatypes::{DiagLayer, DiagService, Parameter, ParamType, ParentRef};
 
-use super::{NodeId, TreeBuilder};
+use super::{NodeId, TreeBuilder, DetailSectionData, DetailRow, DetailContent, NodeType, CellType, ColumnConstraint};
+
+// Helper functions to extract parameter data
+fn extract_coded_value(param: &Parameter<'_>) -> String {
+    let Ok(pt) = param.param_type() else {
+        return String::new();
+    };
+    
+    if !matches!(pt, ParamType::CodedConst) {
+        return String::new();
+    }
+    
+    param.specific_data_as_coded_const()
+        .and_then(|cc| cc.coded_value())
+        .map(|v| {
+            if let Ok(num) = v.parse::<u64>() {
+                // Format with minimum 2 hex digits (0x01, 0x10, 0x100, etc.)
+                if num <= 0xFF {
+                    format!("0x{num:02X}")
+                } else if num <= 0xFFFF {
+                    format!("0x{num:04X}")
+                } else if num <= 0xFFFFFF {
+                    format!("0x{num:06X}")
+                } else if num <= 0xFFFFFFFF {
+                    format!("0x{num:08X}")
+                } else {
+                    format!("0x{num:016X}")
+                }
+            } else {
+                v.to_owned()
+            }
+        })
+        .unwrap_or_default()
+}
+
+fn extract_dop_name(param: &Parameter<'_>) -> String {
+    let Ok(pt) = param.param_type() else {
+        return String::new();
+    };
+    
+    if !matches!(pt, ParamType::Value) {
+        return String::new();
+    }
+    
+    param.specific_data_as_value()
+        .and_then(|vd| vd.dop())
+        .and_then(|dop| dop.short_name())
+        .map(|s| s.to_owned())
+        .unwrap_or_default()
+}
 
 impl TreeBuilder {
     /// Add a complete diag layer with structured hierarchy for containers
-    pub(super) fn add_diag_layer_structured(
+    /// variant_parent_refs: Optional iterator to parent refs from the variant for fetching inherited services
+    pub(super) fn add_diag_layer_structured<'a>(
         &mut self,
-        layer: &DiagLayer<'_>,
+        layer: &DiagLayer<'a>,
         depth: usize,
         layer_name: &str,
         _expand: bool,
+        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
     ) {
         // Admin Data
         self.add_admin_data(layer, depth, layer_name);
@@ -30,7 +81,7 @@ impl TreeBuilder {
         self.add_diag_data_dictionary_spec(layer, depth, layer_name);
         
         // Diag-Comms
-        self.add_diag_comms(layer, depth, layer_name);
+        self.add_diag_comms(layer, depth, layer_name, variant_parent_refs);
         
         // Requests (from diag-comms)
         self.add_requests_section(layer, depth, layer_name);
@@ -76,12 +127,13 @@ impl TreeBuilder {
             false,
             true,
             NodeId::Static(format!("layer_{layer_name}_state_charts")),
+            NodeType::SectionHeader,
         );
 
         for (ci, chart) in charts.iter().enumerate() {
             let chart_name = chart.short_name().unwrap_or("unnamed");
             let prefix = format!("layer_{layer_name}_sc_{ci}");
-            self.push(depth + 1, chart_name.to_owned(), false, true, NodeId::Static(prefix.clone()));
+            self.push(depth + 1, chart_name.to_owned(), false, true, NodeId::Static(prefix.clone()), NodeType::Default);
 
             for (si, state) in chart.states().into_iter().flatten().enumerate() {
                 let sn = state.short_name().unwrap_or("?");
@@ -89,6 +141,7 @@ impl TreeBuilder {
                     depth + 2,
                     format!("State: {sn}"),
                     NodeId::Static(format!("{prefix}_state_{si}")),
+                    NodeType::Default,
                 );
             }
 
@@ -99,6 +152,7 @@ impl TreeBuilder {
                     depth + 2,
                     format!("Transition: {src} -> {tgt}"),
                     NodeId::Static(format!("{prefix}_tr_{ti}")),
+                    NodeType::Default,
                 );
             }
         }
@@ -123,13 +177,15 @@ impl TreeBuilder {
         }
         
         if has_content {
-            self.push_details(
+            let sec = super::lines_to_single_section("Admin Data", content);
+            self.push_details_structured(
                 depth,
                 "Admin Data".to_string(),
                 false,
                 false,
                 NodeId::Static(format!("layer_{layer_name}_admin")),
-                content,
+                vec![sec],
+                NodeType::Default,
             );
         }
     }
@@ -141,6 +197,7 @@ impl TreeBuilder {
             depth,
             "Company Datas".to_string(),
             NodeId::Static(format!("layer_{layer_name}_company_datas")),
+            NodeType::Default,
         );
     }
 
@@ -151,6 +208,7 @@ impl TreeBuilder {
             depth,
             "Functional Classes".to_string(),
             NodeId::Static(format!("layer_{layer_name}_fcs")),
+            NodeType::Default,
         );
     }
 
@@ -165,59 +223,193 @@ impl TreeBuilder {
                 depth,
                 "Diag-Data-Dictionary-Spec".to_string(),
                 NodeId::Static(format!("layer_{layer_name}_ddd_spec")),
+                NodeType::Default,
             );
         }
     }
 
-    fn add_diag_comms(&mut self, layer: &DiagLayer<'_>, depth: usize, layer_name: &str) {
-        // Diag-comms are typically the diagnostic communications
-        // These are represented by the services
-        if let Some(services) = layer.diag_services() {
-            if !services.is_empty() {
-                self.push(
-                    depth,
-                    format!("Diag-Comms ({})", services.len()),
-                    false,
-                    true,
-                    NodeId::Static(format!("layer_{layer_name}_diag_comms")),
-                );
-                
-                for (i, svc) in services.iter().enumerate() {
-                    let ds = DiagService(svc);
-                    if let Some(dc) = ds.diag_comm() {
-                        let name = dc.short_name().unwrap_or("?");
-                        
-                        // Format with service ID like in add_service
-                        let display_name = if let Some(sid) = ds.request_id() {
-                            if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                                let sub_fn_str = if bit_len <= 8 {
-                                    format!("{sub_fn:02X}")
-                                } else {
-                                    format!("{sub_fn:04X}")
-                                };
-                                format!("0x{sid:02X}{sub_fn_str} - {name}")
+    fn add_diag_comms<'a>(
+        &mut self,
+        layer: &DiagLayer<'a>,
+        depth: usize,
+        layer_name: &str,
+        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
+    ) {
+        // Collect own services
+        let own_services: Vec<DiagService<'_>> = layer.diag_services()
+            .map(|services| services.iter().map(DiagService).collect())
+            .unwrap_or_default();
+        
+        // Collect services from parent refs
+        let parent_services: Vec<DiagService<'_>> = if let Some(parent_refs) = variant_parent_refs {
+            Self::get_parent_ref_services_recursive(parent_refs)
+        } else {
+            Vec::new()
+        };
+        
+        let total_count = own_services.len() + parent_services.len();
+        
+        if total_count > 0 {
+            self.push(
+                depth,
+                format!("Diag-Comms ({})", total_count),
+                false,
+                true,
+                NodeId::Static(format!("layer_{layer_name}_diag_comms")),
+                NodeType::SectionHeader,
+            );
+            
+            // Add own services first
+            for (i, ds) in own_services.iter().enumerate() {
+                if let Some(dc) = ds.diag_comm() {
+                    let name = dc.short_name().unwrap_or("?");
+                    
+                    // Format with service ID with proper padding for alignment
+                    let display_name = if let Some(sid) = ds.request_id() {
+                        if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                            let sub_fn_str = if bit_len <= 8 {
+                                format!("{sub_fn:02X}")
                             } else {
-                                format!("0x{sid:02X} - {name}")
-                            }
+                                format!("{sub_fn:04X}")
+                            };
+                            let full_id = format!("{sid:02X}{sub_fn_str}");
+                            format!("0x{:6} - {}", full_id, name)
                         } else {
-                            name.to_string()
-                        };
-                        
-                        // Build comprehensive detail pane
-                        let details = self.build_diag_comm_details(&ds);
-                        
-                        self.push_details(
-                            depth + 1,
-                            display_name,
-                            false,
-                            false,
-                            NodeId::Static(format!("layer_{layer_name}_dc_{i}")),
-                            details,
-                        );
-                    }
+                            format!("0x{:6} - {}", format!("{sid:02X}"), name)
+                        }
+                    } else {
+                        name.to_string()
+                    };
+                    
+                    let sections = self.build_diag_comm_details(ds);
+
+                    self.push_details_structured(
+                        depth + 1,
+                        display_name,
+                        false,
+                        false,
+                        NodeId::Static(format!("layer_{layer_name}_dc_{i}")),
+                        sections,
+                        NodeType::Service,
+                    );
+                }
+            }
+            
+            // Add parent ref services with different node type
+            for (i, ds) in parent_services.iter().enumerate() {
+                let ds: &DiagService<'_> = ds;  // Explicit type annotation
+                if let Some(dc) = ds.diag_comm() {
+                    let name = dc.short_name().unwrap_or("?");
+                    
+                    let display_name = if let Some(sid) = ds.request_id() {
+                        if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                            let sub_fn_str = if bit_len <= 8 {
+                                format!("{sub_fn:02X}")
+                            } else {
+                                format!("{sub_fn:04X}")
+                            };
+                            let full_id = format!("{sid:02X}{sub_fn_str}");
+                            format!("0x{:6} - {}", full_id, name)
+                        } else {
+                            format!("0x{:6} - {}", format!("{sid:02X}"), name)
+                        }
+                    } else {
+                        name.to_string()
+                    };
+                    
+                    let sections = self.build_diag_comm_details(ds);
+
+                    self.push_details_structured(
+                        depth + 1,
+                        display_name,
+                        false,
+                        false,
+                        NodeId::Static(format!("layer_{layer_name}_dc_parent_{i}")),
+                        sections,
+                        NodeType::ParentRefService, // Mark as inherited
+                    );
                 }
             }
         }
+    }
+    
+    /// Get services from parent references recursively with proper filtering
+    fn get_parent_ref_services_recursive<'a>(
+        parent_refs: impl Iterator<Item = ParentRef<'a>>,
+    ) -> Vec<DiagService<'a>> {
+        fn filter_not_inherited_services<'a>(
+            diag_services: impl Iterator<Item = impl Into<DiagService<'a>>>,
+            not_inherited_names: &[&str],
+        ) -> Vec<DiagService<'a>> {
+            diag_services
+                .into_iter()
+                .map(|s| s.into())
+                .filter(|service| {
+                    service
+                        .diag_comm()
+                        .and_then(|dc| dc.short_name())
+                        .map_or(true, |name| !not_inherited_names.contains(&name))
+                })
+                .collect()
+        }
+
+        fn find_services_recursive<'a>(
+            parent_refs: impl Iterator<Item = ParentRef<'a>>,
+        ) -> Vec<DiagService<'a>> {
+            parent_refs
+                .into_iter()
+                .filter_map(|parent_ref| {
+                    // Get the list of short names that should not be inherited
+                    let not_inherited_names: Vec<&str> = parent_ref
+                        .not_inherited_diag_comm_short_names()
+                        .map(|names| names.iter().collect())
+                        .unwrap_or_default();
+
+                    match parent_ref.ref_type().try_into() {
+                        Ok(cda_database::datatypes::ParentRefType::EcuSharedData) => {
+                            let services = parent_ref
+                                .ref__as_ecu_shared_data()?
+                                .diag_layer()?
+                                .diag_services()?
+                                .iter()
+                                .map(DiagService);
+                            Some(filter_not_inherited_services(services, &not_inherited_names))
+                        }
+                        Ok(cda_database::datatypes::ParentRefType::FunctionalGroup) => parent_ref
+                            .ref__as_functional_group()
+                            .and_then(|fg| fg.parent_refs())
+                            .map(|nested_refs| {
+                                find_services_recursive(nested_refs.iter().map(ParentRef))
+                            }),
+                        Ok(cda_database::datatypes::ParentRefType::Protocol) => {
+                            let services = parent_ref
+                                .ref__as_protocol()?
+                                .diag_layer()?
+                                .diag_services()?
+                                .iter()
+                                .map(DiagService);
+                            Some(filter_not_inherited_services(services, &not_inherited_names))
+                        }
+                        Ok(cda_database::datatypes::ParentRefType::Variant) => {
+                            let services = parent_ref
+                                .ref__as_variant()?
+                                .diag_layer()?
+                                .diag_services()?
+                                .iter()
+                                .map(DiagService);
+                            Some(filter_not_inherited_services(services, &not_inherited_names))
+                        }
+                        _ => {
+                            // Unsupported parent ref type
+                            None
+                        }
+                    }
+                })
+                .flatten()
+                .collect()
+        }
+
+        find_services_recursive(parent_refs)
     }
 
     fn add_requests_section(&mut self, layer: &DiagLayer<'_>, depth: usize, layer_name: &str) {
@@ -233,6 +425,7 @@ impl TreeBuilder {
                     false,
                     true,
                     NodeId::Static(format!("layer_{layer_name}_requests")),
+                    NodeType::SectionHeader,
                 );
                 
                 for (i, svc) in services.iter().enumerate() {
@@ -243,6 +436,7 @@ impl TreeBuilder {
                             depth + 1,
                             format!("Request: {name}"),
                             NodeId::Static(format!("layer_{layer_name}_req_{i}")),
+                            NodeType::Request,
                         );
                     }
                 }
@@ -263,6 +457,7 @@ impl TreeBuilder {
                     false,
                     true,
                     NodeId::Static(format!("layer_{layer_name}_pos_responses")),
+                    NodeType::SectionHeader,
                 );
                 
                 for (i, svc) in services.iter().enumerate() {
@@ -273,6 +468,7 @@ impl TreeBuilder {
                             depth + 1,
                             format!("PosResponse: {name}"),
                             NodeId::Static(format!("layer_{layer_name}_pos_resp_{i}")),
+                            NodeType::PosResponse,
                         );
                     }
                 }
@@ -293,6 +489,7 @@ impl TreeBuilder {
                     false,
                     true,
                     NodeId::Static(format!("layer_{layer_name}_neg_responses")),
+                    NodeType::SectionHeader,
                 );
                 
                 for (i, svc) in services.iter().enumerate() {
@@ -303,6 +500,7 @@ impl TreeBuilder {
                             depth + 1,
                             format!("NegResponse: {name}"),
                             NodeId::Static(format!("layer_{layer_name}_neg_resp_{i}")),
+                            NodeType::NegResponse,
                         );
                     }
                 }
@@ -324,6 +522,7 @@ impl TreeBuilder {
                     depth,
                     "Additional Audiences".to_string(),
                     NodeId::Static(format!("layer_{layer_name}_audiences")),
+                    NodeType::Default,
                 );
             }
         }
@@ -337,6 +536,7 @@ impl TreeBuilder {
                 depth,
                 "Sub-Components".to_string(),
                 NodeId::Static(format!("layer_{layer_name}_sub_components")),
+                NodeType::Default,
             );
         }
     }
@@ -349,6 +549,7 @@ impl TreeBuilder {
             depth,
             "SDGs".to_string(),
             NodeId::Static(format!("layer_{layer_name}_sdgs")),
+            NodeType::Default,
         );
     }
 
@@ -359,6 +560,7 @@ impl TreeBuilder {
             depth,
             "Parent Refs".to_string(),
             NodeId::Static(format!("layer_{layer_name}_parent_refs")),
+            NodeType::Default,
         );
     }
 
@@ -378,6 +580,7 @@ impl TreeBuilder {
             false,
             true,
             NodeId::Static(format!("layer_{layer_name}_comparams")),
+            NodeType::SectionHeader,
         );
 
         for (ci, cpr) in cp_refs.iter().enumerate() {
@@ -388,6 +591,7 @@ impl TreeBuilder {
                 depth + 1,
                 format!("{cp_name} ({cp_type})"),
                 NodeId::Static(format!("layer_{layer_name}_cp_{ci}")),
+                NodeType::Default,
             );
         }
     }
@@ -396,232 +600,273 @@ impl TreeBuilder {
     // Detailed DiagComm (Service) Detail Pane Builder
     // ------------------------------------------------------------------
 
-    fn build_diag_comm_details(&self, ds: &DiagService<'_>) -> Vec<String> {
-        let mut d = Vec::new();
-        
-        // Basic service info
+    fn build_diag_comm_details(&self, ds: &DiagService<'_>) -> Vec<DetailSectionData> {
+        let mut sections: Vec<DetailSectionData> = Vec::new();
+
+        // Overview - plain text key-value pairs (no table header)
+        let mut overview_lines = Vec::new();
         if let Some(dc) = ds.diag_comm() {
             if let Some(sn) = dc.short_name() {
-                d.push(format!("Service: {sn}"));
+                overview_lines.push(format!("Service: {}", sn));
             }
             if let Some(semantic) = dc.semantic() {
-                d.push(format!("Semantic: {semantic}"));
+                overview_lines.push(format!("Semantic: {}", semantic));
             }
         }
-        
         if let Some(sid) = ds.request_id() {
-            d.push(format!("SID: 0x{sid:02X}"));
+            overview_lines.push(format!("SID: 0x{sid:02X}"));
         }
         if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-            d.push(format!("Sub-Function: 0x{sub_fn:04X} ({bit_len} bits)"));
+            overview_lines.push(format!("Sub-Function: 0x{sub_fn:04X} ({bit_len} bits)"));
         }
-        
-        d.push(format!("Addressing: {:?}", ds.addressing()));
-        d.push(format!("Transmission: {:?}", ds.transmission_mode()));
-        
-        // Request section
+        overview_lines.push(format!("Addressing: {:?}", ds.addressing()));
+        overview_lines.push(format!("Transmission: {:?}", ds.transmission_mode()));
+
+        sections.push(DetailSectionData { 
+            title: "Overview".to_owned(), 
+            content: DetailContent::PlainText(overview_lines),
+        });
+
+        // Helper to build parameter table sections
+        fn build_param_section<'a, I>(title: &str, params: I) -> DetailSectionData
+        where
+            I: IntoIterator<Item = Parameter<'a>>
+        {
+            use crate::tree::ColumnConstraint;
+            
+            let header = DetailRow { 
+                cells: vec![
+                    "Short Name".to_owned(), 
+                    "Byte".to_owned(), 
+                    "Bit".to_owned(), 
+                    "Bit\nLen".to_owned(), 
+                    "Byte\nLen".to_owned(), 
+                    "Value".to_owned(), 
+                    "DOP".to_owned(), 
+                    "Semantic".to_owned()
+                ], 
+                cell_types: vec![CellType::Text, CellType::NumericValue, CellType::NumericValue, CellType::NumericValue, CellType::NumericValue, CellType::Text, CellType::Text, CellType::Text],
+                indent: 0, 
+            };
+
+            let mut rows: Vec<DetailRow> = Vec::new();
+
+            for param in params {
+                let name = param.short_name().unwrap_or("?").to_owned();
+                let byte_pos = param.byte_position();
+                let bit_pos = param.bit_position();
+                let bit_len = "-".to_owned();
+                let byte_len = "-".to_owned();
+                let value = extract_coded_value(&param);
+                let dop_name = extract_dop_name(&param);
+                let semantic = param.semantic().unwrap_or_default().to_owned();
+                let has_dop = !dop_name.is_empty();
+                
+                rows.push(DetailRow {
+                    cells: vec![name, byte_pos.to_string(), bit_pos.to_string(), bit_len, byte_len, value, dop_name, semantic],
+                    cell_types: vec![
+                        CellType::ParameterName, 
+                        CellType::NumericValue, 
+                        CellType::NumericValue, 
+                        CellType::Text, 
+                        CellType::Text, 
+                        CellType::NumericValue, 
+                        if has_dop { CellType::DopReference } else { CellType::Text },
+                        CellType::Text
+                    ],
+                    indent: 0,
+                });
+            }
+
+            DetailSectionData { 
+                title: title.to_owned(), 
+                content: DetailContent::Table { 
+                    header, 
+                    rows,
+                    constraints: vec![
+                        ColumnConstraint::Percentage(45),  // Short Name (increased from 35)
+                        ColumnConstraint::Fixed(4),        // Byte (decreased from 6)
+                        ColumnConstraint::Fixed(3),        // Bit (decreased from 5)
+                        ColumnConstraint::Fixed(4),        // Bit Len (decreased from 5)
+                        ColumnConstraint::Fixed(5),        // Byte Len (decreased from 6)
+                        ColumnConstraint::Percentage(15),  // Value
+                        ColumnConstraint::Percentage(15),  // DOP
+                        ColumnConstraint::Percentage(25),  // Semantic (decreased from 35)
+                    ],
+                },
+            }
+        }
+
+        // Request params
         if let Some(req) = ds.request() {
-            d.push(String::new());
-            d.push("--- Request ---".to_string());
-            self.append_param_table_headers(&mut d);
-            self.append_request_params_table(&mut d, &Request(req));
+            let params = req.params().into_iter().flatten().map(Parameter);
+            sections.push(build_param_section("Request", params));
         }
-        
-        // Pos-Responses section
+
+        // Pos responses
         if let Some(pos) = ds.pos_responses() {
             for (i, resp) in pos.iter().enumerate() {
-                d.push(String::new());
-                d.push(format!("--- Pos-Response {} ---", i + 1));
-                self.append_param_table_headers(&mut d);
-                self.append_response_params_table(&mut d, &Response(resp));
+                let params = resp.params().into_iter().flatten().map(Parameter);
+                sections.push(build_param_section(&format!("Pos-Response {}", i + 1), params));
             }
         }
-        
-        // Neg-Responses section
+
+        // Neg responses
         if let Some(neg) = ds.neg_responses() {
             for (i, resp) in neg.iter().enumerate() {
-                d.push(String::new());
-                d.push(format!("--- Neg-Response {} ---", i + 1));
-                self.append_param_table_headers(&mut d);
-                self.append_response_params_table(&mut d, &Response(resp));
+                let params = resp.params().into_iter().flatten().map(Parameter);
+                sections.push(build_param_section(&format!("Neg-Response {}", i + 1), params));
             }
         }
-        
-        // ComParam-Refs section
-        d.push(String::new());
-        d.push("--- ComParam-Refs ---".to_string());
-        d.push("ComParam | Value | Complex Value | Protocol | Prot-Stack".to_string());
-        if let Some(dc) = ds.diag_comm() {
-            self.append_comparam_refs(&mut d, &DiagComm(dc));
-        }
-        
-        // Audience section
-        d.push(String::new());
-        d.push("--- Audience ---".to_string());
-        if let Some(dc) = ds.diag_comm() {
-            self.append_audience_info(&mut d, &DiagComm(dc));
-        }
-        
-        // SDGs section
-        d.push(String::new());
-        d.push("--- SDGs ---".to_string());
-        d.push("Short Name | SD | SI | TI".to_string());
-        if let Some(dc) = ds.diag_comm() {
-            self.append_sdgs(&mut d, &DiagComm(dc));
-        }
-        
-        // States section
-        d.push(String::new());
-        d.push("--- States ---".to_string());
-        d.push("Short Name".to_string());
-        if let Some(dc) = ds.diag_comm() {
-            self.append_states(&mut d, &DiagComm(dc));
-        }
-        
-        // Related-Diag-Comm-Refs section
-        d.push(String::new());
-        d.push("--- Related-Diag-Comm-Refs ---".to_string());
-        d.push("Short Name".to_string());
-        if let Some(dc) = ds.diag_comm() {
-            self.append_related_diag_comms(&mut d, &DiagComm(dc));
-        }
-        
-        d
-    }
 
-    fn append_param_table_headers(&self, d: &mut Vec<String>) {
-        d.push("Short Name | Byte | Bit | Bit Len | Byte Len | Value | DOP | Semantic".to_string());
-    }
-
-    fn append_request_params_table(&self, d: &mut Vec<String>, req: &Request<'_>) {
-        if let Some(params) = req.params() {
-            for param in params.iter() {
-                let p = Parameter(param);
-                self.append_param_row(d, &p);
-            }
-        }
-    }
-
-    fn append_response_params_table(&self, d: &mut Vec<String>, resp: &Response<'_>) {
-        if let Some(params) = resp.params() {
-            for param in params.iter() {
-                let p = Parameter(param);
-                self.append_param_row(d, &p);
-            }
-        }
-    }
-
-    fn append_param_row(&self, d: &mut Vec<String>, param: &Parameter<'_>) {
-        let name = param.short_name().unwrap_or("?");
-        let byte_pos = param.byte_position();
-        let bit_pos = param.bit_position();
-        
-        // bit_length and byte_length methods may not be available
-        // We'll leave them as placeholders for now
-        let bit_len = "-";
-        let byte_len = "-";
-        
-        // Get coded value if it's a CodedConst
-        let value = if let Ok(pt) = param.param_type() {
-            use cda_database::datatypes::ParamType;
-            match pt {
-                ParamType::CodedConst => {
-                    param.specific_data_as_coded_const()
-                        .and_then(|cc| cc.coded_value())
-                        .map(|v| {
-                            // coded_value is &str, parse if numeric
-                            if let Ok(num) = v.parse::<u64>() {
-                                format!("0x{num:X}")
-                            } else {
-                                // Replace pipe with similar character to avoid breaking table format
-                                // Use ¦ (broken bar) instead of | (pipe)
-                                v.replace('|', "¦")
-                            }
-                        })
-                        .unwrap_or_default()
-                }
-                _ => String::new(),
-            }
-        } else {
-            String::new()
+        // ComParam refs
+        let comparam_header = DetailRow {
+            cells: vec!["ComParam".to_owned(), "Value".to_owned(), "Complex Value".to_owned(), "Protocol".to_owned(), "Prot-Stack".to_owned()],
+            cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+            indent: 0,
         };
-        
-        // Get DOP name if available
-        let dop_name = if let Ok(pt) = param.param_type() {
-            use cda_database::datatypes::ParamType;
-            match pt {
-                ParamType::Value => {
-                    param.specific_data_as_value()
-                        .and_then(|vd| vd.dop())
-                        .and_then(|dop| dop.short_name())
-                        .map(|s| s.replace('|', "¦"))  // Sanitize DOP name too
-                        .unwrap_or_default()
+        sections.push(DetailSectionData { 
+            title: "ComParam-Refs".to_owned(), 
+            content: DetailContent::Table {
+                header: comparam_header,
+                rows: vec![DetailRow { 
+                    cells: vec!["(No ComParam refs at comm level)".to_owned()], 
+                    cell_types: vec![CellType::Text],
+                    indent: 0, 
+                }],
+                constraints: vec![
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                ],
+            },
+        });
+
+        // Audience section - Combined into single tab with composite content
+        if let Some(dc) = ds.diag_comm() {
+            if let Some(audience) = dc.audience() {
+                let mut subsections = Vec::new();
+                
+                // Flags subsection
+                let mut flag_lines = Vec::new();
+                flag_lines.push(format!("IS_MANUFACTURER: {}", if audience.is_manufacturing() { "true" } else { "false" }));
+                flag_lines.push(format!("IS_DEVELOPMENT: {}", if audience.is_development() { "true" } else { "false" }));
+                flag_lines.push(format!("IS_AFTERSALES: {}", if audience.is_after_sales() { "true" } else { "false" }));
+                flag_lines.push(format!("IS_AFTERMARKET: {}", if audience.is_after_market() { "true" } else { "false" }));
+                
+                subsections.push(DetailSectionData { 
+                    title: "Audience Flags".to_owned(), 
+                    content: DetailContent::PlainText(flag_lines),
+                });
+                
+                // Additional audiences subsection
+                if let Some(audiences) = audience.enabled_audiences() {
+                    let audiences_list: Vec<_> = audiences.iter()
+                        .filter_map(|aa| aa.short_name().map(|s| s.to_owned()))
+                        .collect();
+                    
+                    if !audiences_list.is_empty() {
+                        subsections.push(DetailSectionData { 
+                            title: "Additional Audiences".to_owned(), 
+                            content: DetailContent::PlainText(audiences_list),
+                        });
+                    }
                 }
-                _ => String::new(),
-            }
-        } else {
-            String::new()
-        };
-        
-        // Get semantic value
-        let semantic = param.semantic()
-            .map(|s| s.replace('|', "¦"))  // Sanitize semantic too
-            .unwrap_or_default();
-        
-        // Sanitize name to prevent pipe issues
-        let safe_name = name.replace('|', "¦");
-        
-        d.push(format!("{} | {} | {} | {} | {} | {} | {} | {}", 
-            safe_name, byte_pos, bit_pos, bit_len, byte_len, value, dop_name, semantic));
-    }
-
-    fn append_comparam_refs(&self, d: &mut Vec<String>, _dc: &DiagComm<'_>) {
-        // com_param_refs() method may not be available on DiagComm
-        // This data is typically at the layer level, not comm level
-        d.push("(No ComParam refs at comm level)".to_string());
-    }
-
-    fn append_audience_info(&self, d: &mut Vec<String>, dc: &DiagComm<'_>) {
-        if let Some(audience) = dc.audience() {
-            // Boolean flags as headline
-            let mut flags = Vec::new();
-            if audience.is_development() { flags.push("Development"); }
-            if audience.is_manufacturing() { flags.push("Manufacturing"); }
-            if audience.is_after_sales() { flags.push("AfterSales"); }
-            if audience.is_after_market() { flags.push("AfterMarket"); }
-            
-            if !flags.is_empty() {
-                d.push(format!("Flags: {}", flags.join(", ")));
+                
+                sections.push(DetailSectionData { 
+                    title: "Audience".to_owned(), 
+                    content: DetailContent::Composite(subsections),
+                });
             } else {
-                d.push("(No audience flags set)".to_string());
-            }
-        } else {
-            d.push("(No audience info)".to_string());
-        }
-    }
-
-    fn append_sdgs(&self, d: &mut Vec<String>, _dc: &DiagComm<'_>) {
-        // sdgs() API may not be available or may not be iterable
-        // SDGs are typically accessed at different level
-        d.push("(SDGs not available at comm level)".to_string());
-    }
-
-    fn append_states(&self, d: &mut Vec<String>, dc: &DiagComm<'_>) {
-        // States from pre-condition and state-transition refs
-        for pc in dc.pre_condition_state_refs().into_iter().flatten() {
-            if let Some(val) = pc.value() {
-                d.push(val.to_string());
+                sections.push(DetailSectionData { 
+                    title: "Audience".to_owned(), 
+                    content: DetailContent::PlainText(vec!["(No audience info)".to_owned()]),
+                });
             }
         }
-        for st in dc.state_transition_refs().into_iter().flatten() {
-            if let Some(val) = st.value() {
-                d.push(val.to_string());
-            }
-        }
-    }
 
-    fn append_related_diag_comms(&self, d: &mut Vec<String>, _dc: &DiagComm<'_>) {
-        // related_diag_comm_refs() method may not be available on DiagComm
-        d.push("(Related comms not available)".to_string());
+        // SDGs
+        let sdg_header = DetailRow {
+            cells: vec!["Short Name".to_owned(), "SD".to_owned(), "SI".to_owned(), "TI".to_owned()],
+            cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+            indent: 0,
+        };
+        sections.push(DetailSectionData { 
+            title: "SDGs".to_owned(), 
+            content: DetailContent::Table {
+                header: sdg_header,
+                rows: vec![DetailRow { 
+                    cells: vec!["(SDGs not available at comm level)".to_owned()], 
+                    cell_types: vec![CellType::Text],
+                    indent: 0, 
+                }],
+                constraints: vec![
+                    ColumnConstraint::Percentage(40),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                ],
+            },
+        });
+
+        // States
+        if let Some(dc) = ds.diag_comm() {
+            let header = DetailRow {
+                cells: vec!["Short Name".to_owned()],
+                cell_types: vec![CellType::Text],
+                indent: 0,
+            };
+            
+            let mut rows = Vec::new();
+            for pc in dc.pre_condition_state_refs().into_iter().flatten() {
+                if let Some(val) = pc.value() {
+                    rows.push(DetailRow { 
+                        cells: vec![val.to_owned()], 
+                        cell_types: vec![CellType::Text],
+                        indent: 0, 
+                    });
+                }
+            }
+            for st in dc.state_transition_refs().into_iter().flatten() {
+                if let Some(val) = st.value() {
+                    rows.push(DetailRow { 
+                        cells: vec![val.to_owned()], 
+                        cell_types: vec![CellType::Text],
+                        indent: 0, 
+                    });
+                }
+            }
+            sections.push(DetailSectionData { 
+                title: "States".to_owned(), 
+                content: DetailContent::Table { 
+                    header, 
+                    rows,
+                    constraints: vec![ColumnConstraint::Percentage(100)],
+                },
+            });
+        }
+
+        // Related diag comm refs
+        let related_header = DetailRow {
+            cells: vec!["Short Name".to_owned()],
+            cell_types: vec![CellType::Text],
+            indent: 0,
+        };
+        sections.push(DetailSectionData { 
+            title: "Related-Diag-Comm-Refs".to_owned(), 
+            content: DetailContent::Table {
+                header: related_header,
+                rows: vec![DetailRow { 
+                    cells: vec!["(Related comms not available)".to_owned()], 
+                    cell_types: vec![CellType::Text],
+                    indent: 0, 
+                }],
+                constraints: vec![ColumnConstraint::Percentage(100)],
+            },
+        });
+
+        sections
     }
 }

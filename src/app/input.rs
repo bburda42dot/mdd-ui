@@ -13,25 +13,74 @@ impl App {
     pub(super) fn handle_search_key(&mut self, code: KeyCode) -> Action {
         match code {
             KeyCode::Esc => {
+                // Clear current search input and exit search mode
                 self.searching = false;
                 self.search.clear();
-                self.search_matches.clear();
-                self.status.clear();
-                // Rebuild visible list to show all nodes again
-                self.rebuild_visible();
+                // Note: Don't clear search_stack, it persists
             }
             KeyCode::Enter => {
+                // Finalize current search and add to stack
                 self.searching = false;
                 self.update_search();
             }
             KeyCode::Backspace => {
-                self.search.pop();
-                self.update_search();
+                if self.search.is_empty() {
+                    // If search input is empty, pop from search stack
+                    if !self.search_stack.is_empty() {
+                        self.search_stack.pop();
+                        self.rebuild_visible();
+                        let depth = self.search_stack.len();
+                        if depth > 0 {
+                            let stack_display: Vec<String> = self.search_stack.iter()
+                                .map(|(term, _scope)| term.clone())
+                                .collect();
+                            self.status = format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
+                        } else {
+                            self.status = "All searches cleared".to_owned();
+                        }
+                    }
+                } else {
+                    self.search.pop();
+                }
             }
+            
+            // Navigation with arrow keys only (preserve letter keys for search input)
+            KeyCode::Up => {
+                self.move_up();
+            }
+            KeyCode::Down => {
+                self.move_down();
+            }
+            KeyCode::Left => {
+                self.try_collapse_or_parent();
+            }
+            KeyCode::Right => {
+                self.try_expand();
+            }
+            KeyCode::PageUp => {
+                self.page_up(20);
+            }
+            KeyCode::PageDown => {
+                self.page_down(20);
+            }
+            KeyCode::Home => {
+                self.home();
+            }
+            KeyCode::End => {
+                self.end();
+            }
+            
+            // Toggle mouse mode (works in search mode too)
+            KeyCode::Char('m') => {
+                self.toggle_mouse_mode();
+            }
+            
+            // Regular character input for search
             KeyCode::Char(c) => {
                 self.search.push(c);
-                self.update_search();
+                // Don't call update_search() here - only update on Enter
             }
+            
             _ => {}
         }
         Action::Continue
@@ -39,7 +88,16 @@ impl App {
 
     /// Handle a key press in normal (non-search) mode.
     pub(super) fn handle_normal_key(&mut self, code: KeyCode, ctrl: bool) -> Action {
-        // Check if popup is open
+        // Check if help popup is open
+        if self.help_popup_visible {
+            // Help popup is open - ? or Escape closes it
+            if matches!(code, KeyCode::Esc | KeyCode::Char('?')) {
+                self.help_popup_visible = false;
+            }
+            return Action::Continue;
+        }
+        
+        // Check if DOP popup is open
         if self.dop_popup.is_some() {
             // Popup is open - only Escape closes it
             if matches!(code, KeyCode::Esc) {
@@ -69,10 +127,10 @@ impl App {
 
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.detail_focused {
-                    // Move cursor up in the focused section
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = 
-                            self.section_cursors[self.focused_section].saturating_sub(1);
+                    // Move cursor up in the selected tab
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = 
+                            self.section_cursors[self.selected_tab].saturating_sub(1);
                     }
                 } else {
                     self.move_up();
@@ -80,10 +138,10 @@ impl App {
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if self.detail_focused {
-                    // Move cursor down in the focused section (will be clamped during render)
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = 
-                            self.section_cursors[self.focused_section].saturating_add(1);
+                    // Move cursor down in the selected tab (will be clamped during render)
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = 
+                            self.section_cursors[self.selected_tab].saturating_add(1);
                     }
                 } else {
                     self.move_down();
@@ -91,10 +149,10 @@ impl App {
             }
             KeyCode::PageUp => {
                 if self.detail_focused {
-                    // Move cursor up by page in focused section
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = 
-                            self.section_cursors[self.focused_section].saturating_sub(20);
+                    // Move cursor up by page in selected tab
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = 
+                            self.section_cursors[self.selected_tab].saturating_sub(20);
                     }
                 } else {
                     self.page_up(20);
@@ -102,10 +160,10 @@ impl App {
             }
             KeyCode::PageDown => {
                 if self.detail_focused {
-                    // Move cursor down by page in focused section
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = 
-                            self.section_cursors[self.focused_section].saturating_add(20);
+                    // Move cursor down by page in selected tab
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = 
+                            self.section_cursors[self.selected_tab].saturating_add(20);
                     }
                 } else {
                     self.page_down(20);
@@ -113,9 +171,9 @@ impl App {
             }
             KeyCode::Home => {
                 if self.detail_focused {
-                    // Move cursor to top of focused section
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = 0;
+                    // Move cursor to top of selected tab
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = 0;
                     }
                 } else {
                     self.home();
@@ -123,9 +181,9 @@ impl App {
             }
             KeyCode::End => {
                 if self.detail_focused {
-                    // Move cursor to bottom of focused section (will be clamped during render)
-                    if self.focused_section < self.section_cursors.len() {
-                        self.section_cursors[self.focused_section] = usize::MAX;
+                    // Move cursor to bottom of selected tab (will be clamped during render)
+                    if self.selected_tab < self.section_cursors.len() {
+                        self.section_cursors[self.selected_tab] = usize::MAX;
                     }
                 } else {
                     self.end();
@@ -134,36 +192,18 @@ impl App {
 
             KeyCode::Left | KeyCode::Char('h') => {
                 if self.detail_focused {
-                    // Navigate to previous detail pane section
-                    let old_section = self.focused_section;
-                    self.focused_section = self.focused_section.saturating_sub(1);
-                    // Reset cursor and scroll when changing sections
-                    if old_section != self.focused_section {
-                        if self.focused_section < self.section_scrolls.len() {
-                            self.section_scrolls[self.focused_section] = 0;
-                        }
-                        if self.focused_section < self.section_cursors.len() {
-                            self.section_cursors[self.focused_section] = 0;
-                        }
-                    }
+                    // Navigate to previous tab
+                    self.selected_tab = self.selected_tab.saturating_sub(1);
+                    self.focused_column = 0; // Reset column focus when switching tabs
                 } else {
                     self.try_collapse_or_parent();
                 }
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 if self.detail_focused {
-                    // Navigate to next detail pane section (will be clamped during render)
-                    let old_section = self.focused_section;
-                    self.focused_section = self.focused_section.saturating_add(1);
-                    // Reset cursor and scroll when changing sections
-                    if old_section != self.focused_section {
-                        if self.focused_section < self.section_scrolls.len() {
-                            self.section_scrolls[self.focused_section] = 0;
-                        }
-                        if self.focused_section < self.section_cursors.len() {
-                            self.section_cursors[self.focused_section] = 0;
-                        }
-                    }
+                    // Navigate to next tab (will be clamped during render)
+                    self.selected_tab = self.selected_tab.saturating_add(1);
+                    self.focused_column = 0; // Reset column focus when switching tabs
                 } else {
                     self.try_expand();
                 }
@@ -182,14 +222,58 @@ impl App {
 
             KeyCode::Char('e') => self.expand_all(),
             KeyCode::Char('c') => self.collapse_all(),
+            
+            // Clear search stack ('x')
+            KeyCode::Char('x') if !self.detail_focused => {
+                self.clear_search_stack();
+            }
+            
+            // Cycle search scope (Shift+S)
+            KeyCode::Char('S') if !self.detail_focused => {
+                self.cycle_search_scope();
+            }
+            
+            // Toggle DiagComm sorting (only when tree is focused)
+            KeyCode::Char('s') if !self.detail_focused => {
+                self.toggle_diagcomm_sort();
+            }
 
             KeyCode::Char('/') => {
                 self.searching = true;
                 self.search.clear();
-                self.status = "Search: ".into();
+                let depth = self.search_stack.len();
+                if depth > 0 {
+                    self.status = format!("Add search (depth {}+1): ", depth);
+                } else {
+                    self.status = "Search: ".into();
+                }
             }
             KeyCode::Char('n') => self.next_search_match(),
             KeyCode::Char('N') => self.prev_search_match(),
+
+            // Column resizing (only when detail pane is focused)
+            KeyCode::Char('[') if self.detail_focused => {
+                self.resize_column(-10);
+            }
+            KeyCode::Char(']') if self.detail_focused => {
+                self.resize_column(10);
+            }
+            KeyCode::Char(',') if self.detail_focused => {
+                self.focused_column = self.focused_column.saturating_sub(1);
+            }
+            KeyCode::Char('.') if self.detail_focused => {
+                self.focused_column = self.focused_column.saturating_add(1);
+            }
+            
+            // Toggle mouse mode (works everywhere)
+            KeyCode::Char('m') => {
+                self.toggle_mouse_mode();
+            }
+            
+            // Show help popup
+            KeyCode::Char('?') => {
+                self.help_popup_visible = true;
+            }
 
             _ => {}
         }

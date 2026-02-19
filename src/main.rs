@@ -24,7 +24,12 @@ fn main() -> Result<()> {
     eprintln!("Loaded {} nodes. Starting UI...", nodes.len());
 
     let mut terminal = ratatui::init();
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)
+        .context("Failed to enable mouse capture")?;
+    
     let result = app::App::new(nodes).run(&mut terminal);
+    
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
 
     result.context("TUI error")

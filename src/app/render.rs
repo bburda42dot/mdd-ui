@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Constraint, Flex, Rect},
+    layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -9,7 +9,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::tree::TreeNode;
+use crate::tree::{TreeNode, NodeType};
+use crate::tree::{DetailSectionData, DetailRow};
 
 use super::App;
 
@@ -18,40 +19,17 @@ use super::App;
 // -----------------------------------------------------------------------
 
 fn node_style(node: &TreeNode) -> Style {
-    let t = &node.text;
-    if t.starts_with("ECU:") {
-        return style(Color::Cyan, true);
+    match node.node_type {
+        NodeType::Ecu => style(Color::Cyan, true),
+        NodeType::Container => style(Color::Blue, true),
+        NodeType::SectionHeader => style(Color::Yellow, true),
+        NodeType::Service => Style::default().fg(Color::White),
+        NodeType::ParentRefService => Style::default().fg(Color::DarkGray), // Gray for inherited services
+        NodeType::Request => Style::default().fg(Color::White),
+        NodeType::PosResponse => Style::default().fg(Color::White),
+        NodeType::NegResponse => Style::default().fg(Color::White),
+        NodeType::Default => Style::default().fg(Color::White),
     }
-    if t.contains("[base]") {
-        return style(Color::Green, true);
-    }
-    if is_section_header(t) {
-        return style(Color::Yellow, true);
-    }
-    if t.starts_with("Request") || t.starts_with("PosResponse") || t.starts_with("NegResponse") {
-        return Style::default().fg(Color::Magenta);
-    }
-    if t.contains("[CodedConst]") || t.contains("[Value]") || t.contains("[NrcConst]") {
-        return Style::default().fg(Color::White);
-    }
-    if t.starts_with("DOP:")
-        || t.starts_with("CodedValue:")
-        || t.starts_with("PhysDefault:")
-        || t.starts_with("PhysConstValue:")
-    {
-        return Style::default().fg(Color::DarkGray);
-    }
-    Style::default().fg(Color::Gray)
-}
-
-fn is_section_header(t: &str) -> bool {
-    t.starts_with("Services")
-        || t.starts_with("Variants")
-        || t.starts_with("Functional Groups")
-        || t.starts_with("DTCs")
-        || t.starts_with("Single ECU Jobs")
-        || t.starts_with("State Charts")
-        || t.starts_with("ComParam Refs")
 }
 
 fn style(fg: Color, bold: bool) -> Style {
@@ -67,22 +45,40 @@ fn border(focused: bool) -> Style {
     Style::default().fg(if focused { Color::Cyan } else { Color::DarkGray })
 }
 
+fn row_style(node: &TreeNode, is_cursor: bool) -> Style {
+    if is_cursor {
+        Style::default().bg(Color::DarkGray).fg(Color::White)
+    } else {
+        node_style(node)
+    }
+}
+
+fn expand_icon(node: &TreeNode) -> &'static str {
+    if !node.has_children {
+        "  "
+    } else if node.expanded {
+        "▼ "
+    } else {
+        "▶ "
+    }
+}
+
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
 
 impl App {
     pub(super) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
-        let block = Block::default()
+        let tree_block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(!self.detail_focused))
-            .title(" Tree ")
-            .title_bottom(" /:search  Tab:focus  +/-:resize  e/c:expand/collapse ");
+            .title(" Tree ");
 
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
-        let viewport_height = inner.height as usize;
+        let tree_inner = tree_block.inner(area);
+        frame.render_widget(tree_block, area);
+        
+        // Draw tree content
+        let viewport_height = tree_inner.height as usize;
         self.ensure_cursor_visible(viewport_height);
 
         let lines: Vec<Line> = self
@@ -106,342 +102,171 @@ impl App {
             })
             .collect();
 
-        frame.render_widget(Paragraph::new(lines), inner);
+        frame.render_widget(Paragraph::new(lines), tree_inner);
         render_scrollbar(frame, area, self.visible.len(), self.scroll_offset, viewport_height);
     }
 
     pub(super) fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
-        // Clone details to avoid borrow checker issues
-        let details: Vec<String> = self
-            .visible
-            .get(self.cursor)
-            .map(|&idx| self.all_nodes[idx].details.clone())
-            .unwrap_or_default();
-
-        if details.is_empty() {
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(border(self.detail_focused))
-                .title(" Details ");
-            let inner = block.inner(area);
+        let node_idx = if let Some(&idx) = self.visible.get(self.cursor) {
+            idx
+        } else {
+            let block = Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)).title(" Details ");
             frame.render_widget(block, area);
-            frame.render_widget(
-                Paragraph::new("Select a node to view details")
-                    .style(Style::default().fg(Color::DarkGray)),
-                inner,
-            );
             return;
-        }
-
-        // Split details into sections based on "---" separators
-        let sections = split_into_sections(&details);
-        
-        if sections.len() <= 1 {
-            // No sections or just one section - render normally
-            self.draw_detail_single_pane(frame, area, &details);
-        } else {
-            // Multiple sections - create vertical sub-panes
-            self.draw_detail_multi_pane(frame, area, &sections);
-        }
-    }
-
-    fn draw_detail_single_pane(&mut self, frame: &mut Frame, area: Rect, details: &[String]) {
-        let help_text = if self.detail_focused {
-            " Tab:focus  j/k:row  Home/End:jump "
-        } else {
-            " Tab:focus  j/k:scroll "
-        };
-        
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(border(self.detail_focused))
-            .title(" Details ")
-            .title_bottom(help_text);
-
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
-        let detail_count = details.len();
-        let viewport_height = inner.height as usize;
-        self.clamp_detail_scroll(detail_count, viewport_height);
-
-        // Parse lines into table rows
-        let table_rows: Vec<TableRowData> = details
-            .iter()
-            .skip(self.detail_scroll)
-            .take(viewport_height)
-            .map(|l| parse_line_to_table_row(l))
-            .collect();
-
-        // Determine if we have multi-column tables
-        let has_multi_column = table_rows.iter().any(|r| r.is_multi_column);
-        let max_columns = table_rows.iter().map(|r| r.cells.len()).max().unwrap_or(2);
-
-        // Create table rows with proper styling
-        let mut rows: Vec<Row> = Vec::new();
-        for row_data in table_rows.iter() {
-            let indent_str = "  ".repeat(row_data.indent / 2);
-            
-            // Check if this is a parameter header
-            let first_cell = row_data.cells.first().map(|s| s.as_str()).unwrap_or("");
-            let is_param_header = first_cell.contains('[') && first_cell.contains('@');
-            
-            // Add spacing before parameter headers (except the first one)
-            if is_param_header && !rows.is_empty() {
-                let mut separator_cells = Vec::new();
-                for _ in 0..max_columns {
-                    separator_cells.push(Cell::from("─────────────").style(Style::default().fg(Color::DarkGray)));
-                }
-                rows.push(Row::new(separator_cells));
-            }
-            
-            // Build row cells
-            let mut cells = Vec::new();
-            for (col_idx, cell_text) in row_data.cells.iter().enumerate() {
-                let text = if col_idx == 0 {
-                    format!("{}{}", indent_str, cell_text)
-                } else {
-                    cell_text.clone()
-                };
-                
-                // Style based on column and content
-                let cell_style = if row_data.is_multi_column && col_idx == 0 {
-                    // First column in multi-column table
-                    Style::default().fg(Color::Cyan)
-                } else if is_param_header {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-                } else if row_data.cells.len() == 1 {
-                    // Single cell (header line)
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-                } else if col_idx == 0 {
-                    // Key in key-value pair
-                    Style::default().fg(Color::Cyan)
-                } else {
-                    // Value or data cell
-                    Style::default().fg(Color::Gray)
-                };
-                
-                cells.push(Cell::from(text).style(cell_style));
-            }
-            
-            // Pad row to match max columns if needed
-            while cells.len() < max_columns {
-                cells.push(Cell::from(""));
-            }
-            
-            rows.push(Row::new(cells));
-        }
-
-        // Create constraints based on column count
-        let constraints: Vec<Constraint> = if has_multi_column && max_columns > 2 {
-            // Multi-column table: distribute evenly
-            (0..max_columns)
-                .map(|_| Constraint::Percentage(100 / max_columns as u16))
-                .collect()
-        } else {
-            // Two-column key-value layout
-            vec![Constraint::Percentage(40), Constraint::Percentage(60)]
         };
 
-        let table = Table::new(rows, constraints)
-            .column_spacing(2);
+        let detail_sections = self.all_nodes[node_idx].detail_sections.clone();
 
-        frame.render_widget(table, inner);
-        render_scrollbar(frame, area, detail_count, self.detail_scroll, viewport_height);
-    }
-
-    fn draw_detail_multi_pane(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSection]) {
-        use ratatui::layout::{Constraint, Direction, Layout};
-
-        // Clamp focused_section to valid range
-        if self.focused_section >= sections.len() {
-            self.focused_section = sections.len().saturating_sub(1);
-        }
-
-        // Ensure section_scrolls and section_cursors have enough entries
-        while self.section_scrolls.len() < sections.len() {
-            self.section_scrolls.push(0);
-        }
-        // todo duplicated?!
-        while self.section_cursors.len() < sections.len() {
-            self.section_cursors.push(0);
-        }
-
-        // Create equal-height constraints for each section
-        let section_count = sections.len();
-        let constraints: Vec<Constraint> = (0..section_count)
-            .map(|_| Constraint::Ratio(1, section_count as u32))
-            .collect();
-
-        let section_areas = Layout::default()
-            .direction(Direction::Vertical)
-            .flex(Flex::Legacy)
-            .constraints(constraints)
-            .split(area);
-
-        for (i, section) in sections.iter().enumerate() {
-            let is_focused = self.detail_focused && i == self.focused_section;
-            
-            let help_text = if is_focused {
-                " h/l:sections  j/k:row  Enter:DOP  Esc:close "
-            } else {
-                ""
-            };
-            
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(border(is_focused))
-                .title(format!(" {} ", section.title))
-                .title_bottom(help_text);
-
-            let inner = block.inner(section_areas[i]);
-            frame.render_widget(block, section_areas[i]);
-
-            let viewport_height = inner.height as usize;
-            
-            // Parse all lines first to determine table structure
-            let parsed_rows: Vec<TableRowData> = section.lines.iter()
-                .map(|line| parse_line_to_table_row(line))
-                .collect();
-            
-            let has_multi_column = parsed_rows.iter().any(|r| r.is_multi_column);
-            let max_columns = parsed_rows.iter().map(|r| r.cells.len()).max().unwrap_or(2);
-            
-            // Build table rows with spacing
-            let mut all_rows: Vec<Row> = Vec::new();
-            
-            for row_data in &parsed_rows {
-                let indent_str = "  ".repeat(row_data.indent / 2);
-                
-                // Check if this is a parameter header
-                let first_cell = row_data.cells.first().map(|s| s.as_str()).unwrap_or("");
-                let is_param_header = first_cell.contains('[') && first_cell.contains('@');
-                
-                // Add spacing before parameter headers (except the first one)
-                if is_param_header && !all_rows.is_empty() {
-                    let mut separator_cells = Vec::new();
-                    for _ in 0..max_columns {
-                        separator_cells.push(Cell::from("─────────────").style(Style::default().fg(Color::DarkGray)));
-                    }
-                    all_rows.push(Row::new(separator_cells));
-                }
-                
-                // Build row cells
-                let mut cells = Vec::new();
-                for (col_idx, cell_text) in row_data.cells.iter().enumerate() {
-                    let text = if col_idx == 0 {
-                        format!("{}{}", indent_str, cell_text)
-                    } else {
-                        cell_text.clone()
-                    };
-                    
-                    // Style based on column and content
-                    let cell_style = if row_data.is_multi_column && col_idx == 0 {
-                        // First column in multi-column table
-                        Style::default().fg(Color::Cyan)
-                    } else if is_param_header {
-                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-                    } else if row_data.cells.len() == 1 {
-                        // Single cell (header line)
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-                    } else if col_idx == 0 {
-                        // Key in key-value pair
-                        Style::default().fg(Color::Cyan)
-                    } else {
-                        // Value or data cell
-                        Style::default().fg(Color::Gray)
-                    };
-                    
-                    cells.push(Cell::from(text).style(cell_style));
-                }
-                
-                // Pad row to match max columns if needed
-                while cells.len() < max_columns {
-                    cells.push(Cell::from(""));
-                }
-                
-                all_rows.push(Row::new(cells));
-            }
-
-            // Clamp cursor for this section
-            let row_count = all_rows.len();
-            if self.section_cursors[i] >= row_count {
-                self.section_cursors[i] = row_count.saturating_sub(1);
-            }
-
-            // Auto-scroll to keep cursor visible
-            let cursor_pos = self.section_cursors[i];
-            if cursor_pos < self.section_scrolls[i] {
-                self.section_scrolls[i] = cursor_pos;
-            } else if cursor_pos >= self.section_scrolls[i] + viewport_height {
-                self.section_scrolls[i] = cursor_pos.saturating_sub(viewport_height).saturating_add(1);
-            }
-
-            // Clamp scroll for this section
-            if self.section_scrolls[i] >= row_count.saturating_sub(viewport_height) && row_count > viewport_height {
-                self.section_scrolls[i] = row_count.saturating_sub(viewport_height);
-            }
-
-            // Apply scrolling and highlight selected row
-            let visible_rows: Vec<Row> = all_rows
-                .into_iter()
-                .enumerate()
-                .skip(self.section_scrolls[i])
-                .take(viewport_height)
-                .map(|(idx, row)| {
-                    if is_focused && idx == cursor_pos {
-                        // Highlight selected row
-                        row.style(Style::default().bg(Color::DarkGray).fg(Color::White))
-                    } else {
-                        row
-                    }
-                })
-                .collect();
-
-            // Create constraints based on column count
-            let constraints: Vec<Constraint> = if has_multi_column && max_columns > 2 {
-                // Multi-column table: distribute evenly
-                (0..max_columns)
-                    .map(|_| Constraint::Percentage(100 / max_columns as u16))
-                    .collect()
-            } else {
-                // Two-column key-value layout
-                vec![Constraint::Percentage(40), Constraint::Percentage(60)]
-            };
-
-            let table = Table::new(visible_rows, constraints)
-                .column_spacing(2);
-
-            frame.render_widget(table, inner);
-            
-            // Render scrollbar if needed
-            if row_count > viewport_height {
-                render_scrollbar(frame, section_areas[i], row_count, self.section_scrolls[i], viewport_height);
-            }
+        if !detail_sections.is_empty() {
+            self.draw_detail_panes(frame, area, &detail_sections);
+        } else {
+            let block = Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)).title(" Details ");
+            frame.render_widget(block, area);
         }
     }
 
     pub(super) fn draw_status(&self, frame: &mut Frame, area: Rect) {
+        use crate::app::SearchScope;
+        
         let (text, st) = if self.searching {
+            let scope_indicator = match self.search_scope {
+                SearchScope::All => "",
+                SearchScope::Variants => " [variants]",
+                SearchScope::Services => " [services]",
+                SearchScope::DiagComms => " [diag-comms]",
+            };
+            let current_search_info = if !self.search_stack.is_empty() {
+                let stack_display: Vec<String> = self.search_stack.iter()
+                    .map(|(term, _scope)| term.clone())
+                    .collect();
+                format!(" [active: {}]", stack_display.join(" → "))
+            } else {
+                String::new()
+            };
             (
-                format!(" /{}█  (Enter to confirm, Esc to cancel)", self.search),
+                format!(" /{}█{}{}  (Enter to add, Esc to cancel, Backspace to undo)", self.search, scope_indicator, current_search_info),
                 Style::default().fg(Color::Yellow).bg(Color::DarkGray),
             )
         } else if !self.status.is_empty() {
             (format!(" {}", self.status), Style::default().fg(Color::Gray))
         } else {
             let focus = if self.detail_focused { "detail" } else { "tree" };
+            
+            let scope_indicator = match self.search_scope {
+                SearchScope::All => "",
+                SearchScope::Variants => " | scope: variants",
+                SearchScope::Services => " | scope: services",
+                SearchScope::DiagComms => " | scope: diag-comms",
+            };
+            
+            let search_info = if !self.search_stack.is_empty() {
+                let stack_display: Vec<String> = self.search_stack.iter()
+                    .map(|(term, scope)| {
+                        let scope_abbrev = match scope {
+                            SearchScope::All => "",
+                            SearchScope::Variants => "[V]",
+                            SearchScope::Services => "[S]",
+                            SearchScope::DiagComms => "[D]",
+                        };
+                        format!("{}{}", term, scope_abbrev)
+                    })
+                    .collect();
+                format!(" | searches: {}", stack_display.join(" → "))
+            } else {
+                String::new()
+            };
+            
             (
                 format!(
-                    " {}/{} nodes | cursor: {} | focus: {focus}",
+                    " {}/{} nodes | cursor: {} | focus: {focus}{}{}",
                     self.visible.len(),
                     self.all_nodes.len(),
                     self.cursor + 1,
+                    scope_indicator,
+                    search_info,
                 ),
                 Style::default().fg(Color::Gray),
             )
         };
         frame.render_widget(Paragraph::new(text).style(st), area);
+    }
+
+    pub(super) fn draw_help_popup(&self, frame: &mut Frame) {
+        use ratatui::{
+            layout::{Alignment, Rect},
+            style::{Color, Style},
+            widgets::{Block, Borders, Clear, Paragraph, Wrap},
+        };
+        
+        // Calculate popup size and position (centered, 70% width, 80% height)
+        let area = frame.area();
+        let popup_width = (area.width * 70) / 100;
+        let popup_height = (area.height * 80) / 100;
+        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+        
+        let popup_rect = Rect {
+            x: popup_x,
+            y: popup_y,
+            width: popup_width,
+            height: popup_height,
+        };
+        
+        // Clear the area behind the popup
+        frame.render_widget(Clear, popup_rect);
+        
+        // Draw the popup block
+        let block = Block::default()
+            .title(" Help - Press ? or Esc to close ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan));
+        
+        let inner_area = block.inner(popup_rect);
+        frame.render_widget(block, popup_rect);
+        
+        // Help content
+        let help_text = vec![
+            "NAVIGATION",
+            "  ↑/↓ or k/j      Move cursor up/down",
+            "  ←/→ or h/l      Collapse/expand node (or navigate tabs in detail)",
+            "  PgUp/PgDn       Page up/down",
+            "  Home/End        Jump to first/last",
+            "  Space           Toggle expand/collapse current node",
+            "  Tab             Switch focus between tree and detail pane",
+            "",
+            "TREE OPERATIONS",
+            "  e               Expand all nodes",
+            "  c               Collapse all nodes",
+            "  s               Toggle DiagComm sort (by ID/name)",
+            "",
+            "SEARCH & FILTER",
+            "  /               Start search (type, then Enter to add to stack)",
+            "  Shift+S         Cycle search scope (All/Variants/Services/Diag-Comms)",
+            "  Enter           Confirm search and add to stack",
+            "  x               Clear all search filters",
+            "  Backspace       Remove last search from stack (when search input empty)",
+            "  Esc             Cancel current search input",
+            "",
+            "DETAIL PANE (when focused)",
+            "  ↑/↓             Navigate rows in table",
+            "  ←/→             Switch between tabs",
+            "  Enter           Show DOP popup (if row has DOP reference)",
+            "  [ / ]           Decrease/increase column width",
+            "  , / .           Select previous/next column",
+            "",
+            "WINDOW",
+            "  + / -           Increase/decrease tree pane width",
+            "  m               Toggle mouse mode (enable/disable terminal text selection)",
+            "  ?               Show this help",
+            "  q or Esc        Quit application",
+        ];
+        
+        let help_paragraph = Paragraph::new(help_text.join("\n"))
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: false })
+            .alignment(Alignment::Left);
+        
+        frame.render_widget(help_paragraph, inner_area);
     }
 
     pub(super) fn draw_dop_popup(&self, frame: &mut Frame) {
@@ -490,118 +315,336 @@ impl App {
         
         frame.render_widget(paragraph, inner);
     }
-}
 
-// -----------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------
+    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData]) {
+        use ratatui::{
+            layout::{Constraint, Direction, Layout},
+            widgets::Tabs,
+        };
 
-struct DetailSection {
-    title: String,
-    lines: Vec<String>,
-}
-
-#[derive(Debug)]
-struct TableRowData {
-    cells: Vec<String>,  // Multiple columns for pipe-separated data
-    indent: usize,
-    is_multi_column: bool,  // True if this is a pipe-separated row
-}
-
-fn parse_line_to_table_row(line: &str) -> TableRowData {
-    // Count leading spaces for indent
-    let indent = line.chars().take_while(|c| *c == ' ').count();
-    let trimmed = line.trim();
-    
-    // Check if this is a pipe-separated multi-column row
-    if trimmed.contains(" | ") {
-        let cells: Vec<String> = trimmed
-            .split(" | ")
-            .map(|s| s.trim().to_string())
-            .collect();
-        TableRowData {
-            cells,
-            indent,
-            is_multi_column: true,
+        if sections.is_empty() {
+            return;
         }
-    } else if let Some(pos) = trimmed.find(':') {
-        // Split on first ':' to get key-value pairs
-        let key = trimmed[..pos].trim().to_string();
-        let value = trimmed[pos + 1..].trim().to_string();
-        TableRowData {
-            cells: vec![key, value],
-            indent,
-            is_multi_column: false,
-        }
-    } else {
-        // No colon or pipe, treat entire line as single cell
-        TableRowData {
-            cells: vec![trimmed.to_string()],
-            indent,
-            is_multi_column: false,
-        }
-    }
-}
 
-fn split_into_sections(details: &[String]) -> Vec<DetailSection> {
-    let mut sections = Vec::new();
-    let mut current_title = String::from("Details");
-    let mut current_lines = Vec::new();
+        // Clamp selected_tab to valid range
+        if self.selected_tab >= sections.len() {
+            self.selected_tab = sections.len().saturating_sub(1);
+        }
 
-    for line in details {
-        if line.starts_with("---") && line.ends_with("---") {
-            // Save the current section if it has content
-            if !current_lines.is_empty() || !sections.is_empty() {
-                sections.push(DetailSection {
-                    title: current_title.clone(),
-                    lines: current_lines.clone(),
-                });
-                current_lines.clear();
-            }
-            // Extract title from "--- Title ---"
-            current_title = line.trim_start_matches("---").trim_end_matches("---").trim().to_string();
+        // Ensure section_scrolls and section_cursors have enough entries
+        while self.section_scrolls.len() < sections.len() {
+            self.section_scrolls.push(0);
+        }
+        while self.section_cursors.len() < sections.len() {
+            self.section_cursors.push(0);
+        }
+
+        let show_tabs = sections.len() > 1;
+        let (tab_area, content_area) = if show_tabs {
+            // Split area into tabs bar and content
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3), // Tab bar height
+                    Constraint::Min(0),    // Content area
+                ])
+                .split(area);
+            (Some(chunks[0]), chunks[1])
         } else {
-            current_lines.push(line.clone());
+            (None, area)
+        };
+
+        // Cache tab area and titles for mouse handling
+        self.tab_area = tab_area;
+        if show_tabs {
+            self.tab_titles = sections.iter().map(|s| s.title.clone()).collect();
+        } else {
+            self.tab_titles.clear();
+        }
+
+        // Render tabs if there are multiple sections
+        if let Some(tab_area) = tab_area {
+            let tab_titles: Vec<String> = sections.iter().map(|s| s.title.clone()).collect();
+            let tabs = Tabs::new(tab_titles)
+                .block(Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)))
+                .select(self.selected_tab)
+                .style(Style::default().fg(Color::Gray))
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                );
+            frame.render_widget(tabs, tab_area);
+        }
+
+        // Render the selected tab's content
+        let section = &sections[self.selected_tab];
+        let help_text = if self.detail_focused { 
+            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:DOP  Esc:close " 
+        } else { 
+            "" 
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border(self.detail_focused))
+            .title_bottom(help_text);
+
+        let inner = block.inner(content_area);
+        frame.render_widget(block, content_area);
+
+        // Cache the inner area for table content clicking
+        self.table_content_area = Some(inner);
+
+        // Handle different content types
+        use crate::tree::DetailContent;
+        match &section.content {
+            DetailContent::PlainText(lines) => {
+                let text = lines.join("\n");
+                let para = Paragraph::new(text).style(Style::default().fg(Color::White));
+                frame.render_widget(para, inner);
+            }
+            DetailContent::Table { header, rows, constraints } => {
+                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab);
+            }
+            DetailContent::Composite(subsections) => {
+                self.render_composite_content(frame, inner, subsections);
+            }
         }
     }
 
-    // Add the last section
-    if !current_lines.is_empty() || !sections.is_empty() {
-        sections.push(DetailSection {
-            title: current_title,
-            lines: current_lines,
-        });
+    fn render_composite_content(&mut self, frame: &mut Frame, area: Rect, subsections: &[crate::tree::DetailSectionData]) {
+        use ratatui::{
+            layout::{Constraint, Direction, Layout},
+            widgets::Block,
+        };
+        
+        if subsections.is_empty() {
+            return;
+        }
+        
+        // Create vertical layout for subsections
+        let subsection_count = subsections.len();
+        let constraints: Vec<Constraint> = (0..subsection_count)
+            .map(|_| Constraint::Percentage(100 / subsection_count as u16))
+            .collect();
+        
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(area);
+        
+        // Render each subsection in its own box
+        for (i, subsection) in subsections.iter().enumerate() {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title(format!(" {} ", subsection.title));
+            
+            let inner = block.inner(chunks[i]);
+            frame.render_widget(block, chunks[i]);
+            
+            // Render the content of the subsection
+            match &subsection.content {
+                crate::tree::DetailContent::PlainText(lines) => {
+                    let text = lines.join("\n");
+                    let para = Paragraph::new(text).style(Style::default().fg(Color::White));
+                    frame.render_widget(para, inner);
+                }
+                crate::tree::DetailContent::Table { header, rows, constraints } => {
+                    // For composite tables, we don't track cursors/scrolling per subsection yet
+                    // This is a simplified rendering
+                    self.render_simple_table(frame, inner, header, rows, constraints);
+                }
+                crate::tree::DetailContent::Composite(_) => {
+                    // Nested composites not supported
+                    let text = "(Nested composites not supported)";
+                    let para = Paragraph::new(text).style(Style::default().fg(Color::Red));
+                    frame.render_widget(para, inner);
+                }
+            }
+        }
+    }
+    
+    fn render_simple_table(&self, frame: &mut Frame, area: Rect, header: &DetailRow, rows: &[DetailRow], constraints: &[crate::tree::ColumnConstraint]) {
+        let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
+        
+        // Convert constraints to ratatui Constraints
+        let mut ratatui_constraints: Vec<Constraint> = constraints.iter()
+            .map(|c| match c {
+                crate::tree::ColumnConstraint::Fixed(w) => Constraint::Length(*w),
+                crate::tree::ColumnConstraint::Percentage(p) => Constraint::Percentage(*p),
+            })
+            .collect();
+        
+        // Ensure we have enough constraints
+        while ratatui_constraints.len() < max_columns {
+            ratatui_constraints.push(Constraint::Percentage(10));
+        }
+        
+        // Create header
+        let header_cells: Vec<Cell> = header.cells.iter().map(|c| {
+            Cell::from(c.as_str()).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        }).collect();
+        let header_row = Row::new(header_cells);
+        
+        // Create data rows
+        let data_rows: Vec<Row> = rows.iter().map(|row_data| {
+            let indent_str = "  ".repeat(row_data.indent / 2);
+            let mut cells: Vec<Cell> = row_data.cells.iter().enumerate().map(|(col_idx, cell_text)| {
+                let text = if col_idx == 0 { 
+                    format!("{}{}", indent_str, cell_text) 
+                } else { 
+                    cell_text.clone() 
+                };
+                Cell::from(text).style(Style::default().fg(Color::White))
+            }).collect();
+            
+            while cells.len() < max_columns { 
+                cells.push(Cell::from("")); 
+            }
+            Row::new(cells)
+        }).collect();
+        
+        let table = Table::new(data_rows, ratatui_constraints)
+            .column_spacing(1)
+            .header(header_row);
+        frame.render_widget(table, area);
     }
 
-    // If we ended up with no sections, create one default section
-    if sections.is_empty() {
-        sections.push(DetailSection {
-            title: "Details".to_string(),
-            lines: details.to_vec(),
-        });
+    fn render_table_content(&mut self, frame: &mut Frame, inner: Rect, area: Rect, header: &DetailRow, rows: &[DetailRow], constraints: &[crate::tree::ColumnConstraint], section_idx: usize) {
+        use ratatui::text::Text;
+        
+        let viewport_height = inner.height as usize;
+        let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
+
+        let rows_refs: Vec<&DetailRow> = rows.iter().collect();
+
+        let row_count = rows.len();
+        if row_count > 0 && self.section_cursors[section_idx] >= row_count {
+            self.section_cursors[section_idx] = row_count.saturating_sub(1);
+        }
+
+        if row_count > 0 {
+            let cursor_pos = self.section_cursors[section_idx];
+            if cursor_pos < self.section_scrolls[section_idx] {
+                self.section_scrolls[section_idx] = cursor_pos;
+            } else if cursor_pos >= self.section_scrolls[section_idx] + viewport_height {
+                self.section_scrolls[section_idx] = cursor_pos.saturating_sub(viewport_height).saturating_add(1);
+            }
+        }
+
+        if row_count > viewport_height && self.section_scrolls[section_idx] >= row_count.saturating_sub(viewport_height) {
+            self.section_scrolls[section_idx] = row_count.saturating_sub(viewport_height);
+        }
+
+        let focused_col = if self.focused_column >= max_columns { max_columns.saturating_sub(1) } else { self.focused_column };
+        
+        // Build visible rows with column-specific highlighting
+        let visible_rows: Vec<Row<'static>> = rows_refs.iter().enumerate()
+            .skip(self.section_scrolls[section_idx])
+            .take(viewport_height)
+            .map(|(idx, row_data)| {
+                let indent_str = "  ".repeat(row_data.indent / 2);
+                let is_selected_row = self.detail_focused && idx == self.section_cursors[section_idx];
+                
+                let mut cells: Vec<Cell> = row_data.cells.iter().enumerate().map(|(col_idx, cell_text)| {
+                    let text = if col_idx == 0 { 
+                        format!("{}{}", indent_str, cell_text) 
+                    } else { 
+                        cell_text.clone() 
+                    };
+                    
+                    // Apply column-specific highlighting for selected cell
+                    let style = if is_selected_row && col_idx == focused_col {
+                        // Selected cell: highlight with blue background, keep white text
+                        Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    Cell::from(text).style(style)
+                }).collect();
+                
+                while cells.len() < max_columns { 
+                    cells.push(Cell::from("")); 
+                }
+                Row::new(cells)
+            }).collect();
+
+        // Get column widths for this section, or use defaults from constraints
+        let column_widths = self.get_column_widths(section_idx, constraints);
+        
+        // Convert to ratatui Constraint using custom widths
+        let ratatui_constraints: Vec<Constraint> = column_widths.iter()
+            .map(|&w| Constraint::Percentage(w))
+            .collect();
+        
+        // Cache the exact constraints for accurate click detection
+        self.cached_ratatui_constraints = ratatui_constraints.clone();
+        
+        // Create header cells with arrow indicator for focused column
+        let header_cells: Vec<Cell> = header.cells.iter().enumerate().map(|(idx, c)| {
+            let text = if self.detail_focused && idx == focused_col {
+                // Prepend arrow to the existing header text
+                format!("▼\n{}", c)
+            } else {
+                c.to_string()
+            };
+            
+            // Keep yellow color for all headers, focused column only gets the arrow
+            let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+            Cell::from(Text::from(text)).style(style)
+        }).collect();
+        let header_row = Row::new(header_cells).height(3);
+        let table = Table::new(visible_rows, ratatui_constraints).column_spacing(3).header(header_row);
+        frame.render_widget(table, inner);
+
+        if row_count > viewport_height {
+            render_scrollbar(frame, area, row_count, self.section_scrolls[section_idx], viewport_height);
+        }
     }
 
-    sections
-}
-
-fn row_style(node: &TreeNode, is_cursor: bool) -> Style {
-    if is_cursor {
-        Style::default()
-            .bg(Color::DarkGray)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        node_style(node)
-    }
-}
-
-fn expand_icon(node: &TreeNode) -> &'static str {
-    if !node.has_children {
-        "  "
-    } else if node.expanded {
-        "▼ "
-    } else {
-        "▶ "
+    fn get_column_widths(&mut self, section_idx: usize, constraints: &[crate::tree::ColumnConstraint]) -> Vec<u16> {
+        // Ensure we have enough entries in column_widths
+        while self.column_widths.len() <= section_idx {
+            self.column_widths.push(Vec::new());
+        }
+        
+        // If we don't have custom widths for this section, initialize from constraints
+        if self.column_widths[section_idx].is_empty() {
+            // First pass: convert to initial widths
+            let mut widths: Vec<u16> = constraints.iter().map(|c| match c {
+                crate::tree::ColumnConstraint::Fixed(w) => {
+                    // Convert fixed width to a reasonable percentage (roughly 1.5% per char)
+                    (*w as u16 * 3 / 2).max(3).min(15)
+                },
+                crate::tree::ColumnConstraint::Percentage(p) => *p,
+            }).collect();
+            
+            // Normalize to ensure total is exactly 100%
+            let total: u16 = widths.iter().sum();
+            if total > 0 && total != 100 {
+                // Scale all widths proportionally to sum to 100
+                widths = widths.iter().map(|&w| {
+                    ((w as f32 / total as f32) * 100.0).round() as u16
+                }).collect();
+                
+                // Handle rounding errors: adjust the largest column
+                let new_total: u16 = widths.iter().sum();
+                if new_total != 100 && !widths.is_empty() {
+                    let max_idx = widths.iter().enumerate()
+                        .max_by_key(|(_, w)| *w)
+                        .map(|(idx, _)| idx)
+                        .unwrap_or(0);
+                    widths[max_idx] = widths[max_idx].saturating_add(100 - new_total);
+                }
+            }
+            
+            self.column_widths[section_idx] = widths;
+        }
+        
+        self.column_widths[section_idx].clone()
     }
 }
 

@@ -57,7 +57,6 @@ pub struct App {
     pub(crate) tab_area: Option<Rect>, // Cached tab area for mouse handling
     pub(crate) tab_titles: Vec<String>, // Cached tab titles for click detection
     pub(crate) table_content_area: Option<Rect>, // Cached table content area for row/cell clicking
-    pub(crate) rendered_column_widths: Vec<u16>, // Cached column widths as actually rendered
     pub(crate) cached_ratatui_constraints: Vec<ratatui::layout::Constraint>, // Exact constraints used in Table
     last_click_time: Option<Instant>, // Time of last click for double-click detection
     last_click_pos: (u16, u16), // Position of last click (column, row)
@@ -101,7 +100,6 @@ impl App {
             tab_area: None,
             tab_titles: Vec::new(),
             table_content_area: None,
-            rendered_column_widths: Vec::new(),
             cached_ratatui_constraints: Vec::new(),
             last_click_time: None,
             last_click_pos: (0, 0),

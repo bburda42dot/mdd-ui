@@ -197,11 +197,16 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     if let Some(variants) = ecu.variants() {
         for (vi, variant) in variants.iter().enumerate() {
             let vw = VariantWrap(variant);
-            let name = vw
+            let mut name = vw
                 .diag_layer()
                 .and_then(|l| l.short_name().map(str::to_owned))
                 .unwrap_or_else(|| format!("variant_{vi}"));
             let is_base = vw.is_base_variant();
+            
+            // Add [base] suffix for base variants
+            if is_base {
+                name.push_str(" [base]");
+            }
 
             let details = variant_summary(&vw, &name);
             let sec = lines_to_single_section("Summary", details.clone());
@@ -215,38 +220,12 @@ fn add_containers(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 NodeType::Container,
             );
 
-            // Add Base Variants section
-            if is_base {
-                if let Some(dl) = vw.diag_layer() {
-                    let layer = DiagLayer(dl);
-                    b.push(
-                        2,
-                        "Base Variants".to_string(),
-                        true,
-                        true,
-                        NodeId::Static(format!("container_{vi}_base_variants")),
-                        NodeType::SectionHeader,
-                    );
-                    // Pass parent refs from variant for inherited service lookup
-                    let parent_refs_iter = vw.parent_refs().map(|pr| pr.iter().map(cda_database::datatypes::ParentRef));
-                    b.add_diag_layer_structured(&layer, 3, &name, true, parent_refs_iter);
-                }
-            } else {
-                // For non-base variants, show as ECU Variants
-                if let Some(dl) = vw.diag_layer() {
-                    let layer = DiagLayer(dl);
-                    b.push(
-                        2,
-                        "ECU Variants".to_string(),
-                        false,
-                        true,
-                        NodeId::Static(format!("container_{vi}_ecu_variants")),
-                        NodeType::SectionHeader,
-                    );
-                    // Pass parent refs from variant for inherited service lookup
-                    let parent_refs_iter = vw.parent_refs().map(|pr| pr.iter().map(cda_database::datatypes::ParentRef));
-                    b.add_diag_layer_structured(&layer, 3, &name, false, parent_refs_iter);
-                }
+            // Add diag layer content directly under variant (no section header)
+            if let Some(dl) = vw.diag_layer() {
+                let layer = DiagLayer(dl);
+                // Pass parent refs from variant for inherited service lookup
+                let parent_refs_iter = vw.parent_refs().map(|pr| pr.iter().map(cda_database::datatypes::ParentRef));
+                b.add_diag_layer_structured(&layer, 2, &name, is_base, parent_refs_iter);
             }
         }
     }

@@ -319,7 +319,6 @@ impl App {
     fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData]) {
         use ratatui::{
             layout::{Constraint, Direction, Layout},
-            widgets::Tabs,
         };
 
         if sections.is_empty() {
@@ -340,13 +339,23 @@ impl App {
         }
 
         let show_tabs = sections.len() > 1;
+        
+        // Calculate how many lines of tabs we need
+        let tab_lines_needed = if show_tabs {
+            let tab_titles: Vec<String> = sections.iter().map(|s| s.title.clone()).collect();
+            self.calculate_tab_lines(&tab_titles, area.width.saturating_sub(2) as usize)
+        } else {
+            0
+        };
+        
         let (tab_area, content_area) = if show_tabs {
-            // Split area into tabs bar and content
+            // Split area into tabs bar and content, with dynamic tab height
+            let tab_height = (tab_lines_needed as u16 + 2).min(area.height.saturating_sub(3));
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3), // Tab bar height
-                    Constraint::Min(0),    // Content area
+                    Constraint::Length(tab_height), // Dynamic tab bar height
+                    Constraint::Min(0),              // Content area
                 ])
                 .split(area);
             (Some(chunks[0]), chunks[1])
@@ -365,16 +374,7 @@ impl App {
         // Render tabs if there are multiple sections
         if let Some(tab_area) = tab_area {
             let tab_titles: Vec<String> = sections.iter().map(|s| s.title.clone()).collect();
-            let tabs = Tabs::new(tab_titles)
-                .block(Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)))
-                .select(self.selected_tab)
-                .style(Style::default().fg(Color::Gray))
-                .highlight_style(
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
-                );
-            frame.render_widget(tabs, tab_area);
+            self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.selected_tab, self.detail_focused);
         }
 
         // Render the selected tab's content
@@ -645,6 +645,114 @@ impl App {
         }
         
         self.column_widths[section_idx].clone()
+    }
+
+    /// Calculate how many lines are needed to display tabs given available width
+    fn calculate_tab_lines(&self, tab_titles: &[String], available_width: usize) -> usize {
+        if available_width < 5 || tab_titles.is_empty() {
+            return 1;
+        }
+        
+        let mut lines = 1;
+        let mut current_width = 0;
+        
+        for title in tab_titles {
+            let tab_width = title.len() + 3; // +3 for padding/separators: " title "
+            
+            if current_width + tab_width > available_width && current_width > 0 {
+                // Need a new line
+                lines += 1;
+                current_width = tab_width;
+            } else {
+                current_width += tab_width;
+            }
+        }
+        
+        lines
+    }
+
+    /// Render tabs with wrapping support for narrow windows
+    fn render_wrapped_tabs(&self, frame: &mut Frame, area: Rect, tab_titles: &[String], selected: usize, focused: bool) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border(focused));
+        
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        
+        // Calculate how to distribute tabs across lines
+        let available_width = inner.width as usize;
+        if available_width < 5 {
+            return; // Too narrow to render anything meaningful
+        }
+        
+        // Build tab strings with decorators: " TabName "
+        let tab_strings: Vec<String> = tab_titles.iter()
+            .map(|title| format!(" {} ", title))
+            .collect();
+        
+        // Calculate positions and line breaks
+        let mut lines: Vec<Vec<(usize, &String)>> = Vec::new();
+        let mut current_line: Vec<(usize, &String)> = Vec::new();
+        let mut current_width = 0;
+        
+        for (idx, tab_str) in tab_strings.iter().enumerate() {
+            let tab_width = tab_str.len() + 3; // +3 for padding/separators
+            
+            if current_width + tab_width > available_width && !current_line.is_empty() {
+                // Start a new line
+                lines.push(current_line);
+                current_line = Vec::new();
+                current_width = 0;
+            }
+            
+            current_line.push((idx, tab_str));
+            current_width += tab_width;
+        }
+        
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+        
+        // Render each line of tabs
+        for (line_idx, line_tabs) in lines.iter().enumerate() {
+            if line_idx >= inner.height as usize {
+                break; // No more space
+            }
+            
+            let y = inner.y + line_idx as u16;
+            let mut x = inner.x;
+            
+            for (tab_idx, tab_str) in line_tabs {
+                let is_selected = *tab_idx == selected;
+                let style = if is_selected {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Gray)
+                };
+                
+                // Render with box-drawing characters for separation
+                let left_sep = if x == inner.x { "" } else { "│" };
+                let tab_text = format!("{}{}", left_sep, tab_str);
+                
+                let span = Span::styled(tab_text, style);
+                let line = Line::from(span);
+                
+                frame.render_widget(
+                    Paragraph::new(line),
+                    Rect {
+                        x,
+                        y,
+                        width: (tab_str.len() + left_sep.len()) as u16,
+                        height: 1,
+                    }
+                );
+                
+                x += (tab_str.len() + left_sep.len()) as u16;
+            }
+        }
     }
 }
 

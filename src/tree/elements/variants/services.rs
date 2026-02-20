@@ -251,12 +251,22 @@ pub fn get_parent_ref_services_recursive<'a>(
 pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_name: Option<String>) -> Vec<DetailSectionData> {
     let mut sections: Vec<DetailSectionData> = Vec::new();
 
-    // Add header section with service ID and name
+    // Add header section with service ID and name (matching tree display format)
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
     let header_title = if let Some(sid) = ds.request_id() {
-        format!("0x{:02X} - {}", sid, service_name)
+        if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+            let sub_fn_str = if bit_len <= 8 {
+                format!("{sub_fn:02X}")
+            } else {
+                format!("{sub_fn:04X}")
+            };
+            let full_id = format!("{sid:02X}{sub_fn_str}");
+            format!("Diag-Comm - 0x{} - {}", full_id, service_name)
+        } else {
+            format!("Diag-Comm -  0x{:02X} - {}", sid, service_name)
+        }
     } else {
-        service_name.to_string()
+        format!("Diag-Comm - {}", service_name)
     };
     
     sections.push(DetailSectionData {

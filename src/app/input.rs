@@ -229,19 +229,33 @@ impl App {
                         let node_idx = self.visible[self.cursor];
                         let node = &self.all_nodes[node_idx];
                         
-                        if node.text.starts_with("Diag-Comms (") {
-                            // Navigate to selected service from Diag-Comms table
+                        // Check if this is a service list header (generic check)
+                        let is_service_list = node.text.starts_with("Diag-Comms (") 
+                            || node.text.starts_with("Requests (") 
+                            || node.text.starts_with("Pos-Responses (") 
+                            || node.text.starts_with("Neg-Responses (");
+                        
+                        // Check if this is any service-related node type (generic check)
+                        let is_service_node = matches!(node.node_type, 
+                            NodeType::Service | NodeType::ParentRefService | 
+                            NodeType::Request | NodeType::PosResponse | NodeType::NegResponse);
+                        
+                        if is_service_list {
+                            // Navigate to selected service from service list table
                             self.try_navigate_to_service();
-                        } else if matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+                        } else if is_service_node {
                             // Check if we're on the "Inherited From" row in Overview
                             let mut should_navigate_to_parent = false;
                             
-                            if self.selected_tab < node.detail_sections.len() {
-                                let section = &node.detail_sections[self.selected_tab];
+                            // Get the actual section index accounting for header section offset
+                            let section_idx = self.get_section_index();
+                            
+                            if section_idx < node.detail_sections.len() {
+                                let section = &node.detail_sections[section_idx];
                                 if section.title == "Overview" {
                                     if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
-                                        let row_cursor = if self.selected_tab < self.section_cursors.len() {
-                                            self.section_cursors[self.selected_tab]
+                                        let row_cursor = if section_idx < self.section_cursors.len() {
+                                            self.section_cursors[section_idx]
                                         } else {
                                             0
                                         };

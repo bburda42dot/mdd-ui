@@ -65,11 +65,15 @@ pub fn add_pos_responses_section<'a>(
     let total_count = own_services.len() + parent_services.len();
     
     if total_count > 0 {
-        b.push(
+        // Build detail section for Pos-Responses header showing all services in a table
+        let detail_section = build_pos_responses_table_section(&own_services, &parent_services);
+        
+        b.push_details_structured(
             depth,
             format!("Pos-Responses ({})", total_count),
             false,
             true,
+            vec![detail_section],
             NodeType::SectionHeader,
         );
         
@@ -102,7 +106,7 @@ pub fn add_pos_responses_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::Service,
+                    NodeType::PosResponse,
                 );
             }
         }
@@ -136,7 +140,7 @@ pub fn add_pos_responses_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::ParentRefService,
+                    NodeType::PosResponse,
                 );
             }
         }
@@ -173,11 +177,15 @@ pub fn add_neg_responses_section<'a>(
     let total_count = own_services.len() + parent_services.len();
     
     if total_count > 0 {
-        b.push(
+        // Build detail section for Neg-Responses header showing all services in a table
+        let detail_section = build_neg_responses_table_section(&own_services, &parent_services);
+        
+        b.push_details_structured(
             depth,
             format!("Neg-Responses ({})", total_count),
             false,
             true,
+            vec![detail_section],
             NodeType::SectionHeader,
         );
         
@@ -210,7 +218,7 @@ pub fn add_neg_responses_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::Service,
+                    NodeType::NegResponse,
                 );
             }
         }
@@ -244,7 +252,7 @@ pub fn add_neg_responses_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::ParentRefService,
+                    NodeType::NegResponse,
                 );
             }
         }
@@ -258,9 +266,9 @@ fn build_pos_response_view_sections(ds: &DiagService<'_>, parent_layer_name: Opt
     // Add header section
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
     let header_title = if let Some(sid) = ds.request_id() {
-        format!("0x{:02X} - {}", sid, service_name)
+        format!("Pos Response - 0x{:02X} - {}", sid, service_name)
     } else {
-        service_name.to_string()
+        format!("Pos Response - {}", service_name)
     };
     
     sections.push(DetailSectionData {
@@ -285,9 +293,9 @@ fn build_neg_response_view_sections(ds: &DiagService<'_>, parent_layer_name: Opt
     // Add header section
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
     let header_title = if let Some(sid) = ds.request_id() {
-        format!("0x{:02X} - {}", sid, service_name)
+        format!("Neg Response - 0x{:02X} - {}", sid, service_name)
     } else {
-        service_name.to_string()
+        format!("Neg Response - {}", service_name)
     };
     
     sections.push(DetailSectionData {
@@ -445,6 +453,174 @@ where
                 ColumnConstraint::Percentage(25),
             ],
             use_row_selection: false,
+        },
+    }
+}
+
+/// Build a table section for the Pos-Responses header showing all services
+fn build_pos_responses_table_section(own_services: &[DiagService<'_>], parent_services: &[(DiagService<'_>, String)]) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec!["ID".to_owned(), "Short Name".to_owned(), "Inherited".to_owned()],
+        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+        indent: 0,
+    };
+    
+    let mut rows = Vec::new();
+    
+    // Add own services first (inherited = false)
+    for ds in own_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "false".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    // Add parent services (inherited = true)
+    for (ds, _source_layer_name) in parent_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "true".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    DetailSectionData {
+        title: "Pos-Responses".to_owned(),
+        render_as_header: false,
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(60),
+                ColumnConstraint::Percentage(20),
+            ],
+            use_row_selection: true,
+        },
+    }
+}
+
+/// Build a table section for the Neg-Responses header showing all services
+fn build_neg_responses_table_section(own_services: &[DiagService<'_>], parent_services: &[(DiagService<'_>, String)]) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec!["ID".to_owned(), "Short Name".to_owned(), "Inherited".to_owned()],
+        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+        indent: 0,
+    };
+    
+    let mut rows = Vec::new();
+    
+    // Add own services first (inherited = false)
+    for ds in own_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "false".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    // Add parent services (inherited = true)
+    for (ds, _source_layer_name) in parent_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "true".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    DetailSectionData {
+        title: "Neg-Responses".to_owned(),
+        render_as_header: false,
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(60),
+                ColumnConstraint::Percentage(20),
+            ],
+            use_row_selection: true,
         },
     }
 }

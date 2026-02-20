@@ -11,7 +11,7 @@ pub use types::{
 };
 
 use builder::TreeBuilder;
-use elements::{add_variants, add_functional_groups};
+use elements::{add_variants, add_functional_groups, add_ecu_shared_data};
 use crate::database::{extract_data, get_ecu_summary};
 
 /// Walk the entire database and produce a flat list of tree nodes ready for
@@ -38,6 +38,7 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
         
         add_variants(&mut b, ecu);
         add_functional_groups(&mut b, ecu);
+        add_ecu_shared_data(&mut b, ecu);
     }
 
     b.finish()

@@ -155,8 +155,12 @@ impl App {
             let scope_indicator = match self.search_scope {
                 SearchScope::All => "",
                 SearchScope::Variants => " [variants]",
+                SearchScope::FunctionalGroups => " [functional groups]",
+                SearchScope::EcuSharedData => " [ECU shared data]",
                 SearchScope::Services => " [services]",
                 SearchScope::DiagComms => " [diag-comms]",
+                SearchScope::Requests => " [requests]",
+                SearchScope::Responses => " [responses]",
             };
             let current_search_info = if !self.search_stack.is_empty() {
                 let stack_display: Vec<String> = self.search_stack.iter()
@@ -166,8 +170,19 @@ impl App {
             } else {
                 String::new()
             };
+            
+            let scope_name = match self.search_scope {
+                SearchScope::All => "All",
+                SearchScope::Variants => "Variants",                SearchScope::FunctionalGroups => "functional groups",
+                SearchScope::EcuSharedData => "ECU shared data",                SearchScope::Services => "Services",
+                SearchScope::DiagComms => "Diag-Comms",
+                SearchScope::Requests => "Requests",
+                SearchScope::Responses => "Responses",
+            };
+            
             (
-                format!(" /{}█{}{}  (Enter to add, Esc to cancel, Backspace to undo)", self.search, scope_indicator, current_search_info),
+                format!(" /{}█{}{}  (scope: {} | Shift+S to change (leave search first) | Enter to add, Esc to cancel |  Backspace to undo last search)", 
+                    self.search, scope_indicator, current_search_info, scope_name),
                 Style::default().fg(Color::Yellow).bg(Color::DarkGray),
             )
         } else if !self.status.is_empty() {
@@ -178,8 +193,12 @@ impl App {
             let scope_indicator = match self.search_scope {
                 SearchScope::All => "",
                 SearchScope::Variants => " | scope: variants",
+                SearchScope::FunctionalGroups => " | scope: functional groups",
+                SearchScope::EcuSharedData => " | scope: ECU shared data",
                 SearchScope::Services => " | scope: services",
                 SearchScope::DiagComms => " | scope: diag-comms",
+                SearchScope::Requests => " | scope: requests",
+                SearchScope::Responses => " | scope: responses",
             };
             
             let search_info = if !self.search_stack.is_empty() {
@@ -188,8 +207,12 @@ impl App {
                         let scope_abbrev = match scope {
                             SearchScope::All => "",
                             SearchScope::Variants => "[V]",
+                            SearchScope::FunctionalGroups => "[FG]",
+                            SearchScope::EcuSharedData => "[ESD]",
                             SearchScope::Services => "[S]",
                             SearchScope::DiagComms => "[D]",
+                            SearchScope::Requests => "[Rq]",
+                            SearchScope::Responses => "[Rs]",
                         };
                         format!("{}{}", term, scope_abbrev)
                     })
@@ -265,7 +288,7 @@ impl App {
             "",
             "SEARCH & FILTER",
             "  /               Start search (type, then Enter to add to stack)",
-            "  Shift+S         Cycle search scope (All/Variants/Services/Diag-Comms)",
+            "  Shift+S         Cycle search scope (All/Variants/Services/Diag-Comms/Requests/Responses)",
             "  Enter           Confirm search and add to stack",
             "  x               Clear all search filters",
             "  Backspace       Remove last search from stack (when search input empty)",
@@ -340,7 +363,7 @@ impl App {
         frame.render_widget(paragraph, inner);
     }
 
-    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData], node_name: &str) {
+    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData], _node_name: &str) {
         use ratatui::{
             layout::{Constraint, Direction, Layout},
         };
@@ -359,8 +382,9 @@ impl App {
         };
         
         // Determine title based on whether there's a header section
+        // If there's a header section, use its title only (don't duplicate with node_name)
         let detail_title = if header_section.is_some() {
-            format!(" {} - {} ", sections[0].title, node_name)
+            format!(" {} ", sections[0].title)
         } else {
             " Details ".to_string()
         };
@@ -378,12 +402,20 @@ impl App {
             self.section_cursors.push(0);
         }
 
-        // Calculate layout: header (if exists) + tabs + content
+        // Create a single outer block that encloses everything
+        let outer_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border(self.detail_focused))
+            .title(detail_title.clone());
+        let outer_inner = outer_block.inner(area);
+        frame.render_widget(outer_block, area);
+
+        // Calculate layout inside the outer block: header (if exists) + tabs + content
         let mut constraints = vec![];
         let header_height = if let Some(hdr) = header_section {
             if let DetailContent::PlainText(lines) = &hdr.content {
-                // Height: 1 line per text line + 2 for borders
-                let height = (lines.len() as u16 + 2).min(area.height / 4);
+                // Height: 1 line per text line (no extra borders since it's inside outer block)
+                let height = (lines.len() as u16).max(1).min(outer_inner.height / 4);
                 constraints.push(Constraint::Length(height));
                 Some(height)
             } else {
@@ -396,13 +428,13 @@ impl App {
         let show_tabs = tab_sections.len() > 1;
         let tab_lines_needed = if show_tabs {
             let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            self.calculate_tab_lines(&tab_titles, area.width.saturating_sub(2) as usize)
+            self.calculate_tab_lines(&tab_titles, outer_inner.width as usize)
         } else {
             0
         };
         
         if show_tabs {
-            let tab_height = (tab_lines_needed as u16 + 2).min(area.height.saturating_sub(3));
+            let tab_height = (tab_lines_needed as u16 + 2).min(outer_inner.height.saturating_sub(3));
             constraints.push(Constraint::Length(tab_height));
         }
         constraints.push(Constraint::Min(0)); // Content area
@@ -410,11 +442,11 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
-            .split(area);
+            .split(outer_inner);
 
         let mut chunk_idx = 0;
         
-        // Render header section if it exists
+        // Render header section if it exists (without borders, just text)
         let header_area = if header_height.is_some() {
             let area = chunks[chunk_idx];
             chunk_idx += 1;
@@ -424,17 +456,10 @@ impl App {
         };
 
         if let (Some(area), Some(hdr)) = (header_area, header_section) {
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(border(self.detail_focused))
-                .title(detail_title.clone());
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
-
             if let DetailContent::PlainText(lines) = &hdr.content {
                 let text = lines.join("\n");
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
-                frame.render_widget(para, inner);
+                frame.render_widget(para, area);
             }
         }
 
@@ -470,10 +495,10 @@ impl App {
             "" 
         };
 
+        // Content block with borders for the tab content
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(self.detail_focused))
-            .title(if header_section.is_none() { detail_title.as_str() } else { "" })
             .title_bottom(help_text);
 
         let inner = block.inner(content_area);

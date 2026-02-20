@@ -24,8 +24,12 @@ use input::Action;
 pub(crate) enum SearchScope {
     All,              // Search everywhere
     Variants,         // Search only in variant names
+    FunctionalGroups, // Search only in functional group names
+    EcuSharedData,    // Search only in ECU shared data names
     Services,         // Search only in service names
     DiagComms,        // Search only in Diag-Comms sections
+    Requests,         // Search only in Requests
+    Responses,        // Search only in Responses (Pos and Neg)
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
@@ -237,6 +241,32 @@ impl App {
     // Visibility
     // -------------------------------------------------------------------
 
+    /// Check if a node at index i is under a specific section header
+    fn is_under_section(&self, node_idx: usize, section_name: &str) -> bool {
+        if node_idx == 0 {
+            return false;
+        }
+        
+        let node_depth = self.all_nodes[node_idx].depth;
+        
+        // Search backwards from node_idx to find parent section
+        for i in (0..node_idx).rev() {
+            let parent = &self.all_nodes[i];
+            
+            // Stop if we reach a node at the same or lower depth (not a parent)
+            if parent.depth >= node_depth {
+                continue;
+            }
+            
+            // If this is a section header at depth 0, check if it matches
+            if parent.depth == 0 && parent.text == section_name {
+                return true;
+            }
+        }
+        
+        false
+    }
+
     fn rebuild_visible(&mut self) {
         self.visible.clear();
         
@@ -277,7 +307,22 @@ impl App {
                     let node_matches_scope = match scope {
                         SearchScope::All => true,
                         SearchScope::Variants => {
-                            matches!(self.all_nodes[i].node_type, NodeType::Container)
+                            // Match variant containers and the "Variants" header
+                            self.all_nodes[i].text == "Variants" ||
+                            (matches!(self.all_nodes[i].node_type, NodeType::Container) &&
+                             i > 0 && self.is_under_section(i, "Variants"))
+                        },
+                        SearchScope::FunctionalGroups => {
+                            // Match functional group containers and the "Functional Groups" header
+                            self.all_nodes[i].text == "Functional Groups" ||
+                            (matches!(self.all_nodes[i].node_type, NodeType::Container) &&
+                             i > 0 && self.is_under_section(i, "Functional Groups"))
+                        },
+                        SearchScope::EcuSharedData => {
+                            // Match ECU shared data containers and the "ECU Shared Data" header
+                            self.all_nodes[i].text == "ECU Shared Data" ||
+                            (matches!(self.all_nodes[i].node_type, NodeType::Container) &&
+                             i > 0 && self.is_under_section(i, "ECU Shared Data"))
                         },
                         SearchScope::Services => {
                             matches!(self.all_nodes[i].node_type, 
@@ -288,6 +333,16 @@ impl App {
                             self.all_nodes[i].text.starts_with("Diag-Comms (") ||
                             matches!(self.all_nodes[i].node_type, 
                                 NodeType::Service | NodeType::ParentRefService)
+                        },
+                        SearchScope::Requests => {
+                            self.all_nodes[i].text.starts_with("Requests (") ||
+                            matches!(self.all_nodes[i].node_type, NodeType::Request)
+                        },
+                        SearchScope::Responses => {
+                            self.all_nodes[i].text.starts_with("Pos-Responses (") ||
+                            self.all_nodes[i].text.starts_with("Neg-Responses (") ||
+                            matches!(self.all_nodes[i].node_type, 
+                                NodeType::PosResponse | NodeType::NegResponse)
                         },
                     };
                     
@@ -761,8 +816,12 @@ impl App {
                     let scope_abbrev = match scope {
                         SearchScope::All => "",
                         SearchScope::Variants => "[V]",
+                        SearchScope::FunctionalGroups => "[FG]",
+                        SearchScope::EcuSharedData => "[ESD]",
                         SearchScope::Services => "[S]",
                         SearchScope::DiagComms => "[D]",
+                        SearchScope::Requests => "[Rq]",
+                        SearchScope::Responses => "[Rs]",
                     };
                     format!("{}{}", term, scope_abbrev)
                 })
@@ -789,16 +848,24 @@ impl App {
     pub(crate) fn cycle_search_scope(&mut self) {
         self.search_scope = match self.search_scope {
             SearchScope::All => SearchScope::Variants,
-            SearchScope::Variants => SearchScope::Services,
+            SearchScope::Variants => SearchScope::FunctionalGroups,
+            SearchScope::FunctionalGroups => SearchScope::EcuSharedData,
+            SearchScope::EcuSharedData => SearchScope::Services,
             SearchScope::Services => SearchScope::DiagComms,
-            SearchScope::DiagComms => SearchScope::All,
+            SearchScope::DiagComms => SearchScope::Requests,
+            SearchScope::Requests => SearchScope::Responses,
+            SearchScope::Responses => SearchScope::All,
         };
         
         let scope_name = match self.search_scope {
             SearchScope::All => "All",
             SearchScope::Variants => "Variants",
+            SearchScope::FunctionalGroups => "Functional Groups",
+            SearchScope::EcuSharedData => "ECU Shared Data",
             SearchScope::Services => "Services",
             SearchScope::DiagComms => "Diag-Comms",
+            SearchScope::Requests => "Requests",
+            SearchScope::Responses => "Responses",
         };
         self.status = format!("Search scope: {}", scope_name);
     }
@@ -870,15 +937,15 @@ impl App {
         }
 
         // Validate section cursor is initialized
-        if self.selected_tab >= self.section_cursors.len() {
+        let section_index = self.get_section_index();
+        if section_index >= self.section_cursors.len() {
             self.status = "Section cursor not initialized".to_string();
             return;
         }
-        let row_cursor = self.section_cursors[self.selected_tab];
+        let row_cursor = self.section_cursors[section_index];
 
         // Validate tab exists
         let sections = &node.detail_sections;
-        let section_index = self.get_section_index();
         if section_index >= sections.len() {
             self.status = format!("Tab {} out of {} tabs", section_index, sections.len());
             return;
@@ -952,9 +1019,9 @@ impl App {
         }
     }
 
-    /// Navigate to a service in the tree from the Diag-Comms table
+    /// Navigate to a service in the tree from a service list table (Diag-Comms, Requests, Responses)
     pub(crate) fn try_navigate_to_service(&mut self) {
-        // Validate cursor position and that we're on a Diag-Comms header
+        // Validate cursor position and that we're on a service list header
         if self.cursor >= self.visible.len() {
             self.status = "Cursor out of bounds".to_string();
             return;
@@ -963,9 +1030,12 @@ impl App {
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
         
-        // Check if this is a Diag-Comms header
-        if !node.text.starts_with("Diag-Comms (") {
-            self.status = "Not a Diag-Comms section".to_owned();
+        // Check if this is a service list section header
+        if !node.text.starts_with("Diag-Comms (") 
+            && !node.text.starts_with("Requests (") 
+            && !node.text.starts_with("Pos-Responses (") 
+            && !node.text.starts_with("Neg-Responses (") {
+            self.status = "Not a service list section".to_owned();
             return;
         }
         
@@ -975,7 +1045,7 @@ impl App {
             return;
         }
 
-        let section = &node.detail_sections[0]; // The Diag-Comms table is always first
+        let section = &node.detail_sections[0]; // The service list table is always first
         
         // Extract the short name from the table
         use crate::tree::DetailContent;
@@ -988,11 +1058,12 @@ impl App {
         };
         
         // Get the selected row
-        if self.selected_tab >= self.section_cursors.len() {
+        let section_index = self.get_section_index();
+        if section_index >= self.section_cursors.len() {
             self.status = "Section cursor not initialized".to_string();
             return;
         }
-        let row_cursor = self.section_cursors[0]; // Section 0 is the Diag-Comms table
+        let row_cursor = self.section_cursors[section_index];
         
         if row_cursor >= rows.len() {
             self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
@@ -1008,36 +1079,45 @@ impl App {
         // The short name is in the second column
         let service_name = selected_row.cells[1].clone();
         
-        // Expand the Diag-Comms section if it's collapsed
+        // Expand the service list section if it's collapsed
         if !self.all_nodes[node_idx].expanded {
             self.all_nodes[node_idx].expanded = true;
             self.rebuild_visible();
             // After expanding, the cursor position in visible might have changed
-            // Re-find the Diag-Comms node in visible
+            // Re-find the service list node in visible
             if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == node_idx) {
                 self.cursor = new_cursor;
             }
         }
         
         // Find the service node in the tree that matches this name
-        // We need to search for a child of the current Diag-Comms node with a matching service name
-        let diag_comms_depth = self.all_nodes[node_idx].depth;
+        // We need to search for a child of the current service list node with a matching service name
+        let service_list_depth = self.all_nodes[node_idx].depth;
         
         // Look for service nodes immediately after this Diag-Comms node
         // Service nodes have depth = diag_comms_depth + 1
         let mut found_idx: Option<usize> = None;
         
-        // Find all visible indices for children of this Diag-Comms node
+        // Find all visible indices for children of this service list node
         for &vis_idx in &self.visible[self.cursor + 1..] {
             let child_node = &self.all_nodes[vis_idx];
             
-            // Stop if we've reached a node at the same or lower depth (left the Diag-Comms section)
-            if child_node.depth <= diag_comms_depth {
+            // Stop if we've reached a node at the same or lower depth (left the service list section)
+            if child_node.depth <= service_list_depth {
                 break;
             }
             
-            // Skip non-service nodes or nodes not directly under Diag-Comms
-            if child_node.depth != diag_comms_depth + 1 {
+            // Skip nodes not directly under the service list (must be immediate children)
+            if child_node.depth != service_list_depth + 1 {
+                continue;
+            }
+            
+            // Check if this is a service-related node (generic check for all service types)
+            let is_service_node = matches!(child_node.node_type,
+                NodeType::Service | NodeType::ParentRefService | 
+                NodeType::Request | NodeType::PosResponse | NodeType::NegResponse);
+            
+            if !is_service_node {
                 continue;
             }
             
@@ -1074,8 +1154,10 @@ impl App {
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
         
-        // We should be on a service node (either Service or ParentRefService)
-        if !matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+        // We should be on any service-related node (generic check)
+        if !matches!(node.node_type, 
+            NodeType::Service | NodeType::ParentRefService | 
+            NodeType::Request | NodeType::PosResponse | NodeType::NegResponse) {
             self.status = "Not a service node".to_owned();
             return;
         }
@@ -1087,12 +1169,24 @@ impl App {
             node.text.clone()
         };
         
-        // Find the Overview section (should be the first one)
+        // Find the Overview section
+        // If there's a header section (render_as_header = true), Overview is at index 1, otherwise 0
         if node.detail_sections.is_empty() {
             return;
         }
         
-        let overview_section = &node.detail_sections[0];
+        let overview_idx = if node.detail_sections.len() > 1 
+            && node.detail_sections[0].render_as_header {
+            1  // Header exists, Overview is second
+        } else {
+            0  // No header, Overview is first
+        };
+        
+        if overview_idx >= node.detail_sections.len() {
+            return;
+        }
+        
+        let overview_section = &node.detail_sections[overview_idx];
         
         // Extract the parent layer name from the Overview table
         use crate::tree::DetailContent;
@@ -1102,9 +1196,9 @@ impl App {
         };
         
         // Get the selected row in the Overview section
-        // The Overview is at selected_tab position (0 for Overview)
-        let row_cursor = if self.selected_tab < self.section_cursors.len() {
-            self.section_cursors[self.selected_tab]
+        // Use overview_idx directly as it's the actual section index in section_cursors
+        let row_cursor = if overview_idx < self.section_cursors.len() {
+            self.section_cursors[overview_idx]
         } else {
             return;
         };
@@ -1388,6 +1482,9 @@ impl App {
                 };
 
                 if is_double_click {
+                    // First handle the click to update cursor position
+                    self.handle_click(column, row);
+                    // Then handle the double-click action
                     self.handle_double_click(column, row);
                     // Reset click tracking to avoid triple-click being detected as another double-click
                     self.last_click_time = None;
@@ -1445,19 +1542,33 @@ impl App {
                 let node_idx = self.visible[self.cursor];
                 let node = &self.all_nodes[node_idx];
                 
-                if node.text.starts_with("Diag-Comms (") {
-                    // Navigate to selected service from Diag-Comms table
+                // Check if this is a service list header (generic check)
+                let is_service_list = node.text.starts_with("Diag-Comms (") 
+                    || node.text.starts_with("Requests (") 
+                    || node.text.starts_with("Pos-Responses (") 
+                    || node.text.starts_with("Neg-Responses (");
+                
+                // Check if this is any service-related node type (generic check)
+                let is_service_node = matches!(node.node_type, 
+                    NodeType::Service | NodeType::ParentRefService | 
+                    NodeType::Request | NodeType::PosResponse | NodeType::NegResponse);
+                
+                if is_service_list {
+                    // Navigate to selected service from service list table
                     self.try_navigate_to_service();
-                } else if matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+                } else if is_service_node {
                     // Check if we're on the "Inherited From" row in Overview
                     let mut should_navigate_to_parent = false;
                     
-                    if self.selected_tab < node.detail_sections.len() {
-                        let section = &node.detail_sections[self.selected_tab];
+                    // Get the actual section index accounting for header section offset
+                    let section_idx = self.get_section_index();
+                    
+                    if section_idx < node.detail_sections.len() {
+                        let section = &node.detail_sections[section_idx];
                         if section.title == "Overview" {
                             if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
-                                let row_cursor = if self.selected_tab < self.section_cursors.len() {
-                                    self.section_cursors[self.selected_tab]
+                                let row_cursor = if section_idx < self.section_cursors.len() {
+                                    self.section_cursors[section_idx]
                                 } else {
                                     0
                                 };
@@ -1599,14 +1710,17 @@ impl App {
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
         
-        // Validate tab index
-        if self.selected_tab >= node.detail_sections.len() {
+        // Get the correct section index (accounting for header section offset)
+        let section_idx = self.get_section_index();
+        
+        // Validate section index
+        if section_idx >= node.detail_sections.len() {
             return;
         }
         
         // Extract table content
         use crate::tree::DetailContent;
-        let (rows, use_row_selection) = match &node.detail_sections[self.selected_tab].content {
+        let (rows, use_row_selection) = match &node.detail_sections[section_idx].content {
             DetailContent::Table { rows, use_row_selection, .. } => (rows, *use_row_selection),
             _ => return,
         };
@@ -1614,6 +1728,14 @@ impl App {
         // Validate table has content
         if rows.is_empty() {
             return;
+        }
+        
+        // Ensure section cursors and scrolls are properly sized
+        while self.section_scrolls.len() <= section_idx {
+            self.section_scrolls.push(0);
+        }
+        while self.section_cursors.len() <= section_idx {
+            self.section_cursors.push(0);
         }
         
         // Calculate clicked row (skip header which is 3 lines tall)
@@ -1624,14 +1746,14 @@ impl App {
             return;  // Clicked on header
         }
         
-        let clicked_row_idx = (relative_row - HEADER_HEIGHT) + self.section_scrolls[self.selected_tab];
+        let clicked_row_idx = (relative_row - HEADER_HEIGHT) + self.section_scrolls[section_idx];
         
         if clicked_row_idx >= rows.len() {
             return;
         }
         
         // Update the row cursor
-        self.section_cursors[self.selected_tab] = clicked_row_idx;
+        self.section_cursors[section_idx] = clicked_row_idx;
         
         // For tables with row selection mode, only select by row
         // For cell selection mode, also update the focused column

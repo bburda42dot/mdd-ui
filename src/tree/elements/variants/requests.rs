@@ -36,11 +36,15 @@ pub fn add_requests_section<'a>(
     let total_count = own_services.len() + parent_services.len();
     
     if total_count > 0 {
-        b.push(
+        // Build detail section for Requests header showing all services in a table
+        let detail_section = build_requests_table_section(&own_services, &parent_services);
+        
+        b.push_details_structured(
             depth,
             format!("Requests ({})", total_count),
             false,
             true,
+            vec![detail_section],
             NodeType::SectionHeader,
         );
         
@@ -75,7 +79,7 @@ pub fn add_requests_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::Service,  // Use Service node type (same as DiagComm)
+                    NodeType::Request,  // Use Request node type for navigation
                 );
             }
         }
@@ -110,7 +114,7 @@ pub fn add_requests_section<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::ParentRefService,  // Mark as inherited (same as DiagComm)
+                    NodeType::Request,  // Use Request node type for navigation (inherited)
                 );
             }
         }
@@ -133,9 +137,9 @@ fn build_request_view_sections(ds: &DiagService<'_>, parent_layer_name: Option<S
     // Add header section with service ID and name
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
     let header_title = if let Some(sid) = ds.request_id() {
-        format!("0x{:02X} - {}", sid, service_name)
+        format!("Request - 0x{:02X} - {}", sid, service_name)
     } else {
-        service_name.to_string()
+        format!("Request - {}", service_name)
     };
     
     sections.push(DetailSectionData {
@@ -291,6 +295,90 @@ where
                 ColumnConstraint::Percentage(25),
             ],
             use_row_selection: false,
+        },
+    }
+}
+
+/// Build a table section for the Requests header showing all services
+fn build_requests_table_section(own_services: &[DiagService<'_>], parent_services: &[(DiagService<'_>, String)]) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec!["ID".to_owned(), "Short Name".to_owned(), "Inherited".to_owned()],
+        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+        indent: 0,
+    };
+    
+    let mut rows = Vec::new();
+    
+    // Add own services first (inherited = false)
+    for ds in own_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "false".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    // Add parent services (inherited = true)
+    for (ds, _source_layer_name) in parent_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "true".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    DetailSectionData {
+        title: "Requests".to_owned(),
+        render_as_header: false,
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(60),
+                ColumnConstraint::Percentage(20),
+            ],
+            use_row_selection: true,
         },
     }
 }

@@ -67,25 +67,29 @@ fn expand_icon(node: &TreeNode) -> &'static str {
 // -----------------------------------------------------------------------
 
 impl App {
-    pub(super) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
-        // Extract ECU name from General section details if available
-        let ecu_name = self.all_nodes.first()
+    /// Extract ECU name from the General node's detail sections
+    fn get_ecu_name(&self) -> &str {
+        self.all_nodes.first()
             .and_then(|node| {
-                if node.text == "General" {
-                    node.detail_sections.first()
-                        .and_then(|sec| {
-                            if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
-                                lines.first()
-                                    .and_then(|line| line.strip_prefix("ECU Name: "))
-                            } else {
-                                None
-                            }
-                        })
-                } else {
-                    None
+                if node.text != "General" {
+                    return None;
                 }
+                
+                node.detail_sections.first()
+                    .and_then(|sec| {
+                        if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
+                            lines.first()?
+                                .strip_prefix("ECU Name: ")
+                        } else {
+                            None
+                        }
+                    })
             })
-            .unwrap_or("Tree");
+            .unwrap_or("Tree")
+    }
+
+    pub(super) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
+        let ecu_name = self.get_ecu_name();
         
         let tree_block = Block::default()
             .borders(Borders::ALL)
@@ -593,7 +597,17 @@ impl App {
         frame.render_widget(table, area);
     }
 
-    fn render_table_content(&mut self, frame: &mut Frame, inner: Rect, area: Rect, header: &DetailRow, rows: &[DetailRow], constraints: &[crate::tree::ColumnConstraint], section_idx: usize) {
+    #[allow(clippy::too_many_arguments)]
+    fn render_table_content(
+        &mut self,
+        frame: &mut Frame,
+        inner: Rect,
+        area: Rect,
+        header: &DetailRow,
+        rows: &[DetailRow],
+        constraints: &[crate::tree::ColumnConstraint],
+        section_idx: usize,
+    ) {
         let viewport_height = inner.height as usize;
         let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
 
@@ -697,7 +711,7 @@ impl App {
             let mut widths: Vec<u16> = constraints.iter().map(|c| match c {
                 crate::tree::ColumnConstraint::Fixed(w) => {
                     // Convert fixed width to a reasonable percentage (roughly 1.5% per char)
-                    (*w as u16 * 3 / 2).max(3).min(15)
+                    (*w * 3 / 2).clamp(3, 15)
                 },
                 crate::tree::ColumnConstraint::Percentage(p) => *p,
             }).collect();

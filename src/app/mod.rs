@@ -259,9 +259,9 @@ impl App {
                         
                         // Include all children of matched nodes
                         let match_depth = self.all_nodes[i].depth;
-                        for j in (i + 1)..self.all_nodes.len() {
-                            if self.all_nodes[j].depth > match_depth {
-                                new_include[j] = true;
+                        for (offset, node) in self.all_nodes[(i + 1)..].iter().enumerate() {
+                            if node.depth > match_depth {
+                                new_include[i + 1 + offset] = true;
                             } else {
                                 break;
                             }
@@ -409,65 +409,65 @@ impl App {
         while i < self.all_nodes.len() {
             let node = &self.all_nodes[i];
             
-            // Check if this is a Diag-Comms section header
-            if node.text.starts_with("Diag-Comms (") {
-                let section_depth = node.depth;
-                let section_start = i + 1;
-                
-                // Find all children (services) of this section
-                let mut section_end = section_start;
-                while section_end < self.all_nodes.len() && self.all_nodes[section_end].depth > section_depth {
-                    section_end += 1;
-                }
-                
-                // Extract and sort the service nodes
-                if section_end > section_start {
-                    let mut services: Vec<TreeNode> = self.all_nodes.drain(section_start..section_end).collect();
-                    
-                    // Sort services
-                    if self.diagcomm_sort_by_id {
-                        // Sort by ID (extract from text like "0x10    - ServiceName")
-                        services.sort_by(|a, b| {
-                            let a_id = extract_service_id(&a.text);
-                            let b_id = extract_service_id(&b.text);
-                            a_id.cmp(&b_id)
-                        });
-                    } else {
-                        // Sort by name (extract from text after " - ")
-                        services.sort_by(|a, b| {
-                            let a_name = extract_service_name(&a.text);
-                            let b_name = extract_service_name(&b.text);
-                            a_name.cmp(&b_name)
-                        });
-                    }
-                    
-                    // Deduplicate by name - keep only first occurrence of each service name
-                    let mut seen_names = std::collections::HashSet::new();
-                    services.retain(|service| {
-                        let name = extract_service_name(&service.text);
-                        seen_names.insert(name.to_owned())
-                    });
-                    
-                    // Update the count in the section header
-                    let new_count = services.len();
-                    if let Some(header_node) = self.all_nodes.get_mut(i) {
-                        // Update "Diag-Comms (X)" to reflect filtered count
-                        if let Some(_open_paren) = header_node.text.find('(') {
-                            header_node.text = format!("Diag-Comms ({})", new_count);
-                        }
-                    }
-                    
-                    // Re-insert sorted and deduplicated services
-                    self.all_nodes.splice(section_start..section_start, services);
-                    
-                    // Skip past the sorted section
-                    i = section_start + (section_end - section_start);
-                } else {
-                    i += 1;
-                }
-            } else {
+            // Skip non-Diag-Comms nodes early
+            if !node.text.starts_with("Diag-Comms (") {
                 i += 1;
+                continue;
             }
+            
+            let section_depth = node.depth;
+            let section_start = i + 1;
+            
+            // Find all children (services) of this section
+            let mut section_end = section_start;
+            while section_end < self.all_nodes.len() && self.all_nodes[section_end].depth > section_depth {
+                section_end += 1;
+            }
+            
+            // Skip if no children to sort
+            if section_end <= section_start {
+                i += 1;
+                continue;
+            }
+            
+            // Extract and sort the service nodes
+            let mut services: Vec<TreeNode> = self.all_nodes.drain(section_start..section_end).collect();
+            
+            // Sort services based on current sort order
+            match self.diagcomm_sort_by_id {
+                true => services.sort_by(|a, b| {
+                    let a_id = extract_service_id(&a.text);
+                    let b_id = extract_service_id(&b.text);
+                    a_id.cmp(&b_id)
+                }),
+                false => services.sort_by(|a, b| {
+                    let a_name = extract_service_name(&a.text);
+                    let b_name = extract_service_name(&b.text);
+                    a_name.cmp(b_name)
+                }),
+            }
+            
+            // Deduplicate by name - keep only first occurrence of each service name
+            let mut seen_names = std::collections::HashSet::new();
+            services.retain(|service| {
+                let name = extract_service_name(&service.text);
+                seen_names.insert(name.to_owned())
+            });
+            
+            // Update the count in the section header
+            let new_count = services.len();
+            if let Some(header_node) = self.all_nodes.get_mut(i) {
+                // Update "Diag-Comms (X)" to reflect filtered count
+                if header_node.text.find('(').is_some() {
+                    header_node.text = format!("Diag-Comms ({})", new_count);
+                }
+            }
+            
+            // Re-insert sorted and deduplicated services
+            self.all_nodes.splice(section_start..section_start, services);
+            
+            // Skip past the sorted section
+            i = section_start + (section_end - section_start);
         }
     }
 
@@ -655,27 +655,29 @@ impl App {
     }
 
     pub(crate) fn try_show_dop_popup(&mut self) {
-        // Get current selected node details
+        // Validate cursor position
         if self.cursor >= self.visible.len() {
             self.status = "Cursor out of bounds".to_string();
             return;
         }
+        
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
         
-        // Use structured detail sections (no string parsing)
+        // Validate node has detail sections
         if node.detail_sections.is_empty() {
             self.status = "No details available".to_string();
             return;
         }
 
-        // Get the currently selected row in the selected tab
+        // Validate section cursor is initialized
         if self.selected_tab >= self.section_cursors.len() {
             self.status = "Section cursor not initialized".to_string();
             return;
         }
         let row_cursor = self.section_cursors[self.selected_tab];
 
+        // Validate tab exists
         let sections = &node.detail_sections;
         if self.selected_tab >= sections.len() {
             self.status = format!("Tab {} out of {} tabs", self.selected_tab, sections.len());
@@ -684,7 +686,7 @@ impl App {
 
         let section = &sections[self.selected_tab];
         
-        // Extract rows from DetailContent
+        // Extract rows from table content
         use crate::tree::DetailContent;
         let rows = match &section.content {
             DetailContent::Table { rows, .. } => rows,
@@ -694,50 +696,54 @@ impl App {
             }
         };
         
+        // Validate row exists
         if row_cursor >= rows.len() {
             self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
             return;
         }
 
-        // Get the selected row and check if it has a DOP value
+        // Get the selected row and validate DOP cell
         let selected_row: &DetailRow = &rows[row_cursor];
         let cells = &selected_row.cells;
         let cell_types = &selected_row.cell_types;
         
-        // Find DOP cell by checking cell_types
-        let dop_cell_index = cell_types.iter().position(|ct| matches!(ct, CellType::DopReference));
-        
-        if let Some(dop_idx) = dop_cell_index {
-            if dop_idx < cells.len() && !cells[dop_idx].is_empty() {
-                let dop_name = cells[dop_idx].to_owned();
-                
-                // Find parameter name (first ParameterName cell)
-                let param_name = cell_types.iter()
-                    .position(|ct| matches!(ct, CellType::ParameterName))
-                        .and_then(|idx| cells.get(idx))
-                        .map(|s| s.as_str())
-                        .unwrap_or("unknown");
-                    
-                    // Find semantic (last cell)
-                    let semantic = cells.last().map(|s| s.as_str()).unwrap_or("");
-                    
-                    let dop_details = vec![
-                        format!("DOP Name: {}", dop_name),
-                        "Type: Data Object Property".to_owned(),
-                        format!("Used in parameter: {}", param_name),
-                        format!("Semantic: {}", semantic),
-                        String::new(),
-                        "(Full DOP details would be loaded from database)".to_owned(),
-                    ];
-
-                    self.status = format!("Opening DOP popup for: {}", dop_name);
-                    self.dop_popup = Some(DopPopupData { dop_name, dop_details });
-                } else {
-                self.status = "DOP cell is empty".to_owned();
+        // Find and validate DOP cell
+        let dop_cell_index = match cell_types.iter().position(|ct| matches!(ct, CellType::DopReference)) {
+            Some(idx) => idx,
+            None => {
+                self.status = "No DOP reference in this row".to_owned();
+                return;
             }
-        } else {
-            self.status = "No DOP reference in this row".to_owned();
+        };
+        
+        // Validate DOP cell has content
+        if dop_cell_index >= cells.len() || cells[dop_cell_index].is_empty() {
+            self.status = "DOP cell is empty".to_owned();
+            return;
         }
+
+        // Extract DOP details
+        let dop_name = cells[dop_cell_index].to_owned();
+        
+        let param_name = cell_types.iter()
+            .position(|ct| matches!(ct, CellType::ParameterName))
+            .and_then(|idx| cells.get(idx))
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
+        
+        let semantic = cells.last().map(|s| s.as_str()).unwrap_or("");
+        
+        let dop_details = vec![
+            format!("DOP Name: {}", dop_name),
+            "Type: Data Object Property".to_owned(),
+            format!("Used in parameter: {}", param_name),
+            format!("Semantic: {}", semantic),
+            String::new(),
+            "(Full DOP details would be loaded from database)".to_owned(),
+        ];
+
+        self.status = format!("Opening DOP popup for: {}", dop_name);
+        self.dop_popup = Some(DopPopupData { dop_name, dop_details });
     }
 
     pub(crate) fn resize_column(&mut self, delta: i16) {
@@ -770,7 +776,7 @@ impl App {
             let mut widths: Vec<u16> = constraints.iter().map(|c| match c {
                 crate::tree::ColumnConstraint::Fixed(w) => {
                     // Convert fixed width to a reasonable percentage (roughly 1.5% per char)
-                    (*w as u16 * 3 / 2).max(3).min(15)
+                    (*w * 3 / 2).clamp(3, 15)
                 },
                 crate::tree::ColumnConstraint::Percentage(p) => *p,
             }).collect();
@@ -804,7 +810,7 @@ impl App {
         
         // Calculate new width for focused column
         let current_width = self.column_widths[self.selected_tab][self.focused_column] as i16;
-        let new_current = (current_width + delta).max(3).min(95) as u16; // Min 3%, Max 95%
+        let new_current = (current_width + delta).clamp(3, 95) as u16; // Min 3%, Max 95%
         let actual_delta = new_current as i16 - current_width;
         
         if actual_delta == 0 {
@@ -970,6 +976,7 @@ impl App {
     }
 
     fn handle_tab_click(&mut self, column: u16) {
+        // Early exits for invalid states
         if self.tab_titles.is_empty() {
             return;
         }
@@ -988,9 +995,9 @@ impl App {
         // Tabs are rendered with spacing like: " Tab1 │ Tab2 │ Tab3 "
         let mut current_pos = 0;
         for (i, title) in self.tab_titles.iter().enumerate() {
-            // Each tab has: space + title + space (and separator if not last)
             let tab_width = title.len() + 2; // +2 for spaces around title
             
+            // Check if click falls within this tab
             if relative_col >= current_pos && relative_col < current_pos + tab_width {
                 self.selected_tab = i;
                 self.status = format!("Switched to tab: {}", title);
@@ -1003,66 +1010,58 @@ impl App {
     }
 
     fn handle_table_click(&mut self, column: u16, row: u16) {
-        let Some(area) = self.table_content_area else { 
-            return;
-        };
+        let Some(area) = self.table_content_area else { return };
         
+        // Validate cursor position
         if self.cursor >= self.visible.len() {
             return;
         }
+        
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
         
+        // Validate tab index
         if self.selected_tab >= node.detail_sections.len() {
             return;
         }
         
-        // Get the rows from the current section
+        // Extract table content
         use crate::tree::DetailContent;
         let (rows, constraints) = match &node.detail_sections[self.selected_tab].content {
             DetailContent::Table { rows, constraints, .. } => (rows, constraints),
-            _ => {
-                return;
-            }
+            _ => return,
         };
         
+        // Validate table has content
         if rows.is_empty() {
             return;
         }
         
-        // Calculate which row was clicked
-        // Header takes 3 lines (height=3 in render code)
+        // Calculate clicked row (skip header which is 3 lines tall)
         let relative_row = (row - area.y) as usize;
         const HEADER_HEIGHT: usize = 3;
         
         if relative_row < HEADER_HEIGHT {
-            // Clicked on header
-            return;
+            return;  // Clicked on header
         }
         
-        // Subtract header height, then add scroll offset
-        // Each data row takes 1 line
         let clicked_row_idx = (relative_row - HEADER_HEIGHT) + self.section_scrolls[self.selected_tab];
         
         if clicked_row_idx >= rows.len() {
             return;
         }
         
-        // Update the row cursor
+        // Update the row cursor and column
         self.section_cursors[self.selected_tab] = clicked_row_idx;
         
-        // Calculate which column was clicked
         let relative_col = column - area.x;
-        
-        let clicked_column = self.calculate_clicked_column(relative_col, constraints);
-        
-        if let Some(col_idx) = clicked_column {
+        if let Some(col_idx) = self.calculate_clicked_column(relative_col, constraints) {
             self.focused_column = col_idx;
         }
     }
 
     fn calculate_clicked_column(&self, relative_col: u16, _constraints: &[crate::tree::ColumnConstraint]) -> Option<usize> {
-        let Some(area) = self.table_content_area else { return None };
+        let area = self.table_content_area?;
         
         if self.cached_ratatui_constraints.is_empty() {
             return None;
@@ -1092,11 +1091,7 @@ impl App {
         column_areas.iter().enumerate()
             .map(|(idx, col_area)| {
                 let col_center = (col_area.x - area.x) + col_area.width / 2;
-                let distance = if relative_col > col_center {
-                    relative_col - col_center
-                } else {
-                    col_center - relative_col
-                };
+                let distance = relative_col.abs_diff(col_center);
                 (idx, distance)
             })
             .min_by_key(|(_, dist)| *dist)
@@ -1133,11 +1128,10 @@ impl App {
 // Helper functions for service sorting
 fn extract_service_id(text: &str) -> u32 {
     // Extract ID from format like "0x10    - ServiceName" or "0x22F501 - ServiceName"
-    if let Some(hex_part) = text.strip_prefix("0x") {
-        if let Some(dash_pos) = hex_part.find(" - ") {
-            let id_str = hex_part[..dash_pos].trim();
-            return u32::from_str_radix(id_str, 16).unwrap_or(0);
-        }
+    if let Some(hex_part) = text.strip_prefix("0x")
+        && let Some(dash_pos) = hex_part.find(" - ") {
+        let id_str = hex_part[..dash_pos].trim();
+        return u32::from_str_radix(id_str, 16).unwrap_or(0);
     }
     0
 }

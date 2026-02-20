@@ -241,4 +241,4 @@ MIT
 Built with:
 - [ratatui](https://ratatui.rs/) - Terminal UI framework
 - [crossterm](https://github.com/crossterm-rs/crossterm) - Terminal manipulation
-- [cda-database](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) - ODX database library
+- [cda-database](https://github.com/eclipse-opensovd/classic-diagnostic-adapter) - MDD database library

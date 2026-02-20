@@ -4,7 +4,7 @@ use crate::tree::builder::TreeBuilder;
 use crate::tree::types::{NodeType, DetailSectionData, DetailRow, DetailContent, CellType, ColumnConstraint};
 
 /// Add state charts section to the tree
-pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     let Some(charts) = layer.state_charts() else { return };
     if charts.is_empty() {
         return;
@@ -40,6 +40,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
         
         let transitions_section = DetailSectionData {
             title: "State Transitions".to_string(),
+            render_as_header: false,
             content: if transitions.is_empty() {
                 DetailContent::PlainText(vec!["No state transitions".to_string()])
             } else {
@@ -55,7 +56,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                         ColumnConstraint::Percentage(33),
                         ColumnConstraint::Percentage(33),
                     ],
-                    is_diag_comms: false,
+                    use_row_selection: false,
                 }
             },
         };
@@ -74,6 +75,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
         
         let states_section = DetailSectionData {
             title: "States".to_string(),
+            render_as_header: false,
             content: if states.is_empty() {
                 DetailContent::PlainText(vec!["No states".to_string()])
             } else {
@@ -85,7 +87,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                     },
                     rows: states,
                     constraints: vec![ColumnConstraint::Percentage(100)],
-                    is_diag_comms: false,
+                    use_row_selection: false,
                 }
             },
         };
@@ -95,7 +97,8 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
         
         // Add semantic information as first section (not a tab)
         sections.push(DetailSectionData {
-            title: "Semantic".to_string(),
+            title: format!("State Chart - {}", chart_name),
+            render_as_header: true,
             content: DetailContent::PlainText(vec![format!("Semantic: {}", semantic)]),
         });
         

@@ -63,7 +63,7 @@ pub enum DetailContent {
         header: DetailRow,
         rows: Vec<DetailRow>,
         constraints: Vec<ColumnConstraint>,
-        is_diag_comms: bool,
+        use_row_selection: bool,
     },
     /// Multiple subsections within a single tab, each with its own title and content
     Composite(Vec<DetailSectionData>),
@@ -74,6 +74,8 @@ pub enum DetailContent {
 pub struct DetailSectionData {
     pub title: String,
     pub content: DetailContent,
+    /// If true, this section is rendered as a header above tabs, not as a tab itself
+    pub render_as_header: bool,
 }
 
 /// Helper to create a plain text detail section
@@ -81,5 +83,6 @@ pub fn lines_to_single_section(title: &str, lines: Vec<String>) -> DetailSection
     DetailSectionData {
         title: title.to_owned(),
         content: DetailContent::PlainText(lines),
+        render_as_header: false,
     }
 }

@@ -4,7 +4,7 @@ use crate::tree::builder::TreeBuilder;
 use crate::tree::types::NodeType;
 
 /// Add ComParam refs section to the tree
-pub fn add_com_params(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_com_params(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     let Some(cp_refs) = layer.com_param_refs() else { return };
     if cp_refs.is_empty() {
         return;

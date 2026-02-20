@@ -256,6 +256,7 @@ impl App {
             "  Home/End        Jump to first/last",
             "  Space           Toggle expand/collapse current node",
             "  Tab             Switch focus between tree and detail pane",
+            "  Backspace       Navigate back to previous tree selection",
             "",
             "TREE OPERATIONS",
             "  e               Expand all nodes",
@@ -292,14 +293,14 @@ impl App {
         frame.render_widget(help_paragraph, inner_area);
     }
 
-    pub(super) fn draw_dop_popup(&self, frame: &mut Frame) {
+    pub(super) fn draw_detail_popup(&self, frame: &mut Frame) {
         use ratatui::{
             layout::{Alignment, Rect},
             style::{Color, Style},
             widgets::{Block, Borders, Clear, Paragraph, Wrap},
         };
         
-        let Some(popup_data) = &self.dop_popup else { return };
+        let Some(popup_data) = &self.detail_popup else { return };
         
         // Calculate popup size and position (centered, 60% width, 50% height)
         let area = frame.area();
@@ -322,7 +323,7 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Yellow))
-            .title(format!(" DOP: {} ", popup_data.dop_name))
+            .title(format!(" {} ", popup_data.title))
             .title_alignment(Alignment::Center)
             .title_bottom(" Press Esc to close ")
             .style(Style::default().bg(Color::Black));
@@ -331,7 +332,7 @@ impl App {
         frame.render_widget(block, popup_rect);
         
         // Render the content
-        let content_text = popup_data.dop_details.join("\n");
+        let content_text = popup_data.content.join("\n");
         let paragraph = Paragraph::new(content_text)
             .style(Style::default().fg(Color::White))
             .wrap(Wrap { trim: true });
@@ -348,18 +349,18 @@ impl App {
             return;
         }
 
-        // Check if first section is "Semantic" with PlainText - render it above tabs
-        let (semantic_section, tab_sections) = if sections.len() > 1 
-            && sections[0].title == "Semantic" 
+        // Check if first section is a header section (PlainText with render_as_header)
+        let (header_section, tab_sections) = if sections.len() > 1 
+            && sections[0].render_as_header
             && matches!(&sections[0].content, DetailContent::PlainText(_)) {
             (Some(&sections[0]), &sections[1..])
         } else {
             (None, sections)
         };
         
-        // Determine if this is a state chart based on having a semantic section
-        let detail_title = if semantic_section.is_some() {
-            format!(" State Chart - {} ", node_name)
+        // Determine title based on whether there's a header section
+        let detail_title = if header_section.is_some() {
+            format!(" {} - {} ", sections[0].title, node_name)
         } else {
             " Details ".to_string()
         };
@@ -377,10 +378,10 @@ impl App {
             self.section_cursors.push(0);
         }
 
-        // Calculate layout: semantic (if exists) + tabs + content
+        // Calculate layout: header (if exists) + tabs + content
         let mut constraints = vec![];
-        let semantic_height = if let Some(sem) = semantic_section {
-            if let DetailContent::PlainText(lines) = &sem.content {
+        let header_height = if let Some(hdr) = header_section {
+            if let DetailContent::PlainText(lines) = &hdr.content {
                 // Height: 1 line per text line + 2 for borders
                 let height = (lines.len() as u16 + 2).min(area.height / 4);
                 constraints.push(Constraint::Length(height));
@@ -413,8 +414,8 @@ impl App {
 
         let mut chunk_idx = 0;
         
-        // Render semantic section if it exists
-        let semantic_area = if semantic_height.is_some() {
+        // Render header section if it exists
+        let header_area = if header_height.is_some() {
             let area = chunks[chunk_idx];
             chunk_idx += 1;
             Some(area)
@@ -422,7 +423,7 @@ impl App {
             None
         };
 
-        if let (Some(area), Some(sem)) = (semantic_area, semantic_section) {
+        if let (Some(area), Some(hdr)) = (header_area, header_section) {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(border(self.detail_focused))
@@ -430,7 +431,7 @@ impl App {
             let inner = block.inner(area);
             frame.render_widget(block, area);
 
-            if let DetailContent::PlainText(lines) = &sem.content {
+            if let DetailContent::PlainText(lines) = &hdr.content {
                 let text = lines.join("\n");
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                 frame.render_widget(para, inner);
@@ -460,11 +461,11 @@ impl App {
             self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.selected_tab, self.detail_focused);
         }
 
-        // Render the selected tab's content (accounting for semantic offset)
-        let section_offset = if semantic_section.is_some() { 1 } else { 0 };
+        // Render the selected tab's content (accounting for header offset)
+        let section_offset = if header_section.is_some() { 1 } else { 0 };
         let section = &tab_sections[self.selected_tab];
         let help_text = if self.detail_focused { 
-            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:DOP  Esc:close " 
+            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:Select  s:sort" 
         } else { 
             "" 
         };
@@ -472,7 +473,7 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(self.detail_focused))
-            .title(if semantic_section.is_none() { detail_title.as_str() } else { "" })
+            .title(if header_section.is_none() { detail_title.as_str() } else { "" })
             .title_bottom(help_text);
 
         let inner = block.inner(content_area);
@@ -489,8 +490,8 @@ impl App {
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                 frame.render_widget(para, inner);
             }
-            DetailContent::Table { header, rows, constraints, is_diag_comms: _ } => {
-                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset);
+            DetailContent::Table { header, rows, constraints, use_row_selection } => {
+                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset, *use_row_selection);
             }
             DetailContent::Composite(subsections) => {
                 self.render_composite_content(frame, inner, subsections);
@@ -607,6 +608,7 @@ impl App {
         rows: &[DetailRow],
         constraints: &[crate::tree::ColumnConstraint],
         section_idx: usize,
+        use_row_selection: bool,
     ) {
         let viewport_height = inner.height as usize;
         
@@ -683,9 +685,17 @@ impl App {
                         cell_text.clone() 
                     };
                     
-                    // Apply cell highlighting (only the selected cell in the selected row)
-                    let style = if is_selected_row && col_idx == focused_col {
-                        Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
+                    // Apply highlighting based on selection mode
+                    let style = if is_selected_row {
+                        if use_row_selection {
+                            // Row selection mode: highlight entire row
+                            Style::default().fg(Color::White).bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                        } else if col_idx == focused_col {
+                            // Cell selection mode: highlight only the focused cell
+                            Style::default().fg(Color::White).bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::White)
+                        }
                     } else {
                         Style::default().fg(Color::White)
                     };

@@ -5,7 +5,7 @@ use crate::tree::types::NodeType;
 
 /// Add placeholder sections that are not fully implemented yet
 /// These are kept for structure but may be expanded in the future
-pub fn add_functional_classes(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_functional_classes(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize) {
     // Functional classes API not directly available
     // Adding as placeholder
     b.push_leaf(
@@ -15,7 +15,7 @@ pub fn add_functional_classes(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth
     );
 }
 
-pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Check if layer has diagnostic data dictionary specifications
     // This would typically be accessed through specific methods if available
     // For now, we'll add a placeholder if the layer has data operations or similar
@@ -30,7 +30,7 @@ pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>,
     }
 }
 
-pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Additional audiences would be part of admin data or metadata
     // This is typically not directly available in the DiagLayer API
     // Adding placeholder for structure
@@ -49,7 +49,7 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
     }
 }
 
-pub fn add_sub_components(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_sub_components(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Sub-components would be nested diagnostic layers or related structures
     // Placeholder for now
     if let Some(_jobs) = layer.single_ecu_jobs() {
@@ -61,7 +61,7 @@ pub fn add_sub_components(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usi
     }
 }
 
-pub fn add_sdgs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_sdgs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize) {
     // SDGs (Special Data Groups) from the layer
     // These would be accessed through specific methods if available
     // Placeholder for structure
@@ -72,7 +72,7 @@ pub fn add_sdgs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize, _laye
     );
 }
 
-pub fn add_parent_refs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize, _layer_name: &str) {
+pub fn add_parent_refs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize) {
     // Parent refs API may not be available in current version
     // Adding as a placeholder for future implementation
     b.push_leaf(

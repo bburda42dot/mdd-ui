@@ -36,7 +36,7 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
             NodeType::SectionHeader,
         );
         
-        add_variants(&mut b, ecu, ecu_name);
+        add_variants(&mut b, ecu);
         add_functional_groups(&mut b, ecu);
     }
 

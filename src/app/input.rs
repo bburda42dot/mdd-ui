@@ -1,6 +1,7 @@
 use crossterm::event::KeyCode;
 
 use super::App;
+use crate::tree::NodeType;
 
 /// Result of processing a key press.
 pub enum Action {
@@ -97,11 +98,11 @@ impl App {
             return Action::Continue;
         }
         
-        // Check if DOP popup is open
-        if self.dop_popup.is_some() {
+        // Check if detail popup is open
+        if self.detail_popup.is_some() {
             // Popup is open - only Escape closes it
             if matches!(code, KeyCode::Esc) {
-                self.dop_popup = None;
+                self.detail_popup = None;
             }
             return Action::Continue;
         }
@@ -109,6 +110,13 @@ impl App {
         match code {
             KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
             KeyCode::Char('c') if ctrl => return Action::Quit,
+            
+            KeyCode::Backspace => {
+                // Navigate back in history (when not in search mode and not in detail pane)
+                if !self.detail_focused {
+                    self.navigate_back();
+                }
+            }
 
             KeyCode::Tab => {
                 self.detail_focused = !self.detail_focused;
@@ -216,18 +224,47 @@ impl App {
             }
             KeyCode::Enter => {
                 if self.detail_focused {
-                    // Check if we're on a Diag-Comms section, navigate to the service
-                    // Otherwise, check if current row has DOP and show popup
+                    // Check what type of node we're on and what action to take
                     if self.cursor < self.visible.len() {
                         let node_idx = self.visible[self.cursor];
                         let node = &self.all_nodes[node_idx];
                         
                         if node.text.starts_with("Diag-Comms (") {
-                            // Navigate to selected service
+                            // Navigate to selected service from Diag-Comms table
                             self.try_navigate_to_service();
+                        } else if matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+                            // Check if we're on the "Inherited From" row in Overview
+                            let mut should_navigate_to_parent = false;
+                            
+                            if self.selected_tab < node.detail_sections.len() {
+                                let section = &node.detail_sections[self.selected_tab];
+                                if section.title == "Overview" {
+                                    if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
+                                        let row_cursor = if self.selected_tab < self.section_cursors.len() {
+                                            self.section_cursors[self.selected_tab]
+                                        } else {
+                                            0
+                                        };
+                                        
+                                        if row_cursor < rows.len() {
+                                            let selected_row = &rows[row_cursor];
+                                            if selected_row.cells.len() >= 2 && selected_row.cells[0] == "Inherited From" {
+                                                should_navigate_to_parent = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if should_navigate_to_parent {
+                                self.try_navigate_to_inherited_parent();
+                            } else {
+                                // Default: try to show detail popup
+                                self.try_show_detail_popup();
+                            }
                         } else {
-                            // Try to show DOP popup
-                            self.try_show_dop_popup();
+                            // Try to show detail popup
+                            self.try_show_detail_popup();
                         }
                     }
                 } else {

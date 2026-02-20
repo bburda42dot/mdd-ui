@@ -60,11 +60,11 @@ pub struct App {
     pub(crate) section_cursors: Vec<usize>, // Selected row in each section
     pub(crate) column_widths: Vec<Vec<u16>>, // Column widths for each section (percentages)
     pub(crate) focused_column: usize, // Currently focused column for resizing
-    pub(crate) dop_popup: Option<DopPopupData>, // DOP popup state
+    pub(crate) detail_popup: Option<PopupData>, // Generic popup state
     pub(crate) help_popup_visible: bool, // Help popup visibility
     pub(crate) tree_width_percentage: u16, // Tree pane width (0-100)
     pub(crate) diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
-    pub(crate) diag_comms_select_mode: bool, // true = select by row, false = select by cell
+    pub(crate) row_selection_mode: bool, // true = select by row, false = select by cell
     pub(crate) table_sort_state: Vec<Option<TableSortState>>, // Sort state for each table section (None = default order)
     tree_area: Rect, // Cached tree area for mouse handling
     detail_area: Rect, // Cached detail area for mouse handling
@@ -75,12 +75,14 @@ pub struct App {
     last_click_time: Option<Instant>, // Time of last click for double-click detection
     last_click_pos: (u16, u16), // Position of last click (column, row)
     pub(crate) mouse_enabled: bool, // Whether mouse input is enabled
+    navigation_history: Vec<usize>, // History of cursor positions (node indices in visible)
+    history_position: usize, // Current position in history (for potential forward navigation)
 }
 
 #[derive(Clone)]
-pub struct DopPopupData {
-    pub dop_name: String,
-    pub dop_details: Vec<String>,
+pub struct PopupData {
+    pub title: String,
+    pub content: Vec<String>,
 }
 
 impl App {
@@ -105,11 +107,11 @@ impl App {
             section_cursors: Vec::new(),
             column_widths: Vec::new(),
             focused_column: 0,
-            dop_popup: None,
+            detail_popup: None,
             help_popup_visible: false,
             tree_width_percentage: 40,
             diagcomm_sort_by_id: true, // Default: sort by ID
-            diag_comms_select_mode: true, // Diag-Comms uses row selection
+            row_selection_mode: true, // Default: row selection mode
             table_sort_state: Vec::new(), // No sorting by default
             tree_area: Rect::default(),
             detail_area: Rect::default(),
@@ -120,6 +122,8 @@ impl App {
             last_click_time: None,
             last_click_pos: (0, 0),
             mouse_enabled: true, // Mouse enabled by default
+            navigation_history: Vec::new(),
+            history_position: 0,
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();
@@ -127,27 +131,27 @@ impl App {
         app
     }
     
-    /// Get the actual section index accounting for semantic header offset
+    /// Get the actual section index accounting for header section offset
     fn get_section_index(&self) -> usize {
-        // Check if current node has a semantic section (state chart)
+        // Check if current node has a header section (rendered above tabs)
         if let Some(&idx) = self.visible.get(self.cursor) {
             let sections = &self.all_nodes[idx].detail_sections;
             if sections.len() > 1 
-                && sections[0].title == "Semantic" 
+                && sections[0].render_as_header
                 && matches!(&sections[0].content, crate::tree::DetailContent::PlainText(_)) {
-                // Has semantic section, so selected_tab needs offset of 1
+                // Has header section, so selected_tab needs offset of 1
                 return self.selected_tab + 1;
             }
         }
         self.selected_tab
     }
 
-    /// Get the section offset for rendering (0 or 1 if there's a semantic section)
+    /// Get the section offset for rendering (0 or 1 if there's a header section)
     fn get_section_offset(&self) -> usize {
         if let Some(&idx) = self.visible.get(self.cursor) {
             let sections = &self.all_nodes[idx].detail_sections;
             if sections.len() > 1 
-                && sections[0].title == "Semantic" 
+                && sections[0].render_as_header
                 && matches!(&sections[0].content, crate::tree::DetailContent::PlainText(_)) {
                 return 1;
             }
@@ -221,8 +225,8 @@ impl App {
         self.draw_status(frame, status_bar);
         
         // Draw popups if open (order matters - last drawn is on top)
-        if self.dop_popup.is_some() {
-            self.draw_dop_popup(frame);
+        if self.detail_popup.is_some() {
+            self.draw_detail_popup(frame);
         }
         if self.help_popup_visible {
             self.draw_help_popup(frame);
@@ -553,6 +557,67 @@ impl App {
     }
 
     // -------------------------------------------------------------------
+    // Navigation history
+    // -------------------------------------------------------------------
+    
+    /// Add current cursor position to navigation history
+    fn push_to_history(&mut self) {
+        // Only store if cursor is in valid range
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+        
+        // Don't store duplicate consecutive positions
+        if let Some(&last) = self.navigation_history.last() {
+            if last == self.cursor {
+                return;
+            }
+        }
+        
+        // If we're not at the end of history, truncate forward history
+        if self.history_position < self.navigation_history.len() {
+            self.navigation_history.truncate(self.history_position);
+        }
+        
+        // Add current position
+        self.navigation_history.push(self.cursor);
+        self.history_position = self.navigation_history.len();
+        
+        // Limit history size to prevent unbounded growth
+        const MAX_HISTORY: usize = 100;
+        if self.navigation_history.len() > MAX_HISTORY {
+            self.navigation_history.remove(0);
+            self.history_position = self.navigation_history.len();
+        }
+    }
+    
+    /// Navigate back in history
+    pub(crate) fn navigate_back(&mut self) {
+        // Need at least 2 entries to go back (current + previous)
+        if self.navigation_history.len() < 2 || self.history_position <= 1 {
+            self.status = "No previous location in history".to_owned();
+            return;
+        }
+        
+        // Move back in history
+        self.history_position = self.history_position.saturating_sub(1);
+        let target_cursor = self.navigation_history[self.history_position - 1];
+        
+        // Navigate to the stored position
+        if target_cursor < self.visible.len() {
+            self.cursor = target_cursor;
+            self.detail_scroll = 0;
+            self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+            self.status = format!("Navigated back (history: {}/{})", 
+                self.history_position, 
+                self.navigation_history.len());
+        } else {
+            // Position is no longer valid (tree structure changed)
+            self.status = "Previous location no longer valid".to_owned();
+        }
+    }
+
+    // -------------------------------------------------------------------
     // Cursor movement
     // -------------------------------------------------------------------
 
@@ -565,8 +630,14 @@ impl App {
                     self.section_cursors[section_idx].saturating_sub(1);
             }
         } else {
+            let old_cursor = self.cursor;
             self.cursor = self.cursor.saturating_sub(1);
             self.detail_scroll = 0;
+            
+            // Only push to history if we moved to a different node
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -579,8 +650,14 @@ impl App {
                     self.section_cursors[section_idx].saturating_add(1);
             }
         } else if self.cursor + 1 < self.visible.len() {
+            let old_cursor = self.cursor;
             self.cursor += 1;
             self.detail_scroll = 0;
+            
+            // Only push to history if we moved to a different node
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -592,8 +669,12 @@ impl App {
                     self.section_cursors[section_idx].saturating_sub(n);
             }
         } else {
+            let old_cursor = self.cursor;
             self.cursor = self.cursor.saturating_sub(n);
             self.detail_scroll = 0;
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -605,8 +686,12 @@ impl App {
                     self.section_cursors[section_idx].saturating_add(n);
             }
         } else {
+            let old_cursor = self.cursor;
             self.cursor = (self.cursor + n).min(self.visible.len().saturating_sub(1));
             self.detail_scroll = 0;
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -617,8 +702,12 @@ impl App {
                 self.section_cursors[section_idx] = 0;
             }
         } else {
+            let old_cursor = self.cursor;
             self.cursor = 0;
             self.detail_scroll = 0;
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -629,8 +718,12 @@ impl App {
                 self.section_cursors[section_idx] = usize::MAX; // clamped during render
             }
         } else {
+            let old_cursor = self.cursor;
             self.cursor = self.visible.len().saturating_sub(1);
             self.detail_scroll = 0;
+            if old_cursor != self.cursor {
+                self.push_to_history();
+            }
         }
     }
 
@@ -759,7 +852,8 @@ impl App {
         );
     }
 
-    pub(crate) fn try_show_dop_popup(&mut self) {
+    /// Try to show a popup based on the current row selection
+    pub(crate) fn try_show_detail_popup(&mut self) {
         // Validate cursor position
         if self.cursor >= self.visible.len() {
             self.status = "Cursor out of bounds".to_string();
@@ -784,19 +878,20 @@ impl App {
 
         // Validate tab exists
         let sections = &node.detail_sections;
-        if self.selected_tab >= sections.len() {
-            self.status = format!("Tab {} out of {} tabs", self.selected_tab, sections.len());
+        let section_index = self.get_section_index();
+        if section_index >= sections.len() {
+            self.status = format!("Tab {} out of {} tabs", section_index, sections.len());
             return;
         }
 
-        let section = &sections[self.selected_tab];
+        let section = &sections[section_index];
         
         // Extract rows from table content
         use crate::tree::DetailContent;
         let rows = match &section.content {
             DetailContent::Table { rows, .. } => rows,
             _ => {
-                self.status = "DOP selection only available in tables".to_owned();
+                self.status = "Popup only available for table rows".to_owned();
                 return;
             }
         };
@@ -807,48 +902,54 @@ impl App {
             return;
         }
 
-        // Get the selected row and validate DOP cell
+        // Get the selected row
         let selected_row: &DetailRow = &rows[row_cursor];
         let cells = &selected_row.cells;
         let cell_types = &selected_row.cell_types;
         
-        // Find and validate DOP cell
-        let dop_cell_index = match cell_types.iter().position(|ct| matches!(ct, CellType::DopReference)) {
-            Some(idx) => idx,
-            None => {
-                self.status = "No DOP reference in this row".to_owned();
-                return;
+        // Try to find a reference cell (like DOP reference) to show details for
+        let reference_cell_index = cell_types.iter().position(|ct| matches!(ct, CellType::DopReference));
+        
+        if let Some(ref_idx) = reference_cell_index {
+            // Found a reference cell - show popup for it
+            if ref_idx < cells.len() && !cells[ref_idx].is_empty() {
+                let reference_name = cells[ref_idx].to_owned();
+                
+                // Extract additional context from the row
+                let param_name = cell_types.iter()
+                    .position(|ct| matches!(ct, CellType::ParameterName))
+                    .and_then(|idx| cells.get(idx))
+                    .map(|s| s.as_str())
+                    .unwrap_or("unknown");
+                
+                // Build generic popup content
+                let mut content = vec![
+                    format!("Reference: {}", reference_name),
+                    format!("Context: {}", param_name),
+                    String::new(),
+                ];
+                
+                // Add all cell data for debugging/inspection
+                for (i, (cell, cell_type)) in cells.iter().zip(cell_types.iter()).enumerate() {
+                    if i != ref_idx && !cell.is_empty() {
+                        content.push(format!("{:?}: {}", cell_type, cell));
+                    }
+                }
+                
+                content.push(String::new());
+                content.push("(Details would be loaded from data source)".to_owned());
+
+                self.status = format!("Opening details for: {}", reference_name);
+                self.detail_popup = Some(PopupData { 
+                    title: reference_name, 
+                    content,
+                });
+            } else {
+                self.status = "Reference cell is empty".to_owned();
             }
-        };
-        
-        // Validate DOP cell has content
-        if dop_cell_index >= cells.len() || cells[dop_cell_index].is_empty() {
-            self.status = "DOP cell is empty".to_owned();
-            return;
+        } else {
+            self.status = "No reference in this row".to_owned();
         }
-
-        // Extract DOP details
-        let dop_name = cells[dop_cell_index].to_owned();
-        
-        let param_name = cell_types.iter()
-            .position(|ct| matches!(ct, CellType::ParameterName))
-            .and_then(|idx| cells.get(idx))
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
-        
-        let semantic = cells.last().map(|s| s.as_str()).unwrap_or("");
-        
-        let dop_details = vec![
-            format!("DOP Name: {}", dop_name),
-            "Type: Data Object Property".to_owned(),
-            format!("Used in parameter: {}", param_name),
-            format!("Semantic: {}", semantic),
-            String::new(),
-            "(Full DOP details would be loaded from database)".to_owned(),
-        ];
-
-        self.status = format!("Opening DOP popup for: {}", dop_name);
-        self.dop_popup = Some(DopPopupData { dop_name, dop_details });
     }
 
     /// Navigate to a service in the tree from the Diag-Comms table
@@ -953,12 +1054,190 @@ impl App {
         
         if let Some(target_cursor) = found_idx {
             // Navigate tree focus to this service
+            self.push_to_history(); // Store old position before jumping
             self.detail_focused = false;
             self.cursor = target_cursor;
             self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
             self.status = format!("Navigated to service: {}", service_name);
         } else {
             self.status = format!("Service '{}' not found in tree", service_name);
+        }
+    }
+    
+    /// Navigate to an inherited parent layer in the tree
+    pub(crate) fn try_navigate_to_inherited_parent(&mut self) {
+        // Validate cursor position
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+        
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+        
+        // We should be on a service node (either Service or ParentRefService)
+        if !matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+            self.status = "Not a service node".to_owned();
+            return;
+        }
+        
+        // Get the current service name from the node text (format: "0xXXXX - ServiceName")
+        let current_service_name = if let Some(dash_idx) = node.text.find(" - ") {
+            node.text[dash_idx + 3..].to_string()
+        } else {
+            node.text.clone()
+        };
+        
+        // Find the Overview section (should be the first one)
+        if node.detail_sections.is_empty() {
+            return;
+        }
+        
+        let overview_section = &node.detail_sections[0];
+        
+        // Extract the parent layer name from the Overview table
+        use crate::tree::DetailContent;
+        let rows = match &overview_section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+        
+        // Get the selected row in the Overview section
+        // The Overview is at selected_tab position (0 for Overview)
+        let row_cursor = if self.selected_tab < self.section_cursors.len() {
+            self.section_cursors[self.selected_tab]
+        } else {
+            return;
+        };
+        
+        if row_cursor >= rows.len() {
+            return;
+        }
+        
+        let selected_row = &rows[row_cursor];
+        
+        // Check if this is the "Inherited From" row
+        if selected_row.cells.len() >= 2 && selected_row.cells[0] == "Inherited From" {
+            let parent_layer_name = selected_row.cells[1].clone();
+            
+            // Search for a node in the tree that matches this parent layer name
+            // We need to find variants, protocols, functional groups, or EcuSharedData nodes with this name
+            let mut found_container_idx: Option<usize> = None;
+            
+            // Search through ALL nodes, not just visible ones
+            for (ni, n) in self.all_nodes.iter().enumerate() {
+                // Check if this is a Container (variant/functional group) with matching name
+                if matches!(n.node_type, NodeType::Container) {
+                    // Extract name from text (may include [base] suffix)
+                    let name = if let Some(idx) = n.text.find(" [") {
+                        &n.text[..idx]
+                    } else {
+                        &n.text
+                    };
+                    
+                    if name == parent_layer_name {
+                        found_container_idx = Some(ni);
+                        break;
+                    }
+                }
+            }
+            
+            if let Some(container_node_idx) = found_container_idx {
+                // Expand all parents of the target node to make it visible
+                let container_depth = self.all_nodes[container_node_idx].depth;
+                
+                // Expand parent nodes
+                if container_depth > 0 {
+                    for i in 0..container_node_idx {
+                        let node = &mut self.all_nodes[i];
+                        if node.depth < container_depth && node.has_children {
+                            node.expanded = true;
+                        }
+                    }
+                }
+                
+                // Expand the container node itself if it has children
+                if self.all_nodes[container_node_idx].has_children {
+                    self.all_nodes[container_node_idx].expanded = true;
+                }
+                
+                // Now find and expand the Diag-Comms section within the container
+                let mut diagcomm_node_idx: Option<usize> = None;
+                for i in (container_node_idx + 1)..self.all_nodes.len() {
+                    let child_node = &self.all_nodes[i];
+                    
+                    // Stop if we've left the container
+                    if child_node.depth <= container_depth {
+                        break;
+                    }
+                    
+                    // Look for the Diag-Comms section
+                    if child_node.depth == container_depth + 1 && child_node.text.starts_with("Diag-Comms (") {
+                        diagcomm_node_idx = Some(i);
+                        break;
+                    }
+                }
+                
+                // If we found the Diag-Comms section, expand it and find the specific service
+                if let Some(dc_idx) = diagcomm_node_idx {
+                    // Expand the Diag-Comms section
+                    self.all_nodes[dc_idx].expanded = true;
+                    
+                    // Rebuild visible list
+                    self.rebuild_visible();
+                    
+                    // Now find the specific service node within the Diag-Comms section
+                    let diagcomm_depth = self.all_nodes[dc_idx].depth;
+                    let mut found_service_idx: Option<usize> = None;
+                    
+                    for i in (dc_idx + 1)..self.all_nodes.len() {
+                        let service_node = &self.all_nodes[i];
+                        
+                        // Stop if we've left the Diag-Comms section
+                        if service_node.depth <= diagcomm_depth {
+                            break;
+                        }
+                        
+                        // Look for service nodes at depth diagcomm_depth + 1
+                        if service_node.depth == diagcomm_depth + 1 {
+                            // Check if this service matches our service name
+                            if service_node.text.contains(&current_service_name) {
+                                found_service_idx = Some(i);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Navigate to the service if found, otherwise to the container
+                    let target_idx = found_service_idx.unwrap_or(container_node_idx);
+                    
+                    // Find the new position of the target node in visible
+                    if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == target_idx) {
+                        self.push_to_history(); // Store old position before jumping
+                        self.detail_focused = false;
+                        self.cursor = new_cursor;
+                        self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+                        
+                        if found_service_idx.is_some() {
+                            self.status = format!("Navigated to service '{}' in parent layer '{}'", current_service_name, parent_layer_name);
+                        } else {
+                            self.status = format!("Navigated to parent layer '{}' (service not found)", parent_layer_name);
+                        }
+                    }
+                } else {
+                    // No Diag-Comms section found, just navigate to the container
+                    self.rebuild_visible();
+                    
+                    if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == container_node_idx) {
+                        self.push_to_history();
+                        self.detail_focused = false;
+                        self.cursor = new_cursor;
+                        self.scroll_offset = self.cursor.saturating_sub(5);
+                        self.status = format!("Navigated to parent layer '{}' (no Diag-Comms section)", parent_layer_name);
+                    }
+                }
+            } else {
+                self.status = format!("Parent layer '{}' not found in tree", parent_layer_name);
+            }
         }
     }
 
@@ -1091,9 +1370,9 @@ impl App {
 
     pub(super) fn handle_mouse_event(&mut self, kind: MouseEventKind, column: u16, row: u16) -> Action {
         // If popup is open, only close on click
-        if self.dop_popup.is_some() {
+        if self.detail_popup.is_some() {
             if matches!(kind, MouseEventKind::Down(_)) {
-                self.dop_popup = None;
+                self.detail_popup = None;
             }
             return Action::Continue;
         }
@@ -1161,17 +1440,47 @@ impl App {
         if self.is_in_table_content_area(column, row) {
             self.detail_focused = true;
             
-            // Check if we're on a Diag-Comms section, navigate to the service
+            // Check what type of node we're on
             if self.cursor < self.visible.len() {
                 let node_idx = self.visible[self.cursor];
                 let node = &self.all_nodes[node_idx];
                 
                 if node.text.starts_with("Diag-Comms (") {
-                    // Navigate to selected service
+                    // Navigate to selected service from Diag-Comms table
                     self.try_navigate_to_service();
+                } else if matches!(node.node_type, NodeType::Service | NodeType::ParentRefService) {
+                    // Check if we're on the "Inherited From" row in Overview
+                    let mut should_navigate_to_parent = false;
+                    
+                    if self.selected_tab < node.detail_sections.len() {
+                        let section = &node.detail_sections[self.selected_tab];
+                        if section.title == "Overview" {
+                            if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
+                                let row_cursor = if self.selected_tab < self.section_cursors.len() {
+                                    self.section_cursors[self.selected_tab]
+                                } else {
+                                    0
+                                };
+                                
+                                if row_cursor < rows.len() {
+                                    let selected_row = &rows[row_cursor];
+                                    if selected_row.cells.len() >= 2 && selected_row.cells[0] == "Inherited From" {
+                                        should_navigate_to_parent = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if should_navigate_to_parent {
+                        self.try_navigate_to_inherited_parent();
+                    } else {
+                        // Default: try to show DOP popup for other rows
+                        self.try_show_detail_popup();
+                    }
                 } else {
                     // Try to show DOP popup
-                    self.try_show_dop_popup();
+                    self.try_show_detail_popup();
                 }
             }
         }
@@ -1271,7 +1580,6 @@ impl App {
             // Check if click falls within this tab
             if relative_col >= current_pos + separator_width && relative_col < current_pos + separator_width + tab_str.len() {
                 self.selected_tab = tab_idx;
-                self.status = format!("Switched to tab: {}", self.tab_titles[tab_idx]);
                 return;
             }
             
@@ -1298,8 +1606,8 @@ impl App {
         
         // Extract table content
         use crate::tree::DetailContent;
-        let (rows, constraints, is_diag_comms) = match &node.detail_sections[self.selected_tab].content {
-            DetailContent::Table { header: _, rows, constraints, is_diag_comms } => (rows, constraints, *is_diag_comms),
+        let (rows, use_row_selection) = match &node.detail_sections[self.selected_tab].content {
+            DetailContent::Table { rows, use_row_selection, .. } => (rows, *use_row_selection),
             _ => return,
         };
         
@@ -1325,17 +1633,17 @@ impl App {
         // Update the row cursor
         self.section_cursors[self.selected_tab] = clicked_row_idx;
         
-        // For non-Diag-Comms tables, also update the focused column (cell selection mode)
-        // For Diag-Comms, only select by row
-        if !is_diag_comms {
+        // For tables with row selection mode, only select by row
+        // For cell selection mode, also update the focused column
+        if !use_row_selection {
             let relative_col = column - area.x;
-            if let Some(col_idx) = self.calculate_clicked_column(relative_col, constraints) {
+            if let Some(col_idx) = self.calculate_clicked_column(relative_col) {
                 self.focused_column = col_idx;
             }
         }
     }
 
-    fn calculate_clicked_column(&self, relative_col: u16, _constraints: &[crate::tree::ColumnConstraint]) -> Option<usize> {
+    fn calculate_clicked_column(&self, relative_col: u16) -> Option<usize> {
         let area = self.table_content_area?;
         
         if self.cached_ratatui_constraints.is_empty() {
@@ -1392,6 +1700,7 @@ impl App {
         if target_cursor == self.cursor {
             self.toggle_expand();
         } else {
+            self.push_to_history(); // Store old position before jumping
             self.cursor = target_cursor;
             self.detail_scroll = 0;
         }

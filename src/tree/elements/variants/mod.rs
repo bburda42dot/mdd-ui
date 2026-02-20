@@ -14,7 +14,7 @@ use crate::tree::types::{NodeType, lines_to_single_section};
 use super::layers::LayerExt;
 
 /// Add all variants to the tree
-pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>, _ecu_name: &str) {
+pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     // Add Variants section
     if let Some(variants) = ecu.variants() {
         b.push(

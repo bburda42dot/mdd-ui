@@ -489,8 +489,8 @@ impl App {
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                 frame.render_widget(para, inner);
             }
-            DetailContent::Table { header, rows, constraints, is_diag_comms } => {
-                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset, *is_diag_comms);
+            DetailContent::Table { header, rows, constraints, is_diag_comms: _ } => {
+                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset);
             }
             DetailContent::Composite(subsections) => {
                 self.render_composite_content(frame, inner, subsections);
@@ -607,14 +607,13 @@ impl App {
         rows: &[DetailRow],
         constraints: &[crate::tree::ColumnConstraint],
         section_idx: usize,
-        is_diag_comms: bool,
     ) {
         let viewport_height = inner.height as usize;
         
-        // Apply sorting: explicit column sort takes precedence, then diag_comms sort, then default
+        // Apply sorting based on table_sort_state if set
         let sorted_rows: Vec<DetailRow> = if section_idx < self.table_sort_state.len() {
             if let Some(sort_state) = &self.table_sort_state[section_idx] {
-                // Apply general table sorting by column (takes precedence over diag_comms default)
+                // Apply general table sorting by column
                 let mut sorted = rows.to_vec();
                 let col = sort_state.column;
                 let dir = sort_state.direction;
@@ -636,35 +635,9 @@ impl App {
                     }
                 });
                 sorted
-            } else if is_diag_comms {
-                // Sort based on diagcomm_sort_by_id setting
-                let mut sorted = rows.to_vec();
-                sorted.sort_by(|a, b| {
-                    if self.diagcomm_sort_by_id {
-                        // Sort by ID (first column)
-                        a.cells.get(0).unwrap_or(&String::new()).cmp(b.cells.get(0).unwrap_or(&String::new()))
-                    } else {
-                        // Sort by Short Name (second column)
-                        a.cells.get(1).unwrap_or(&String::new()).cmp(b.cells.get(1).unwrap_or(&String::new()))
-                    }
-                });
-                sorted
             } else {
                 rows.to_vec()
             }
-        } else if is_diag_comms {
-            // Sort based on diagcomm_sort_by_id setting
-            let mut sorted = rows.to_vec();
-            sorted.sort_by(|a, b| {
-                if self.diagcomm_sort_by_id {
-                    // Sort by ID (first column)
-                    a.cells.get(0).unwrap_or(&String::new()).cmp(b.cells.get(0).unwrap_or(&String::new()))
-                } else {
-                    // Sort by Short Name (second column)
-                    a.cells.get(1).unwrap_or(&String::new()).cmp(b.cells.get(1).unwrap_or(&String::new()))
-                }
-            });
-            sorted
         } else {
             rows.to_vec()
         };
@@ -710,19 +683,9 @@ impl App {
                         cell_text.clone() 
                     };
                     
-                    // Apply highlighting based on selection mode
-                    let style = if is_selected_row {
-                        if is_diag_comms {
-                            // Row selection mode: highlight entire row
-                            Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
-                        } else {
-                            // Cell selection mode: highlight only the selected cell
-                            if col_idx == focused_col {
-                                Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
-                            } else {
-                                Style::default().fg(Color::White)
-                            }
-                        }
+                    // Apply cell highlighting (only the selected cell in the selected row)
+                    let style = if is_selected_row && col_idx == focused_col {
+                        Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::White)
                     };
@@ -822,7 +785,7 @@ impl App {
         let mut current_width = 0;
         
         for title in tab_titles {
-            let tab_width = title.len() + 3; // +3 for padding/separators: " title "
+            let tab_width = title.len() + 3 + 1; // +3 for " title " padding, +1 for separator
             
             if current_width + tab_width > available_width && current_width > 0 {
                 // Need a new line
@@ -833,7 +796,8 @@ impl App {
             }
         }
         
-        lines
+        // Add 1 for the separator line below tabs
+        lines + 1
     }
 
     /// Render tabs with wrapping support for narrow windows
@@ -862,7 +826,7 @@ impl App {
         let mut current_width = 0;
         
         for (idx, tab_str) in tab_strings.iter().enumerate() {
-            let tab_width = tab_str.len() + 3; // +3 for padding/separators
+            let tab_width = tab_str.len() + 1; // +1 for separator
             
             if current_width + tab_width > available_width && !current_line.is_empty() {
                 // Start a new line
@@ -880,15 +844,16 @@ impl App {
         }
         
         // Render each line of tabs
+        let num_tab_lines = lines.len();
         for (line_idx, line_tabs) in lines.iter().enumerate() {
-            if line_idx >= inner.height as usize {
-                break; // No more space
+            if line_idx >= inner.height.saturating_sub(1) as usize {
+                break; // Reserve space for separator line
             }
             
             let y = inner.y + line_idx as u16;
             let mut x = inner.x;
             
-            for (tab_idx, tab_str) in line_tabs {
+            for (i, (tab_idx, tab_str)) in line_tabs.iter().enumerate() {
                 let is_selected = *tab_idx == selected;
                 let style = if is_selected {
                     Style::default()
@@ -898,11 +863,18 @@ impl App {
                     Style::default().fg(Color::Gray)
                 };
                 
-                // Render with box-drawing characters for separation
-                let left_sep = if x == inner.x { "" } else { "│" };
-                let tab_text = format!("{}{}", left_sep, tab_str);
+                // Add separator before tab (except first on line)
+                if i > 0 {
+                    let sep_span = Span::styled("│", Style::default().fg(Color::DarkGray));
+                    frame.render_widget(
+                        Paragraph::new(Line::from(sep_span)),
+                        Rect { x, y, width: 1, height: 1 }
+                    );
+                    x += 1;
+                }
                 
-                let span = Span::styled(tab_text, style);
+                // Render the tab
+                let span = Span::styled(tab_str.as_str(), style);
                 let line = Line::from(span);
                 
                 frame.render_widget(
@@ -910,13 +882,30 @@ impl App {
                     Rect {
                         x,
                         y,
-                        width: (tab_str.len() + left_sep.len()) as u16,
+                        width: tab_str.len() as u16,
                         height: 1,
                     }
                 );
                 
-                x += (tab_str.len() + left_sep.len()) as u16;
+                x += tab_str.len() as u16;
             }
+        }
+        
+        // Draw a horizontal separator line below all tabs
+        if num_tab_lines > 0 && inner.height > num_tab_lines as u16 {
+            let separator_y = inner.y + num_tab_lines as u16;
+            let separator_line = "─".repeat(available_width);
+            let sep_style = Style::default().fg(Color::DarkGray);
+            
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(separator_line, sep_style))),
+                Rect {
+                    x: inner.x,
+                    y: separator_y,
+                    width: inner.width,
+                    height: 1,
+                }
+            );
         }
     }
 }

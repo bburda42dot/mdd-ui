@@ -1149,7 +1149,7 @@ impl App {
             self.detail_focused = true;
             // Check if click is on tab area
             if self.is_in_tab_area(column, row) {
-                self.handle_tab_click(column);
+                self.handle_tab_click(column, row);
             } else if self.is_in_table_content_area(column, row) {
                 self.handle_table_click(column, row);
             }
@@ -1205,7 +1205,7 @@ impl App {
         }
     }
 
-    fn handle_tab_click(&mut self, column: u16) {
+    fn handle_tab_click(&mut self, column: u16, row: u16) {
         // Early exits for invalid states
         if self.tab_titles.is_empty() {
             return;
@@ -1213,29 +1213,70 @@ impl App {
 
         let Some(tab_area) = self.tab_area else { return };
         
-        // Account for border (1 column from left)
+        // Account for border (1 column from left, 1 row from top)
         let inner_x = tab_area.x + 1;
-        if column < inner_x {
+        let inner_y = tab_area.y + 1;
+        
+        if column < inner_x || row < inner_y {
             return;
         }
 
         let relative_col = (column - inner_x) as usize;
+        let relative_row = (row - inner_y) as usize;
         
-        // Calculate which tab was clicked based on tab title positions
-        // Tabs are rendered with spacing like: " Tab1 │ Tab2 │ Tab3 "
+        // Calculate available width for tabs
+        let available_width = (tab_area.width.saturating_sub(2)) as usize; // -2 for borders
+        
+        // Build tab strings with decorators to match rendering logic
+        let tab_strings: Vec<String> = self.tab_titles.iter()
+            .map(|title| format!(" {} ", title))
+            .collect();
+        
+        // Simulate tab wrapping to determine which line each tab is on
+        let mut lines: Vec<Vec<usize>> = Vec::new();
+        let mut current_line: Vec<usize> = Vec::new();
+        let mut current_width = 0;
+        
+        for (idx, tab_str) in tab_strings.iter().enumerate() {
+            let tab_width = tab_str.len() + 1; // +1 for separator
+            
+            if current_width + tab_width > available_width && !current_line.is_empty() {
+                // Start a new line
+                lines.push(current_line);
+                current_line = Vec::new();
+                current_width = 0;
+            }
+            
+            current_line.push(idx);
+            current_width += tab_width;
+        }
+        
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+        
+        // Determine which line was clicked
+        if relative_row >= lines.len() {
+            return;
+        }
+        
+        let clicked_line_tabs = &lines[relative_row];
+        
+        // Calculate tab positions on the clicked line
         let mut current_pos = 0;
-        for (i, title) in self.tab_titles.iter().enumerate() {
-            let tab_width = title.len() + 2; // +2 for spaces around title
+        for (i, &tab_idx) in clicked_line_tabs.iter().enumerate() {
+            let tab_str = &tab_strings[tab_idx];
+            let separator_width = if i == 0 { 0 } else { 1 }; // "│" separator before tab
             
             // Check if click falls within this tab
-            if relative_col >= current_pos && relative_col < current_pos + tab_width {
-                self.selected_tab = i;
-                self.status = format!("Switched to tab: {}", title);
+            if relative_col >= current_pos + separator_width && relative_col < current_pos + separator_width + tab_str.len() {
+                self.selected_tab = tab_idx;
+                self.status = format!("Switched to tab: {}", self.tab_titles[tab_idx]);
                 return;
             }
             
             // Move past this tab and its separator
-            current_pos += tab_width + 1; // +1 for separator "│"
+            current_pos += separator_width + tab_str.len();
         }
     }
 

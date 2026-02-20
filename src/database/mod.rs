@@ -1,12 +1,8 @@
 pub mod reader;
 
 use anyhow::{Context, Result};
-use cda_database::{
-    datatypes::DiagnosticDatabase,
-    load_ecudata,
-};
+use cda_database::{datatypes::DiagnosticDatabase, load_ecudata};
 use cda_interfaces::datatypes::FlatbBufConfig;
-
 // Re-export commonly used items
 pub use reader::{extract_data, get_ecu_summary};
 

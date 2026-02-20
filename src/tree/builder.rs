@@ -1,4 +1,4 @@
-use super::types::{TreeNode, NodeType, DetailSectionData};
+use super::types::{DetailSectionData, NodeType, TreeNode};
 
 /// Accumulates `TreeNode`s while walking the database model.
 ///

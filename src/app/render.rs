@@ -1,4 +1,5 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -6,13 +7,10 @@ use ratatui::{
         Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
         Table,
     },
-    Frame,
 };
 
-use crate::tree::{TreeNode, NodeType};
-use crate::tree::{DetailSectionData, DetailRow};
-
 use super::App;
+use crate::tree::{DetailRow, DetailSectionData, NodeType, TreeNode};
 
 // -----------------------------------------------------------------------
 // Colour theme
@@ -41,7 +39,11 @@ fn style(fg: Color, bold: bool) -> Style {
 }
 
 fn border(focused: bool) -> Style {
-    Style::default().fg(if focused { Color::Cyan } else { Color::DarkGray })
+    Style::default().fg(if focused {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    })
 }
 
 fn row_style(node: &TreeNode, is_cursor: bool) -> Style {
@@ -69,28 +71,27 @@ fn expand_icon(node: &TreeNode) -> &'static str {
 impl App {
     /// Extract ECU name from the General node's detail sections
     fn get_ecu_name(&self) -> &str {
-        self.all_nodes.first()
+        self.all_nodes
+            .first()
             .and_then(|node| {
                 if node.text != "General" {
                     return None;
                 }
-                
-                node.detail_sections.first()
-                    .and_then(|sec| {
-                        if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
-                            lines.first()?
-                                .strip_prefix("ECU Name: ")
-                        } else {
-                            None
-                        }
-                    })
+
+                node.detail_sections.first().and_then(|sec| {
+                    if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
+                        lines.first()?.strip_prefix("ECU Name: ")
+                    } else {
+                        None
+                    }
+                })
             })
             .unwrap_or("Tree")
     }
 
     pub(super) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
         let ecu_name = self.get_ecu_name();
-        
+
         let tree_block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(!self.detail_focused))
@@ -98,7 +99,7 @@ impl App {
 
         let tree_inner = tree_block.inner(area);
         frame.render_widget(tree_block, area);
-        
+
         // Draw tree content
         let viewport_height = tree_inner.height as usize;
         self.ensure_cursor_visible(viewport_height);
@@ -125,14 +126,23 @@ impl App {
             .collect();
 
         frame.render_widget(Paragraph::new(lines), tree_inner);
-        render_scrollbar(frame, area, self.visible.len(), self.scroll_offset, viewport_height);
+        render_scrollbar(
+            frame,
+            area,
+            self.visible.len(),
+            self.scroll_offset,
+            viewport_height,
+        );
     }
 
     pub(super) fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
         let node_idx = if let Some(&idx) = self.visible.get(self.cursor) {
             idx
         } else {
-            let block = Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)).title(" Details ");
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(border(self.detail_focused))
+                .title(" Details ");
             frame.render_widget(block, area);
             return;
         };
@@ -143,7 +153,10 @@ impl App {
         if !detail_sections.is_empty() {
             self.draw_detail_panes(frame, area, &detail_sections, &node_text);
         } else {
-            let block = Block::default().borders(Borders::ALL).border_style(border(self.detail_focused)).title(" Details ");
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(border(self.detail_focused))
+                .title(" Details ");
             frame.render_widget(block, area);
         }
     }
@@ -153,18 +166,18 @@ impl App {
         if let Some(&node_idx) = self.visible.get(self.cursor) {
             let mut path_parts = Vec::new();
             let mut current_idx = node_idx;
-            
+
             // Walk up the tree to build the path
             loop {
                 let node = &self.all_nodes[current_idx];
                 path_parts.push(node.text.clone());
-                
+
                 // Find parent by looking for previous node with lower depth
                 let current_depth = node.depth;
                 if current_depth == 0 {
                     break;
                 }
-                
+
                 let mut found_parent = false;
                 for i in (0..current_idx).rev() {
                     if self.all_nodes[i].depth < current_depth {
@@ -173,12 +186,12 @@ impl App {
                         break;
                     }
                 }
-                
+
                 if !found_parent {
                     break;
                 }
             }
-            
+
             // Reverse to get root-to-leaf order
             path_parts.reverse();
             path_parts.join(" > ")
@@ -196,7 +209,7 @@ impl App {
 
     pub(super) fn draw_status(&self, frame: &mut Frame, area: Rect) {
         use crate::app::SearchScope;
-        
+
         let (text, st) = if self.searching {
             let scope_indicator = match self.search_scope {
                 SearchScope::All => "",
@@ -209,33 +222,47 @@ impl App {
                 SearchScope::Responses => " [responses]",
             };
             let current_search_info = if !self.search_stack.is_empty() {
-                let stack_display: Vec<String> = self.search_stack.iter()
+                let stack_display: Vec<String> = self
+                    .search_stack
+                    .iter()
                     .map(|(term, _scope)| term.clone())
                     .collect();
                 format!(" [active: {}]", stack_display.join(" → "))
             } else {
                 String::new()
             };
-            
+
             let scope_name = match self.search_scope {
                 SearchScope::All => "All",
-                SearchScope::Variants => "Variants",                SearchScope::FunctionalGroups => "functional groups",
-                SearchScope::EcuSharedData => "ECU shared data",                SearchScope::Services => "Services",
+                SearchScope::Variants => "Variants",
+                SearchScope::FunctionalGroups => "functional groups",
+                SearchScope::EcuSharedData => "ECU shared data",
+                SearchScope::Services => "Services",
                 SearchScope::DiagComms => "Diag-Comms",
                 SearchScope::Requests => "Requests",
                 SearchScope::Responses => "Responses",
             };
-            
+
             (
-                format!(" /{}█{}{}  (scope: {} | Shift+S to change (leave search first) | Enter to add, Esc to cancel |  Backspace to undo last search)", 
-                    self.search, scope_indicator, current_search_info, scope_name),
+                format!(
+                    " /{}█{}{}  (scope: {} | Shift+S to change (leave search first) | Enter to \
+                     add, Esc to cancel |  Backspace to undo last search)",
+                    self.search, scope_indicator, current_search_info, scope_name
+                ),
                 Style::default().fg(Color::Yellow).bg(Color::DarkGray),
             )
         } else if !self.status.is_empty() {
-            (format!(" {}", self.status), Style::default().fg(Color::Gray))
+            (
+                format!(" {}", self.status),
+                Style::default().fg(Color::Gray),
+            )
         } else {
-            let focus = if self.detail_focused { "detail" } else { "tree" };
-            
+            let focus = if self.detail_focused {
+                "detail"
+            } else {
+                "tree"
+            };
+
             let scope_indicator = match self.search_scope {
                 SearchScope::All => "",
                 SearchScope::Variants => " | scope: variants",
@@ -246,9 +273,11 @@ impl App {
                 SearchScope::Requests => " | scope: requests",
                 SearchScope::Responses => " | scope: responses",
             };
-            
+
             let search_info = if !self.search_stack.is_empty() {
-                let stack_display: Vec<String> = self.search_stack.iter()
+                let stack_display: Vec<String> = self
+                    .search_stack
+                    .iter()
                     .map(|(term, scope)| {
                         let scope_abbrev = match scope {
                             SearchScope::All => "",
@@ -267,7 +296,7 @@ impl App {
             } else {
                 String::new()
             };
-            
+
             (
                 format!(
                     " {}/{} nodes | cursor: {} | focus: {focus}{}{}",
@@ -289,33 +318,33 @@ impl App {
             style::{Color, Style},
             widgets::{Block, Borders, Clear, Paragraph, Wrap},
         };
-        
+
         // Calculate popup size and position (centered, 70% width, 80% height)
         let area = frame.area();
         let popup_width = (area.width * 70) / 100;
         let popup_height = (area.height * 80) / 100;
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
         let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-        
+
         let popup_rect = Rect {
             x: popup_x,
             y: popup_y,
             width: popup_width,
             height: popup_height,
         };
-        
+
         // Clear the area behind the popup
         frame.render_widget(Clear, popup_rect);
-        
+
         // Draw the popup block
         let block = Block::default()
             .title(" Help - Press ? or Esc to close ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan));
-        
+
         let inner_area = block.inner(popup_rect);
         frame.render_widget(block, popup_rect);
-        
+
         // Help content
         let help_text = vec![
             "NAVIGATION",
@@ -334,7 +363,8 @@ impl App {
             "",
             "SEARCH & FILTER",
             "  /               Start search (type, then Enter to add to stack)",
-            "  Shift+S         Cycle search scope (All/Variants/Services/Diag-Comms/Requests/Responses)",
+            "  Shift+S         Cycle search scope \
+             (All/Variants/Services/Diag-Comms/Requests/Responses)",
             "  Enter           Confirm search and add to stack",
             "  x               Clear all search filters",
             "  Backspace       Remove last search from stack (when search input empty)",
@@ -353,12 +383,12 @@ impl App {
             "  ?               Show this help",
             "  q or Esc        Quit application",
         ];
-        
+
         let help_paragraph = Paragraph::new(help_text.join("\n"))
             .style(Style::default().fg(Color::White))
             .wrap(Wrap { trim: false })
             .alignment(Alignment::Left);
-        
+
         frame.render_widget(help_paragraph, inner_area);
     }
 
@@ -368,26 +398,28 @@ impl App {
             style::{Color, Style},
             widgets::{Block, Borders, Clear, Paragraph, Wrap},
         };
-        
-        let Some(popup_data) = &self.detail_popup else { return };
-        
+
+        let Some(popup_data) = &self.detail_popup else {
+            return;
+        };
+
         // Calculate popup size and position (centered, 60% width, 50% height)
         let area = frame.area();
         let popup_width = (area.width * 60) / 100;
         let popup_height = (area.height * 50) / 100;
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
         let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-        
+
         let popup_rect = Rect {
             x: popup_x,
             y: popup_y,
             width: popup_width,
             height: popup_height,
         };
-        
+
         // Clear the area first
         frame.render_widget(Clear, popup_rect);
-        
+
         // Create the popup block
         let block = Block::default()
             .borders(Borders::ALL)
@@ -396,37 +428,42 @@ impl App {
             .title_alignment(Alignment::Center)
             .title_bottom(" Press Esc to close ")
             .style(Style::default().bg(Color::Black));
-        
+
         let inner = block.inner(popup_rect);
         frame.render_widget(block, popup_rect);
-        
+
         // Render the content
         let content_text = popup_data.content.join("\n");
         let paragraph = Paragraph::new(content_text)
             .style(Style::default().fg(Color::White))
             .wrap(Wrap { trim: true });
-        
+
         frame.render_widget(paragraph, inner);
     }
 
-    fn draw_detail_panes(&mut self, frame: &mut Frame, area: Rect, sections: &[DetailSectionData], _node_name: &str) {
-        use ratatui::{
-            layout::{Constraint, Direction, Layout},
-        };
+    fn draw_detail_panes(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        sections: &[DetailSectionData],
+        _node_name: &str,
+    ) {
+        use ratatui::layout::{Constraint, Direction, Layout};
 
         if sections.is_empty() {
             return;
         }
 
         // Check if first section is a header section (PlainText with render_as_header)
-        let (header_section, tab_sections) = if sections.len() > 1 
+        let (header_section, tab_sections) = if sections.len() > 1
             && sections[0].render_as_header
-            && matches!(&sections[0].content, DetailContent::PlainText(_)) {
+            && matches!(&sections[0].content, DetailContent::PlainText(_))
+        {
             (Some(&sections[0]), &sections[1..])
         } else {
             (None, sections)
         };
-        
+
         // Determine title based on whether there's a header section or a single section
         // If there's a header section, use its title
         // If there's only one section (common for tables), use that section's title
@@ -482,9 +519,10 @@ impl App {
         } else {
             0
         };
-        
+
         if show_tabs {
-            let tab_height = (tab_lines_needed as u16 + 2).min(outer_inner.height.saturating_sub(3));
+            let tab_height =
+                (tab_lines_needed as u16 + 2).min(outer_inner.height.saturating_sub(3));
             constraints.push(Constraint::Length(tab_height));
         }
         constraints.push(Constraint::Min(0)); // Content area
@@ -495,7 +533,7 @@ impl App {
             .split(outer_inner);
 
         let mut chunk_idx = 0;
-        
+
         // Render header section if it exists (without borders, just text)
         let header_area = if header_height.is_some() {
             let area = chunks[chunk_idx];
@@ -533,16 +571,22 @@ impl App {
         // Render tabs if there are multiple tab sections
         if let Some(tab_area) = tab_area {
             let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.selected_tab, self.detail_focused);
+            self.render_wrapped_tabs(
+                frame,
+                tab_area,
+                &tab_titles,
+                self.selected_tab,
+                self.detail_focused,
+            );
         }
 
         // Render the selected tab's content (accounting for header offset)
         let section_offset = if header_section.is_some() { 1 } else { 0 };
         let section = &tab_sections[self.selected_tab];
-        let help_text = if self.detail_focused { 
-            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:Select  s:sort" 
-        } else { 
-            "" 
+        let help_text = if self.detail_focused {
+            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:Select  s:sort"
+        } else {
+            ""
         };
 
         // Content block with borders for the tab content
@@ -565,8 +609,22 @@ impl App {
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                 frame.render_widget(para, inner);
             }
-            DetailContent::Table { header, rows, constraints, use_row_selection } => {
-                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset, *use_row_selection);
+            DetailContent::Table {
+                header,
+                rows,
+                constraints,
+                use_row_selection,
+            } => {
+                self.render_table_content(
+                    frame,
+                    inner,
+                    content_area,
+                    header,
+                    rows,
+                    constraints,
+                    self.selected_tab + section_offset,
+                    *use_row_selection,
+                );
             }
             DetailContent::Composite(subsections) => {
                 self.render_composite_content(frame, inner, subsections);
@@ -574,37 +632,42 @@ impl App {
         }
     }
 
-    fn render_composite_content(&mut self, frame: &mut Frame, area: Rect, subsections: &[crate::tree::DetailSectionData]) {
+    fn render_composite_content(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        subsections: &[crate::tree::DetailSectionData],
+    ) {
         use ratatui::{
             layout::{Constraint, Direction, Layout},
             widgets::Block,
         };
-        
+
         if subsections.is_empty() {
             return;
         }
-        
+
         // Create vertical layout for subsections
         let subsection_count = subsections.len();
         let constraints: Vec<Constraint> = (0..subsection_count)
             .map(|_| Constraint::Percentage(100 / subsection_count as u16))
             .collect();
-        
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
             .split(area);
-        
+
         // Render each subsection in its own box
         for (i, subsection) in subsections.iter().enumerate() {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray))
                 .title(format!(" {} ", subsection.title));
-            
+
             let inner = block.inner(chunks[i]);
             frame.render_widget(block, chunks[i]);
-            
+
             // Render the content of the subsection
             match &subsection.content {
                 crate::tree::DetailContent::PlainText(lines) => {
@@ -612,7 +675,12 @@ impl App {
                     let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                     frame.render_widget(para, inner);
                 }
-                crate::tree::DetailContent::Table { header, rows, constraints, .. } => {
+                crate::tree::DetailContent::Table {
+                    header,
+                    rows,
+                    constraints,
+                    ..
+                } => {
                     // For composite tables, we don't track cursors/scrolling per subsection yet
                     // This is a simplified rendering
                     self.render_simple_table(frame, inner, header, rows, constraints);
@@ -626,47 +694,75 @@ impl App {
             }
         }
     }
-    
-    fn render_simple_table(&self, frame: &mut Frame, area: Rect, header: &DetailRow, rows: &[DetailRow], constraints: &[crate::tree::ColumnConstraint]) {
-        let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
-        
+
+    fn render_simple_table(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        header: &DetailRow,
+        rows: &[DetailRow],
+        constraints: &[crate::tree::ColumnConstraint],
+    ) {
+        let max_columns = rows
+            .iter()
+            .map(|r| r.cells.len())
+            .max()
+            .unwrap_or(header.cells.len());
+
         // Convert constraints to ratatui Constraints
-        let mut ratatui_constraints: Vec<Constraint> = constraints.iter()
+        let mut ratatui_constraints: Vec<Constraint> = constraints
+            .iter()
             .map(|c| match c {
                 crate::tree::ColumnConstraint::Fixed(w) => Constraint::Length(*w),
                 crate::tree::ColumnConstraint::Percentage(p) => Constraint::Percentage(*p),
             })
             .collect();
-        
+
         // Ensure we have enough constraints
         while ratatui_constraints.len() < max_columns {
             ratatui_constraints.push(Constraint::Percentage(10));
         }
-        
+
         // Create header
-        let header_cells: Vec<Cell> = header.cells.iter().map(|c| {
-            Cell::from(c.as_str()).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-        }).collect();
+        let header_cells: Vec<Cell> = header
+            .cells
+            .iter()
+            .map(|c| {
+                Cell::from(c.as_str()).style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+            })
+            .collect();
         let header_row = Row::new(header_cells);
-        
+
         // Create data rows
-        let data_rows: Vec<Row> = rows.iter().map(|row_data| {
-            let indent_str = "  ".repeat(row_data.indent / 2);
-            let mut cells: Vec<Cell> = row_data.cells.iter().enumerate().map(|(col_idx, cell_text)| {
-                let text = if col_idx == 0 { 
-                    format!("{}{}", indent_str, cell_text) 
-                } else { 
-                    cell_text.clone() 
-                };
-                Cell::from(text).style(Style::default().fg(Color::White))
-            }).collect();
-            
-            while cells.len() < max_columns { 
-                cells.push(Cell::from("")); 
-            }
-            Row::new(cells)
-        }).collect();
-        
+        let data_rows: Vec<Row> = rows
+            .iter()
+            .map(|row_data| {
+                let indent_str = "  ".repeat(row_data.indent / 2);
+                let mut cells: Vec<Cell> = row_data
+                    .cells
+                    .iter()
+                    .enumerate()
+                    .map(|(col_idx, cell_text)| {
+                        let text = if col_idx == 0 {
+                            format!("{}{}", indent_str, cell_text)
+                        } else {
+                            cell_text.clone()
+                        };
+                        Cell::from(text).style(Style::default().fg(Color::White))
+                    })
+                    .collect();
+
+                while cells.len() < max_columns {
+                    cells.push(Cell::from(""));
+                }
+                Row::new(cells)
+            })
+            .collect();
+
         let table = Table::new(data_rows, ratatui_constraints)
             .column_spacing(1)
             .header(header_row);
@@ -686,7 +782,7 @@ impl App {
         use_row_selection: bool,
     ) {
         let viewport_height = inner.height as usize;
-        
+
         // Apply sorting based on table_sort_state if set
         let sorted_rows: Vec<DetailRow> = if section_idx < self.table_sort_state.len() {
             if let Some(sort_state) = &self.table_sort_state[section_idx] {
@@ -697,13 +793,15 @@ impl App {
                 sorted.sort_by(|a, b| {
                     let a_cell = a.cells.get(col).map(|s| s.as_str()).unwrap_or("");
                     let b_cell = b.cells.get(col).map(|s| s.as_str()).unwrap_or("");
-                    
+
                     // Try to parse as numbers first, fall back to string comparison
                     let cmp = match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
-                        (Ok(a_num), Ok(b_num)) => a_num.partial_cmp(&b_num).unwrap_or(std::cmp::Ordering::Equal),
+                        (Ok(a_num), Ok(b_num)) => a_num
+                            .partial_cmp(&b_num)
+                            .unwrap_or(std::cmp::Ordering::Equal),
                         _ => a_cell.cmp(b_cell),
                     };
-                    
+
                     // Apply direction
                     use crate::app::SortDirection;
                     match dir {
@@ -719,7 +817,11 @@ impl App {
             rows.to_vec()
         };
 
-        let max_columns = sorted_rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
+        let max_columns = sorted_rows
+            .iter()
+            .map(|r| r.cells.len())
+            .max()
+            .unwrap_or(header.cells.len());
 
         let rows_refs: Vec<&DetailRow> = sorted_rows.iter().collect();
 
@@ -733,130 +835,178 @@ impl App {
             if cursor_pos < self.section_scrolls[section_idx] {
                 self.section_scrolls[section_idx] = cursor_pos;
             } else if cursor_pos >= self.section_scrolls[section_idx] + viewport_height {
-                self.section_scrolls[section_idx] = cursor_pos.saturating_sub(viewport_height).saturating_add(1);
+                self.section_scrolls[section_idx] =
+                    cursor_pos.saturating_sub(viewport_height).saturating_add(1);
             }
         }
 
-        if row_count > viewport_height && self.section_scrolls[section_idx] >= row_count.saturating_sub(viewport_height) {
+        if row_count > viewport_height
+            && self.section_scrolls[section_idx] >= row_count.saturating_sub(viewport_height)
+        {
             self.section_scrolls[section_idx] = row_count.saturating_sub(viewport_height);
         }
 
-        let focused_col = if self.focused_column >= max_columns { max_columns.saturating_sub(1) } else { self.focused_column };
-        
+        let focused_col = if self.focused_column >= max_columns {
+            max_columns.saturating_sub(1)
+        } else {
+            self.focused_column
+        };
+
         // Build visible rows with column-specific or row-specific highlighting
-        let visible_rows: Vec<Row<'static>> = rows_refs.iter().enumerate()
+        let visible_rows: Vec<Row<'static>> = rows_refs
+            .iter()
+            .enumerate()
             .skip(self.section_scrolls[section_idx])
             .take(viewport_height)
             .map(|(idx, row_data)| {
                 let indent_str = "  ".repeat(row_data.indent / 2);
                 // Calculate absolute row index (accounting for scroll offset)
                 let absolute_row_idx = self.section_scrolls[section_idx] + idx;
-                let is_selected_row = self.detail_focused && absolute_row_idx == self.section_cursors[section_idx];
-                
-                let mut cells: Vec<Cell> = row_data.cells.iter().enumerate().map(|(col_idx, cell_text)| {
-                    let text = if col_idx == 0 { 
-                        format!("{}{}", indent_str, cell_text) 
-                    } else { 
-                        cell_text.clone() 
-                    };
-                    
-                    // Apply highlighting based on selection mode
-                    let style = if is_selected_row {
-                        if use_row_selection {
-                            // Row selection mode: highlight entire row
-                            Style::default().fg(Color::White).bg(Color::DarkGray).add_modifier(Modifier::BOLD)
-                        } else if col_idx == focused_col {
-                            // Cell selection mode: highlight only the focused cell
-                            Style::default().fg(Color::White).bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                let is_selected_row =
+                    self.detail_focused && absolute_row_idx == self.section_cursors[section_idx];
+
+                let mut cells: Vec<Cell> = row_data
+                    .cells
+                    .iter()
+                    .enumerate()
+                    .map(|(col_idx, cell_text)| {
+                        let text = if col_idx == 0 {
+                            format!("{}{}", indent_str, cell_text)
+                        } else {
+                            cell_text.clone()
+                        };
+
+                        // Apply highlighting based on selection mode
+                        let style = if is_selected_row {
+                            if use_row_selection {
+                                // Row selection mode: highlight entire row
+                                Style::default()
+                                    .fg(Color::White)
+                                    .bg(Color::DarkGray)
+                                    .add_modifier(Modifier::BOLD)
+                            } else if col_idx == focused_col {
+                                // Cell selection mode: highlight only the focused cell
+                                Style::default()
+                                    .fg(Color::White)
+                                    .bg(Color::DarkGray)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(Color::White)
+                            }
                         } else {
                             Style::default().fg(Color::White)
-                        }
-                    } else {
-                        Style::default().fg(Color::White)
-                    };
-                    
-                    Cell::from(text).style(style)
-                }).collect();
-                
-                while cells.len() < max_columns { 
-                    cells.push(Cell::from("")); 
+                        };
+
+                        Cell::from(text).style(style)
+                    })
+                    .collect();
+
+                while cells.len() < max_columns {
+                    cells.push(Cell::from(""));
                 }
                 Row::new(cells)
-            }).collect();
+            })
+            .collect();
 
         // Get column widths for this section, or use defaults from constraints
         let column_widths = self.get_column_widths(section_idx, constraints);
-        
+
         // Convert to ratatui Constraint using custom widths
-        let ratatui_constraints: Vec<Constraint> = column_widths.iter()
+        let ratatui_constraints: Vec<Constraint> = column_widths
+            .iter()
             .map(|&w| Constraint::Percentage(w))
             .collect();
-        
+
         // Cache the exact constraints for accurate click detection
         self.cached_ratatui_constraints = ratatui_constraints.clone();
-        
+
         // Create header cells with arrow indicator for focused column
-        let header_cells: Vec<Cell> = header.cells.iter().enumerate().map(|(idx, c)| {
-            use ratatui::text::Text;
-            let text = if self.detail_focused && idx == focused_col {
-                // Prepend arrow to the existing header text
-                format!("▼\n{}", c)
-            } else {
-                c.to_string()
-            };
-            
-            // Keep yellow color for all headers, focused column only gets the arrow
-            let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-            Cell::from(Text::from(text)).style(style)
-        }).collect();
+        let header_cells: Vec<Cell> = header
+            .cells
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| {
+                use ratatui::text::Text;
+                let text = if self.detail_focused && idx == focused_col {
+                    // Prepend arrow to the existing header text
+                    format!("▼\n{}", c)
+                } else {
+                    c.to_string()
+                };
+
+                // Keep yellow color for all headers, focused column only gets the arrow
+                let style = Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD);
+                Cell::from(Text::from(text)).style(style)
+            })
+            .collect();
         let header_row = Row::new(header_cells).height(3);
-        let table = Table::new(visible_rows, ratatui_constraints).column_spacing(3).header(header_row);
+        let table = Table::new(visible_rows, ratatui_constraints)
+            .column_spacing(3)
+            .header(header_row);
         frame.render_widget(table, inner);
 
         if row_count > viewport_height {
-            render_scrollbar(frame, area, row_count, self.section_scrolls[section_idx], viewport_height);
+            render_scrollbar(
+                frame,
+                area,
+                row_count,
+                self.section_scrolls[section_idx],
+                viewport_height,
+            );
         }
     }
 
-    fn get_column_widths(&mut self, section_idx: usize, constraints: &[crate::tree::ColumnConstraint]) -> Vec<u16> {
+    fn get_column_widths(
+        &mut self,
+        section_idx: usize,
+        constraints: &[crate::tree::ColumnConstraint],
+    ) -> Vec<u16> {
         // Ensure we have enough entries in column_widths
         while self.column_widths.len() <= section_idx {
             self.column_widths.push(Vec::new());
         }
-        
+
         // If we don't have custom widths for this section, initialize from constraints
         if self.column_widths[section_idx].is_empty() {
             // First pass: convert to initial widths
-            let mut widths: Vec<u16> = constraints.iter().map(|c| match c {
-                crate::tree::ColumnConstraint::Fixed(w) => {
-                    // Convert fixed width to a reasonable percentage (roughly 1.5% per char)
-                    (*w * 3 / 2).clamp(3, 15)
-                },
-                crate::tree::ColumnConstraint::Percentage(p) => *p,
-            }).collect();
-            
+            let mut widths: Vec<u16> = constraints
+                .iter()
+                .map(|c| match c {
+                    crate::tree::ColumnConstraint::Fixed(w) => {
+                        // Convert fixed width to a reasonable percentage (roughly 1.5% per char)
+                        (*w * 3 / 2).clamp(3, 15)
+                    }
+                    crate::tree::ColumnConstraint::Percentage(p) => *p,
+                })
+                .collect();
+
             // Normalize to ensure total is exactly 100%
             let total: u16 = widths.iter().sum();
             if total > 0 && total != 100 {
                 // Scale all widths proportionally to sum to 100
-                widths = widths.iter().map(|&w| {
-                    ((w as f32 / total as f32) * 100.0).round() as u16
-                }).collect();
-                
+                widths = widths
+                    .iter()
+                    .map(|&w| ((w as f32 / total as f32) * 100.0).round() as u16)
+                    .collect();
+
                 // Handle rounding errors: adjust the largest column
                 let new_total: u16 = widths.iter().sum();
                 if new_total != 100 && !widths.is_empty() {
-                    let max_idx = widths.iter().enumerate()
+                    let max_idx = widths
+                        .iter()
+                        .enumerate()
                         .max_by_key(|(_, w)| *w)
                         .map(|(idx, _)| idx)
                         .unwrap_or(0);
                     widths[max_idx] = widths[max_idx].saturating_add(100 - new_total);
                 }
             }
-            
+
             self.column_widths[section_idx] = widths;
         }
-        
+
         self.column_widths[section_idx].clone()
     }
 
@@ -865,13 +1015,13 @@ impl App {
         if available_width < 5 || tab_titles.is_empty() {
             return 1;
         }
-        
+
         let mut lines = 1;
         let mut current_width = 0;
-        
+
         for title in tab_titles {
             let tab_width = title.len() + 3 + 1; // +3 for " title " padding, +1 for separator
-            
+
             if current_width + tab_width > available_width && current_width > 0 {
                 // Need a new line
                 lines += 1;
@@ -880,64 +1030,72 @@ impl App {
                 current_width += tab_width;
             }
         }
-        
+
         // Add 1 for the separator line below tabs
         lines + 1
     }
 
     /// Render tabs with wrapping support for narrow windows
-    fn render_wrapped_tabs(&self, frame: &mut Frame, area: Rect, tab_titles: &[String], selected: usize, focused: bool) {
+    fn render_wrapped_tabs(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        tab_titles: &[String],
+        selected: usize,
+        focused: bool,
+    ) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(focused));
-        
+
         let inner = block.inner(area);
         frame.render_widget(block, area);
-        
+
         // Calculate how to distribute tabs across lines
         let available_width = inner.width as usize;
         if available_width < 5 {
             return; // Too narrow to render anything meaningful
         }
-        
+
         // Build tab strings with decorators: " TabName "
-        let tab_strings: Vec<String> = tab_titles.iter()
+        let tab_strings: Vec<String> = tab_titles
+            .iter()
             .map(|title| format!(" {} ", title))
             .collect();
-        
+
         // Calculate positions and line breaks
         let mut lines: Vec<Vec<(usize, &String)>> = Vec::new();
         let mut current_line: Vec<(usize, &String)> = Vec::new();
         let mut current_width = 0;
-        
+
         for (idx, tab_str) in tab_strings.iter().enumerate() {
             let tab_width = tab_str.len() + 1; // +1 for separator
-            
+
             if current_width + tab_width > available_width && !current_line.is_empty() {
                 // Start a new line
                 lines.push(current_line);
                 current_line = Vec::new();
                 current_width = 0;
             }
-            
+
             current_line.push((idx, tab_str));
             current_width += tab_width;
         }
-        
+
         if !current_line.is_empty() {
             lines.push(current_line);
         }
-        
+
         // Render each line of tabs
         let num_tab_lines = lines.len();
         for (line_idx, line_tabs) in lines.iter().enumerate() {
             if line_idx >= inner.height.saturating_sub(1) as usize {
                 break; // Reserve space for separator line
             }
-            
+
             let y = inner.y + line_idx as u16;
             let mut x = inner.x;
-            
+
             for (i, (tab_idx, tab_str)) in line_tabs.iter().enumerate() {
                 let is_selected = *tab_idx == selected;
                 let style = if is_selected {
@@ -947,21 +1105,26 @@ impl App {
                 } else {
                     Style::default().fg(Color::Gray)
                 };
-                
+
                 // Add separator before tab (except first on line)
                 if i > 0 {
                     let sep_span = Span::styled("│", Style::default().fg(Color::DarkGray));
                     frame.render_widget(
                         Paragraph::new(Line::from(sep_span)),
-                        Rect { x, y, width: 1, height: 1 }
+                        Rect {
+                            x,
+                            y,
+                            width: 1,
+                            height: 1,
+                        },
                     );
                     x += 1;
                 }
-                
+
                 // Render the tab
                 let span = Span::styled(tab_str.as_str(), style);
                 let line = Line::from(span);
-                
+
                 frame.render_widget(
                     Paragraph::new(line),
                     Rect {
@@ -969,19 +1132,19 @@ impl App {
                         y,
                         width: tab_str.len() as u16,
                         height: 1,
-                    }
+                    },
                 );
-                
+
                 x += tab_str.len() as u16;
             }
         }
-        
+
         // Draw a horizontal separator line below all tabs
         if num_tab_lines > 0 && inner.height > num_tab_lines as u16 {
             let separator_y = inner.y + num_tab_lines as u16;
             let separator_line = "─".repeat(available_width);
             let sep_style = Style::default().fg(Color::DarkGray);
-            
+
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(separator_line, sep_style))),
                 Rect {
@@ -989,7 +1152,7 @@ impl App {
                     y: separator_y,
                     width: inner.width,
                     height: 1,
-                }
+                },
             );
         }
     }

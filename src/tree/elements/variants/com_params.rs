@@ -1,11 +1,12 @@
 use cda_database::datatypes::DiagLayer;
 
-use crate::tree::builder::TreeBuilder;
-use crate::tree::types::NodeType;
+use crate::tree::{builder::TreeBuilder, types::NodeType};
 
 /// Add ComParam refs section to the tree
 pub fn add_com_params(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
-    let Some(cp_refs) = layer.com_param_refs() else { return };
+    let Some(cp_refs) = layer.com_param_refs() else {
+        return;
+    };
     if cp_refs.is_empty() {
         return;
     }

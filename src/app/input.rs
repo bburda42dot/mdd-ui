@@ -32,10 +32,13 @@ impl App {
                         self.rebuild_visible();
                         let depth = self.search_stack.len();
                         if depth > 0 {
-                            let stack_display: Vec<String> = self.search_stack.iter()
+                            let stack_display: Vec<String> = self
+                                .search_stack
+                                .iter()
                                 .map(|(term, _scope)| term.clone())
                                 .collect();
-                            self.status = format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
+                            self.status =
+                                format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
                         } else {
                             self.status = "All searches cleared".to_owned();
                         }
@@ -44,7 +47,7 @@ impl App {
                     self.search.pop();
                 }
             }
-            
+
             // Navigation with arrow keys only (preserve letter keys for search input)
             KeyCode::Up => {
                 self.move_up();
@@ -70,18 +73,18 @@ impl App {
             KeyCode::End => {
                 self.end();
             }
-            
+
             // Toggle mouse mode (works in search mode too)
             KeyCode::Char('m') => {
                 self.toggle_mouse_mode();
             }
-            
+
             // Regular character input for search
             KeyCode::Char(c) => {
                 self.search.push(c);
                 // Don't call update_search() here - only update on Enter
             }
-            
+
             _ => {}
         }
         Action::Continue
@@ -97,7 +100,7 @@ impl App {
             }
             return Action::Continue;
         }
-        
+
         // Check if detail popup is open
         if self.detail_popup.is_some() {
             // Popup is open - only Escape closes it
@@ -106,11 +109,11 @@ impl App {
             }
             return Action::Continue;
         }
-        
+
         match code {
             KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
             KeyCode::Char('c') if ctrl => return Action::Quit,
-            
+
             KeyCode::Backspace => {
                 // Navigate back in history (when not in search mode and not in detail pane)
                 if !self.detail_focused {
@@ -138,7 +141,7 @@ impl App {
                     // Move cursor up in the selected tab
                     let section_idx = self.get_section_index();
                     if section_idx < self.section_cursors.len() {
-                        self.section_cursors[section_idx] = 
+                        self.section_cursors[section_idx] =
                             self.section_cursors[section_idx].saturating_sub(1);
                     }
                 } else {
@@ -150,7 +153,7 @@ impl App {
                     // Move cursor down in the selected tab (will be clamped during render)
                     let section_idx = self.get_section_index();
                     if section_idx < self.section_cursors.len() {
-                        self.section_cursors[section_idx] = 
+                        self.section_cursors[section_idx] =
                             self.section_cursors[section_idx].saturating_add(1);
                     }
                 } else {
@@ -162,7 +165,7 @@ impl App {
                     // Move cursor up by page in selected tab
                     let section_idx = self.get_section_index();
                     if section_idx < self.section_cursors.len() {
-                        self.section_cursors[section_idx] = 
+                        self.section_cursors[section_idx] =
                             self.section_cursors[section_idx].saturating_sub(20);
                     }
                 } else {
@@ -174,7 +177,7 @@ impl App {
                     // Move cursor down by page in selected tab
                     let section_idx = self.get_section_index();
                     if section_idx < self.section_cursors.len() {
-                        self.section_cursors[section_idx] = 
+                        self.section_cursors[section_idx] =
                             self.section_cursors[section_idx].saturating_add(20);
                     }
                 } else {
@@ -228,48 +231,58 @@ impl App {
                     if self.cursor < self.visible.len() {
                         let node_idx = self.visible[self.cursor];
                         let node = &self.all_nodes[node_idx];
-                        
+
                         // Check if this is a service list header (generic check)
-                        let is_service_list = node.text.starts_with("Diag-Comms (") 
-                            || node.text.starts_with("Requests (") 
-                            || node.text.starts_with("Pos-Responses (") 
+                        let is_service_list = node.text.starts_with("Diag-Comms (")
+                            || node.text.starts_with("Requests (")
+                            || node.text.starts_with("Pos-Responses (")
                             || node.text.starts_with("Neg-Responses (");
-                        
+
                         // Check if this is any service-related node type (generic check)
-                        let is_service_node = matches!(node.node_type, 
-                            NodeType::Service | NodeType::ParentRefService | 
-                            NodeType::Request | NodeType::PosResponse | NodeType::NegResponse);
-                        
+                        let is_service_node = matches!(
+                            node.node_type,
+                            NodeType::Service
+                                | NodeType::ParentRefService
+                                | NodeType::Request
+                                | NodeType::PosResponse
+                                | NodeType::NegResponse
+                        );
+
                         if is_service_list {
                             // Navigate to selected service from service list table
                             self.try_navigate_to_service();
                         } else if is_service_node {
                             // Check if we're on the "Inherited From" row in Overview
                             let mut should_navigate_to_parent = false;
-                            
+
                             // Get the actual section index accounting for header section offset
                             let section_idx = self.get_section_index();
-                            
+
                             if section_idx < node.detail_sections.len() {
                                 let section = &node.detail_sections[section_idx];
                                 if section.title == "Overview" {
-                                    if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
-                                        let row_cursor = if section_idx < self.section_cursors.len() {
+                                    if let crate::tree::DetailContent::Table { rows, .. } =
+                                        &section.content
+                                    {
+                                        let row_cursor = if section_idx < self.section_cursors.len()
+                                        {
                                             self.section_cursors[section_idx]
                                         } else {
                                             0
                                         };
-                                        
+
                                         if row_cursor < rows.len() {
                                             let selected_row = &rows[row_cursor];
-                                            if selected_row.cells.len() >= 2 && selected_row.cells[0] == "Inherited From" {
+                                            if selected_row.cells.len() >= 2
+                                                && selected_row.cells[0] == "Inherited From"
+                                            {
                                                 should_navigate_to_parent = true;
                                             }
                                         }
                                     }
                                 }
                             }
-                            
+
                             if should_navigate_to_parent {
                                 self.try_navigate_to_inherited_parent();
                             } else {
@@ -291,22 +304,22 @@ impl App {
 
             KeyCode::Char('e') => self.expand_all(),
             KeyCode::Char('c') => self.collapse_all(),
-            
+
             // Clear search stack ('x')
             KeyCode::Char('x') if !self.detail_focused => {
                 self.clear_search_stack();
             }
-            
+
             // Cycle search scope (Shift+S)
             KeyCode::Char('S') if !self.detail_focused => {
                 self.cycle_search_scope();
             }
-            
+
             // Toggle DiagComm sorting (only when tree is focused)
             KeyCode::Char('s') if !self.detail_focused => {
                 self.toggle_diagcomm_sort();
             }
-            
+
             // Toggle table column sorting (only when detail pane is focused)
             KeyCode::Char('s') if self.detail_focused => {
                 self.toggle_table_column_sort();
@@ -338,12 +351,12 @@ impl App {
             KeyCode::Char('.') if self.detail_focused => {
                 self.focused_column = self.focused_column.saturating_add(1);
             }
-            
+
             // Toggle mouse mode (works everywhere)
             KeyCode::Char('m') => {
                 self.toggle_mouse_mode();
             }
-            
+
             // Show help popup
             KeyCode::Char('?') => {
                 self.help_popup_visible = true;

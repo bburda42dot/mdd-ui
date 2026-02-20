@@ -1,16 +1,17 @@
 use cda_database::datatypes::{DiagLayer, ParentRef};
 
-use crate::tree::builder::TreeBuilder;
-
-use super::variants::services::add_diag_comms;
-use super::variants::requests::add_requests_section;
-use super::variants::responses::{add_pos_responses_section, add_neg_responses_section};
-use super::variants::state_charts::add_state_charts;
-use super::variants::com_params::add_com_params;
-use super::variants::placeholders::{
-    add_functional_classes, add_diag_data_dictionary_spec,
-    add_additional_audiences, add_sub_components, add_sdgs, add_parent_refs,
+use super::variants::{
+    com_params::add_com_params,
+    placeholders::{
+        add_additional_audiences, add_diag_data_dictionary_spec, add_functional_classes,
+        add_parent_refs, add_sdgs, add_sub_components,
+    },
+    requests::add_requests_section,
+    responses::{add_neg_responses_section, add_pos_responses_section},
+    services::add_diag_comms,
+    state_charts::add_state_charts,
 };
+use crate::tree::builder::TreeBuilder;
 
 /// Extension trait for adding DiagLayer structures to the tree
 pub trait LayerExt {
@@ -36,62 +37,63 @@ impl LayerExt for TreeBuilder {
         variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
     ) {
         // Collect parent refs into a vector so we can reuse them for multiple sections
-        let parent_refs_vec: Option<Vec<ParentRef<'a>>> = variant_parent_refs.map(|iter| iter.collect());
-        
+        let parent_refs_vec: Option<Vec<ParentRef<'a>>> =
+            variant_parent_refs.map(|iter| iter.collect());
+
         // Functional Classes
         add_functional_classes(self, layer, depth);
-        
+
         // Diag-Data-Dictionary-Spec
         add_diag_data_dictionary_spec(self, layer, depth);
-        
+
         // Diag-Comms
         add_diag_comms(
-            self, 
-            layer, 
-            depth, 
-            layer_name, 
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned())
+            self,
+            layer,
+            depth,
+            layer_name,
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
-        
+
         // Requests (from diag-comms) - use EXACTLY the same logic as DiagComm
         add_requests_section(
-            self, 
-            layer, 
+            self,
+            layer,
             depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned())
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
-        
+
         // Pos-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
         add_pos_responses_section(
-            self, 
-            layer, 
+            self,
+            layer,
             depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned())
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
-        
+
         // Neg-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
         add_neg_responses_section(
-            self, 
-            layer, 
+            self,
+            layer,
             depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned())
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
-        
+
         // State-Charts
         add_state_charts(self, layer, depth);
-        
+
         // Additional Audiences
         add_additional_audiences(self, layer, depth);
-        
+
         // Sub-Components
         add_sub_components(self, layer, depth);
-        
+
         // SDGs
         add_sdgs(self, layer, depth);
-        
+
         // ComParam Refs
         add_com_params(self, layer, depth);
-        
+
         // Parent Refs
         add_parent_refs(self, layer, depth);
     }

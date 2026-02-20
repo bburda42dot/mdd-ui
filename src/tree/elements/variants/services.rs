@@ -1,23 +1,25 @@
-use cda_database::datatypes::{DiagLayer, DiagService, Parameter, ParamType, ParentRef};
-
-use crate::tree::builder::TreeBuilder;
-use crate::tree::types::{NodeType, DetailSectionData, DetailRow, DetailContent, CellType, ColumnConstraint};
+use cda_database::datatypes::{DiagLayer, DiagService, ParamType, Parameter, ParentRef};
 
 // Import rendering functions from specialized modules
 use super::requests::build_request_section;
-use super::responses::{build_pos_responses_sections, build_neg_responses_sections};
+use super::responses::{build_neg_responses_sections, build_pos_responses_sections};
+use crate::tree::{
+    builder::TreeBuilder,
+    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, NodeType},
+};
 
 // Helper functions to extract parameter data
 pub fn extract_coded_value(param: &Parameter<'_>) -> String {
     let Ok(pt) = param.param_type() else {
         return String::new();
     };
-    
+
     if !matches!(pt, ParamType::CodedConst) {
         return String::new();
     }
-    
-    param.specific_data_as_coded_const()
+
+    param
+        .specific_data_as_coded_const()
         .and_then(|cc| cc.coded_value())
         .map(|v| {
             if let Ok(num) = v.parse::<u64>() {
@@ -44,12 +46,13 @@ pub fn extract_dop_name(param: &Parameter<'_>) -> String {
     let Ok(pt) = param.param_type() else {
         return String::new();
     };
-    
+
     if !matches!(pt, ParamType::Value) {
         return String::new();
     }
-    
-    param.specific_data_as_value()
+
+    param
+        .specific_data_as_value()
         .and_then(|vd| vd.dop())
         .and_then(|dop| dop.short_name())
         .map(|s| s.to_owned())
@@ -65,23 +68,25 @@ pub fn add_diag_comms<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services
-    let own_services: Vec<DiagService<'_>> = layer.diag_services()
+    let own_services: Vec<DiagService<'_>> = layer
+        .diag_services()
         .map(|services| services.iter().map(DiagService).collect())
         .unwrap_or_default();
-    
+
     // Collect services from parent refs with source layer names
-    let parent_services: Vec<(DiagService<'_>, String)> = if let Some(parent_refs) = variant_parent_refs {
-        get_parent_ref_services_recursive(parent_refs)
-    } else {
-        Vec::new()
-    };
-    
+    let parent_services: Vec<(DiagService<'_>, String)> =
+        if let Some(parent_refs) = variant_parent_refs {
+            get_parent_ref_services_recursive(parent_refs)
+        } else {
+            Vec::new()
+        };
+
     let total_count = own_services.len() + parent_services.len();
-    
+
     if total_count > 0 {
         // Build detail section for Diag-Comms header showing all services in a table
         let detail_section = build_diag_comms_table_section(&own_services, &parent_services);
-        
+
         b.push_details_structured(
             depth,
             format!("Diag-Comms ({})", total_count),
@@ -90,12 +95,12 @@ pub fn add_diag_comms<'a>(
             vec![detail_section],
             NodeType::SectionHeader,
         );
-        
+
         // Add own services first
         for ds in own_services.iter() {
             if let Some(dc) = ds.diag_comm() {
                 let name = dc.short_name().unwrap_or("?");
-                
+
                 // Format with service ID with proper padding for alignment
                 let display_name = if let Some(sid) = ds.request_id() {
                     if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
@@ -112,7 +117,7 @@ pub fn add_diag_comms<'a>(
                 } else {
                     name.to_string()
                 };
-                
+
                 let sections = build_diag_comm_details_with_parent(ds, None);
 
                 b.push_details_structured(
@@ -125,12 +130,12 @@ pub fn add_diag_comms<'a>(
                 );
             }
         }
-        
+
         // Add parent ref services with different node type
         for (ds, source_layer_name) in parent_services.iter() {
             if let Some(dc) = ds.diag_comm() {
                 let name = dc.short_name().unwrap_or("?");
-                
+
                 let display_name = if let Some(sid) = ds.request_id() {
                     if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
                         let sub_fn_str = if bit_len <= 8 {
@@ -146,8 +151,9 @@ pub fn add_diag_comms<'a>(
                 } else {
                     name.to_string()
                 };
-                
-                let sections = build_diag_comm_details_with_parent(ds, Some(source_layer_name.clone()));
+
+                let sections =
+                    build_diag_comm_details_with_parent(ds, Some(source_layer_name.clone()));
 
                 b.push_details_structured(
                     depth + 1,
@@ -202,11 +208,12 @@ pub fn get_parent_ref_services_recursive<'a>(
                         let ecu_shared_data = parent_ref.ref__as_ecu_shared_data()?;
                         let layer = ecu_shared_data.diag_layer()?;
                         let layer_name = layer.short_name().unwrap_or("EcuSharedData").to_owned();
-                        let services = layer
-                            .diag_services()?
-                            .iter()
-                            .map(DiagService);
-                        Some(filter_not_inherited_services(services, &not_inherited_names, layer_name))
+                        let services = layer.diag_services()?.iter().map(DiagService);
+                        Some(filter_not_inherited_services(
+                            services,
+                            &not_inherited_names,
+                            layer_name,
+                        ))
                     }
                     Ok(cda_database::datatypes::ParentRefType::FunctionalGroup) => parent_ref
                         .ref__as_functional_group()
@@ -218,21 +225,23 @@ pub fn get_parent_ref_services_recursive<'a>(
                         let protocol = parent_ref.ref__as_protocol()?;
                         let layer = protocol.diag_layer()?;
                         let layer_name = layer.short_name().unwrap_or("Protocol").to_owned();
-                        let services = layer
-                            .diag_services()?
-                            .iter()
-                            .map(DiagService);
-                        Some(filter_not_inherited_services(services, &not_inherited_names, layer_name))
+                        let services = layer.diag_services()?.iter().map(DiagService);
+                        Some(filter_not_inherited_services(
+                            services,
+                            &not_inherited_names,
+                            layer_name,
+                        ))
                     }
                     Ok(cda_database::datatypes::ParentRefType::Variant) => {
                         let variant = parent_ref.ref__as_variant()?;
                         let layer = variant.diag_layer()?;
                         let layer_name = layer.short_name().unwrap_or("Variant").to_owned();
-                        let services = layer
-                            .diag_services()?
-                            .iter()
-                            .map(DiagService);
-                        Some(filter_not_inherited_services(services, &not_inherited_names, layer_name))
+                        let services = layer.diag_services()?.iter().map(DiagService);
+                        Some(filter_not_inherited_services(
+                            services,
+                            &not_inherited_names,
+                            layer_name,
+                        ))
                     }
                     _ => {
                         // Unsupported parent ref type
@@ -248,7 +257,10 @@ pub fn get_parent_ref_services_recursive<'a>(
 }
 
 /// Build detailed sections for a diagnostic service with optional parent layer info
-pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_name: Option<String>) -> Vec<DetailSectionData> {
+pub fn build_diag_comm_details_with_parent(
+    ds: &DiagService<'_>,
+    parent_layer_name: Option<String>,
+) -> Vec<DetailSectionData> {
     let mut sections: Vec<DetailSectionData> = Vec::new();
 
     // Add header section with service ID and name (matching tree display format)
@@ -268,7 +280,7 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
     } else {
         format!("Diag-Comm - {}", service_name)
     };
-    
+
     sections.push(DetailSectionData {
         title: header_title,
         render_as_header: true,
@@ -281,9 +293,9 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
     };
-    
+
     let mut rows = Vec::new();
-    
+
     if let Some(dc) = ds.diag_comm() {
         if let Some(sn) = dc.short_name() {
             rows.push(DetailRow {
@@ -309,7 +321,10 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
     }
     if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
         rows.push(DetailRow {
-            cells: vec!["Sub-Function".to_owned(), format!("0x{sub_fn:04X} ({bit_len} bits)")],
+            cells: vec![
+                "Sub-Function".to_owned(),
+                format!("0x{sub_fn:04X} ({bit_len} bits)"),
+            ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
         });
@@ -320,11 +335,14 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
         indent: 0,
     });
     rows.push(DetailRow {
-        cells: vec!["Transmission".to_owned(), format!("{:?}", ds.transmission_mode())],
+        cells: vec![
+            "Transmission".to_owned(),
+            format!("{:?}", ds.transmission_mode()),
+        ],
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
     });
-    
+
     // Add inheritance information only if inherited
     if let Some(parent_name) = parent_layer_name {
         rows.push(DetailRow {
@@ -334,7 +352,7 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
         });
     }
 
-    sections.push(DetailSectionData { 
+    sections.push(DetailSectionData {
         title: "Overview".to_owned(),
         render_as_header: false,
         content: DetailContent::Table {
@@ -344,7 +362,7 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
                 ColumnConstraint::Percentage(30),
                 ColumnConstraint::Percentage(70),
             ],
-            use_row_selection: true,  // Use row selection for Overview
+            use_row_selection: true, // Use row selection for Overview
         },
     });
 
@@ -359,22 +377,33 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
     // Neg responses - use rendering logic from responses module
     sections.extend(build_neg_responses_sections(ds));
 
-
     // ComParam refs
     let comparam_header = DetailRow {
-        cells: vec!["ComParam".to_owned(), "Value".to_owned(), "Complex Value".to_owned(), "Protocol".to_owned(), "Prot-Stack".to_owned()],
-        cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        cells: vec![
+            "ComParam".to_owned(),
+            "Value".to_owned(),
+            "Complex Value".to_owned(),
+            "Protocol".to_owned(),
+            "Prot-Stack".to_owned(),
+        ],
+        cell_types: vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
         indent: 0,
     };
-    sections.push(DetailSectionData { 
+    sections.push(DetailSectionData {
         title: "ComParam-Refs".to_owned(),
         render_as_header: false,
         content: DetailContent::Table {
             header: comparam_header,
-            rows: vec![DetailRow { 
-                cells: vec!["(No ComParam refs at comm level)".to_owned()], 
+            rows: vec![DetailRow {
+                cells: vec!["(No ComParam refs at comm level)".to_owned()],
                 cell_types: vec![CellType::Text],
-                indent: 0, 
+                indent: 0,
             }],
             constraints: vec![
                 ColumnConstraint::Percentage(20),
@@ -391,42 +420,71 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
     if let Some(dc) = ds.diag_comm() {
         if let Some(audience) = dc.audience() {
             let mut subsections = Vec::new();
-            
+
             // Flags subsection
             let mut flag_lines = Vec::new();
-            flag_lines.push(format!("IS_MANUFACTURER: {}", if audience.is_manufacturing() { "true" } else { "false" }));
-            flag_lines.push(format!("IS_DEVELOPMENT: {}", if audience.is_development() { "true" } else { "false" }));
-            flag_lines.push(format!("IS_AFTERSALES: {}", if audience.is_after_sales() { "true" } else { "false" }));
-            flag_lines.push(format!("IS_AFTERMARKET: {}", if audience.is_after_market() { "true" } else { "false" }));
-            
-            subsections.push(DetailSectionData { 
+            flag_lines.push(format!(
+                "IS_MANUFACTURER: {}",
+                if audience.is_manufacturing() {
+                    "true"
+                } else {
+                    "false"
+                }
+            ));
+            flag_lines.push(format!(
+                "IS_DEVELOPMENT: {}",
+                if audience.is_development() {
+                    "true"
+                } else {
+                    "false"
+                }
+            ));
+            flag_lines.push(format!(
+                "IS_AFTERSALES: {}",
+                if audience.is_after_sales() {
+                    "true"
+                } else {
+                    "false"
+                }
+            ));
+            flag_lines.push(format!(
+                "IS_AFTERMARKET: {}",
+                if audience.is_after_market() {
+                    "true"
+                } else {
+                    "false"
+                }
+            ));
+
+            subsections.push(DetailSectionData {
                 title: "Audience Flags".to_owned(),
                 render_as_header: false,
                 content: DetailContent::PlainText(flag_lines),
             });
-            
+
             // Additional audiences subsection
             if let Some(audiences) = audience.enabled_audiences() {
-                let audiences_list: Vec<_> = audiences.iter()
+                let audiences_list: Vec<_> = audiences
+                    .iter()
                     .filter_map(|aa| aa.short_name().map(|s| s.to_owned()))
                     .collect();
-                
+
                 if !audiences_list.is_empty() {
-                    subsections.push(DetailSectionData { 
+                    subsections.push(DetailSectionData {
                         title: "Additional Audiences".to_owned(),
                         render_as_header: false,
                         content: DetailContent::PlainText(audiences_list),
                     });
                 }
             }
-            
-            sections.push(DetailSectionData { 
+
+            sections.push(DetailSectionData {
                 title: "Audience".to_owned(),
                 render_as_header: false,
                 content: DetailContent::Composite(subsections),
             });
         } else {
-            sections.push(DetailSectionData { 
+            sections.push(DetailSectionData {
                 title: "Audience".to_owned(),
                 render_as_header: false,
                 content: DetailContent::PlainText(vec!["(No audience info)".to_owned()]),
@@ -436,19 +494,29 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
 
     // SDGs
     let sdg_header = DetailRow {
-        cells: vec!["Short Name".to_owned(), "SD".to_owned(), "SI".to_owned(), "TI".to_owned()],
-        cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        cells: vec![
+            "Short Name".to_owned(),
+            "SD".to_owned(),
+            "SI".to_owned(),
+            "TI".to_owned(),
+        ],
+        cell_types: vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
         indent: 0,
     };
-    sections.push(DetailSectionData { 
+    sections.push(DetailSectionData {
         title: "SDGs".to_owned(),
         render_as_header: false,
         content: DetailContent::Table {
             header: sdg_header,
-            rows: vec![DetailRow { 
-                cells: vec!["(SDGs not available at comm level)".to_owned()], 
+            rows: vec![DetailRow {
+                cells: vec!["(SDGs not available at comm level)".to_owned()],
                 cell_types: vec![CellType::Text],
-                indent: 0, 
+                indent: 0,
             }],
             constraints: vec![
                 ColumnConstraint::Percentage(40),
@@ -467,31 +535,31 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
             cell_types: vec![CellType::Text],
             indent: 0,
         };
-        
+
         let mut rows = Vec::new();
         for pc in dc.pre_condition_state_refs().into_iter().flatten() {
             if let Some(val) = pc.value() {
-                rows.push(DetailRow { 
-                    cells: vec![val.to_owned()], 
+                rows.push(DetailRow {
+                    cells: vec![val.to_owned()],
                     cell_types: vec![CellType::Text],
-                    indent: 0, 
+                    indent: 0,
                 });
             }
         }
         for st in dc.state_transition_refs().into_iter().flatten() {
             if let Some(val) = st.value() {
-                rows.push(DetailRow { 
-                    cells: vec![val.to_owned()], 
+                rows.push(DetailRow {
+                    cells: vec![val.to_owned()],
                     cell_types: vec![CellType::Text],
-                    indent: 0, 
+                    indent: 0,
                 });
             }
         }
-        sections.push(DetailSectionData { 
+        sections.push(DetailSectionData {
             title: "States".to_owned(),
             render_as_header: false,
-            content: DetailContent::Table { 
-                header, 
+            content: DetailContent::Table {
+                header,
                 rows,
                 constraints: vec![ColumnConstraint::Percentage(100)],
                 use_row_selection: false,
@@ -505,15 +573,15 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
         cell_types: vec![CellType::Text],
         indent: 0,
     };
-    sections.push(DetailSectionData { 
+    sections.push(DetailSectionData {
         title: "Related-Diag-Comm-Refs".to_owned(),
         render_as_header: false,
         content: DetailContent::Table {
             header: related_header,
-            rows: vec![DetailRow { 
-                cells: vec!["(Related comms not available)".to_owned()], 
+            rows: vec![DetailRow {
+                cells: vec!["(Related comms not available)".to_owned()],
                 cell_types: vec![CellType::Text],
-                indent: 0, 
+                indent: 0,
             }],
             constraints: vec![ColumnConstraint::Percentage(100)],
             use_row_selection: false,
@@ -523,20 +591,27 @@ pub fn build_diag_comm_details_with_parent(ds: &DiagService<'_>, parent_layer_na
     sections
 }
 /// Build a table section for the Diag-Comms header showing all services
-fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_services: &[(DiagService<'_>, String)]) -> DetailSectionData {
+fn build_diag_comms_table_section(
+    own_services: &[DiagService<'_>],
+    parent_services: &[(DiagService<'_>, String)],
+) -> DetailSectionData {
     let header = DetailRow {
-        cells: vec!["ID".to_owned(), "Short Name".to_owned(), "Inherited".to_owned()],
+        cells: vec![
+            "ID".to_owned(),
+            "Short Name".to_owned(),
+            "Inherited".to_owned(),
+        ],
         cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
         indent: 0,
     };
-    
+
     let mut rows = Vec::new();
-    
+
     // Add own services first (inherited = false)
     for ds in own_services.iter() {
         if let Some(dc) = ds.diag_comm() {
             let name = dc.short_name().unwrap_or("?").to_owned();
-            
+
             let id = if let Some(sid) = ds.request_id() {
                 if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
                     let sub_fn_str = if bit_len <= 8 {
@@ -552,7 +627,7 @@ fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_servi
             } else {
                 "-".to_owned()
             };
-            
+
             rows.push(DetailRow {
                 cells: vec![id, name, "false".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
@@ -560,12 +635,12 @@ fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_servi
             });
         }
     }
-    
+
     // Add parent services (inherited = true)
     for (ds, _source_layer_name) in parent_services.iter() {
         if let Some(dc) = ds.diag_comm() {
             let name = dc.short_name().unwrap_or("?").to_owned();
-            
+
             let id = if let Some(sid) = ds.request_id() {
                 if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
                     let sub_fn_str = if bit_len <= 8 {
@@ -581,7 +656,7 @@ fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_servi
             } else {
                 "-".to_owned()
             };
-            
+
             rows.push(DetailRow {
                 cells: vec![id, name, "true".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
@@ -589,9 +664,9 @@ fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_servi
             });
         }
     }
-    
+
     let total_count = own_services.len() + parent_services.len();
-    
+
     DetailSectionData {
         title: format!("Diag-Comms ({})", total_count),
         render_as_header: false,

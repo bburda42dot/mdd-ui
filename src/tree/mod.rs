@@ -1,17 +1,16 @@
-mod types;
 mod builder;
 mod elements;
-
-use cda_database::datatypes::DiagnosticDatabase;
-
-// Re-export public types
-pub use types::{
-    TreeNode, NodeType, CellType, DetailRow, ColumnConstraint,
-    DetailContent, DetailSectionData, lines_to_single_section,
-};
+mod types;
 
 use builder::TreeBuilder;
-use elements::{add_variants, add_functional_groups, add_ecu_shared_data};
+use cda_database::datatypes::DiagnosticDatabase;
+use elements::{add_ecu_shared_data, add_functional_groups, add_variants};
+// Re-export public types
+pub use types::{
+    CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, NodeType, TreeNode,
+    lines_to_single_section,
+};
+
 use crate::database::{extract_data, get_ecu_summary};
 
 /// Walk the entire database and produce a flat list of tree nodes ready for
@@ -35,7 +34,7 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
             vec![ecu_section],
             NodeType::SectionHeader,
         );
-        
+
         add_variants(&mut b, ecu);
         add_functional_groups(&mut b, ecu);
         add_ecu_shared_data(&mut b, ecu);

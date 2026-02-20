@@ -26,9 +26,9 @@ fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)
         .context("Failed to enable mouse capture")?;
-    
+
     let result = app::App::new(nodes).run(&mut terminal);
-    
+
     let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
 

@@ -255,6 +255,11 @@ impl App {
             KeyCode::Char('s') if !self.detail_focused => {
                 self.toggle_diagcomm_sort();
             }
+            
+            // Toggle table column sorting (only when detail pane is focused)
+            KeyCode::Char('s') if self.detail_focused => {
+                self.toggle_table_column_sort();
+            }
 
             KeyCode::Char('/') => {
                 self.searching = true;

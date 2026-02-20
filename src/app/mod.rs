@@ -28,6 +28,18 @@ pub(crate) enum SearchScope {
     DiagComms,        // Search only in Diag-Comms sections
 }
 
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub(crate) enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub(crate) struct TableSortState {
+    pub column: usize,
+    pub direction: SortDirection,
+}
+
 pub struct App {
     all_nodes: Vec<TreeNode>,
     visible: Vec<usize>,
@@ -53,7 +65,7 @@ pub struct App {
     pub(crate) tree_width_percentage: u16, // Tree pane width (0-100)
     pub(crate) diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
     pub(crate) diag_comms_select_mode: bool, // true = select by row, false = select by cell
-    pub(crate) table_sort_columns: Vec<Option<usize>>, // Sorted column index for each table (None = default order)
+    pub(crate) table_sort_state: Vec<Option<TableSortState>>, // Sort state for each table section (None = default order)
     tree_area: Rect, // Cached tree area for mouse handling
     detail_area: Rect, // Cached detail area for mouse handling
     pub(crate) tab_area: Option<Rect>, // Cached tab area for mouse handling
@@ -98,7 +110,7 @@ impl App {
             tree_width_percentage: 40,
             diagcomm_sort_by_id: true, // Default: sort by ID
             diag_comms_select_mode: true, // Diag-Comms uses row selection
-            table_sort_columns: Vec::new(), // No sorting by default
+            table_sort_state: Vec::new(), // No sorting by default
             tree_area: Rect::default(),
             detail_area: Rect::default(),
             tab_area: None,
@@ -128,6 +140,24 @@ impl App {
             }
         }
         self.selected_tab
+    }
+
+    /// Get the section offset for rendering (0 or 1 if there's a semantic section)
+    fn get_section_offset(&self) -> usize {
+        if let Some(&idx) = self.visible.get(self.cursor) {
+            let sections = &self.all_nodes[idx].detail_sections;
+            if sections.len() > 1 
+                && sections[0].title == "Semantic" 
+                && matches!(&sections[0].content, crate::tree::DetailContent::PlainText(_)) {
+                return 1;
+            }
+        }
+        0
+    }
+
+    /// Get the actual table section index for storing/retrieving sort state
+    fn get_table_section_idx(&self) -> usize {
+        self.selected_tab + self.get_section_offset()
     }
 
     // -------------------------------------------------------------------
@@ -472,6 +502,53 @@ impl App {
             
             // Skip past the sorted section
             i = section_start + (section_end - section_start);
+        }
+    }
+
+    pub(crate) fn toggle_table_column_sort(&mut self) {
+        // Only works when detail pane is focused
+        if !self.detail_focused {
+            return;
+        }
+        
+        let section_idx = self.get_table_section_idx();
+        
+        // Ensure we have enough entries in table_sort_state
+        while self.table_sort_state.len() <= section_idx {
+            self.table_sort_state.push(None);
+        }
+        
+        let column = self.focused_column;
+        
+        // Toggle sort state: if already sorting by this column, toggle direction, otherwise sort ascending by this column
+        self.table_sort_state[section_idx] = match self.table_sort_state[section_idx] {
+            Some(state) if state.column == column => {
+                // Same column clicked: toggle direction
+                let new_direction = match state.direction {
+                    SortDirection::Ascending => SortDirection::Descending,
+                    SortDirection::Descending => SortDirection::Ascending,
+                };
+                Some(TableSortState {
+                    column,
+                    direction: new_direction,
+                })
+            }
+            _ => {
+                // Different column or no sort: sort ascending by this column
+                Some(TableSortState {
+                    column,
+                    direction: SortDirection::Ascending,
+                })
+            }
+        };
+        
+        // Update status message
+        if let Some(state) = self.table_sort_state[section_idx] {
+            let direction_str = match state.direction {
+                SortDirection::Ascending => "▲",
+                SortDirection::Descending => "▼",
+            };
+            self.status = format!("Sort by column {} {}", state.column, direction_str);
         }
     }
 

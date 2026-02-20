@@ -611,8 +611,48 @@ impl App {
     ) {
         let viewport_height = inner.height as usize;
         
-        // Apply sorting for Diag-Comms if needed
-        let sorted_rows: Vec<DetailRow> = if is_diag_comms {
+        // Apply sorting: explicit column sort takes precedence, then diag_comms sort, then default
+        let sorted_rows: Vec<DetailRow> = if section_idx < self.table_sort_state.len() {
+            if let Some(sort_state) = &self.table_sort_state[section_idx] {
+                // Apply general table sorting by column (takes precedence over diag_comms default)
+                let mut sorted = rows.to_vec();
+                let col = sort_state.column;
+                let dir = sort_state.direction;
+                sorted.sort_by(|a, b| {
+                    let a_cell = a.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+                    let b_cell = b.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+                    
+                    // Try to parse as numbers first, fall back to string comparison
+                    let cmp = match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
+                        (Ok(a_num), Ok(b_num)) => a_num.partial_cmp(&b_num).unwrap_or(std::cmp::Ordering::Equal),
+                        _ => a_cell.cmp(b_cell),
+                    };
+                    
+                    // Apply direction
+                    use crate::app::SortDirection;
+                    match dir {
+                        SortDirection::Ascending => cmp,
+                        SortDirection::Descending => cmp.reverse(),
+                    }
+                });
+                sorted
+            } else if is_diag_comms {
+                // Sort based on diagcomm_sort_by_id setting
+                let mut sorted = rows.to_vec();
+                sorted.sort_by(|a, b| {
+                    if self.diagcomm_sort_by_id {
+                        // Sort by ID (first column)
+                        a.cells.get(0).unwrap_or(&String::new()).cmp(b.cells.get(0).unwrap_or(&String::new()))
+                    } else {
+                        // Sort by Short Name (second column)
+                        a.cells.get(1).unwrap_or(&String::new()).cmp(b.cells.get(1).unwrap_or(&String::new()))
+                    }
+                });
+                sorted
+            } else {
+                rows.to_vec()
+            }
+        } else if is_diag_comms {
             // Sort based on diagcomm_sort_by_id setting
             let mut sorted = rows.to_vec();
             sorted.sort_by(|a, b| {
@@ -659,7 +699,9 @@ impl App {
             .take(viewport_height)
             .map(|(idx, row_data)| {
                 let indent_str = "  ".repeat(row_data.indent / 2);
-                let is_selected_row = self.detail_focused && idx == self.section_cursors[section_idx];
+                // Calculate absolute row index (accounting for scroll offset)
+                let absolute_row_idx = self.section_scrolls[section_idx] + idx;
+                let is_selected_row = self.detail_focused && absolute_row_idx == self.section_cursors[section_idx];
                 
                 let mut cells: Vec<Cell> = row_data.cells.iter().enumerate().map(|(col_idx, cell_text)| {
                     let text = if col_idx == 0 { 

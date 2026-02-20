@@ -207,9 +207,9 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let [main, status_bar] = Layout::default()
+        let [main, breadcrumb_bar, status_bar] = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .constraints([Constraint::Min(3), Constraint::Length(1), Constraint::Length(1)])
             .areas(frame.area());
 
         let [tree_area, detail_area] = Layout::default()
@@ -226,6 +226,7 @@ impl App {
 
         self.draw_tree(frame, tree_area);
         self.draw_detail(frame, detail_area);
+        self.draw_breadcrumb(frame, breadcrumb_bar);
         self.draw_status(frame, status_bar);
         
         // Draw popups if open (order matters - last drawn is on top)
@@ -1138,7 +1139,6 @@ impl App {
             self.detail_focused = false;
             self.cursor = target_cursor;
             self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
-            self.status = format!("Navigated to service: {}", service_name);
         } else {
             self.status = format!("Service '{}' not found in tree", service_name);
         }
@@ -1310,12 +1310,6 @@ impl App {
                         self.detail_focused = false;
                         self.cursor = new_cursor;
                         self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
-                        
-                        if found_service_idx.is_some() {
-                            self.status = format!("Navigated to service '{}' in parent layer '{}'", current_service_name, parent_layer_name);
-                        } else {
-                            self.status = format!("Navigated to parent layer '{}' (service not found)", parent_layer_name);
-                        }
                     }
                 } else {
                     // No Diag-Comms section found, just navigate to the container
@@ -1326,7 +1320,6 @@ impl App {
                         self.detail_focused = false;
                         self.cursor = new_cursor;
                         self.scroll_offset = self.cursor.saturating_sub(5);
-                        self.status = format!("Navigated to parent layer '{}' (no Diag-Comms section)", parent_layer_name);
                     }
                 }
             } else {

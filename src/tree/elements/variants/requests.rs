@@ -367,8 +367,10 @@ fn build_requests_table_section(own_services: &[DiagService<'_>], parent_service
         }
     }
     
+    let total_count = own_services.len() + parent_services.len();
+    
     DetailSectionData {
-        title: "Requests".to_owned(),
+        title: format!("Requests ({})", total_count),
         render_as_header: false,
         content: DetailContent::Table {
             header,

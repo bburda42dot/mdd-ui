@@ -525,8 +525,10 @@ fn build_pos_responses_table_section(own_services: &[DiagService<'_>], parent_se
         }
     }
     
+    let total_count = own_services.len() + parent_services.len();
+    
     DetailSectionData {
-        title: "Pos-Responses".to_owned(),
+        title: format!("Pos-Responses ({})", total_count),
         render_as_header: false,
         content: DetailContent::Table {
             header,
@@ -609,8 +611,10 @@ fn build_neg_responses_table_section(own_services: &[DiagService<'_>], parent_se
         }
     }
     
+    let total_count = own_services.len() + parent_services.len();
+    
     DetailSectionData {
-        title: "Neg-Responses".to_owned(),
+        title: format!("Neg-Responses ({})", total_count),
         render_as_header: false,
         content: DetailContent::Table {
             header,

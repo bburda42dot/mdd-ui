@@ -148,6 +148,52 @@ impl App {
         }
     }
 
+    /// Build breadcrumb path for the currently selected node
+    fn build_breadcrumb_path(&self) -> String {
+        if let Some(&node_idx) = self.visible.get(self.cursor) {
+            let mut path_parts = Vec::new();
+            let mut current_idx = node_idx;
+            
+            // Walk up the tree to build the path
+            loop {
+                let node = &self.all_nodes[current_idx];
+                path_parts.push(node.text.clone());
+                
+                // Find parent by looking for previous node with lower depth
+                let current_depth = node.depth;
+                if current_depth == 0 {
+                    break;
+                }
+                
+                let mut found_parent = false;
+                for i in (0..current_idx).rev() {
+                    if self.all_nodes[i].depth < current_depth {
+                        current_idx = i;
+                        found_parent = true;
+                        break;
+                    }
+                }
+                
+                if !found_parent {
+                    break;
+                }
+            }
+            
+            // Reverse to get root-to-leaf order
+            path_parts.reverse();
+            path_parts.join(" > ")
+        } else {
+            String::new()
+        }
+    }
+
+    pub(super) fn draw_breadcrumb(&self, frame: &mut Frame, area: Rect) {
+        let breadcrumb_text = self.build_breadcrumb_path();
+        let paragraph = Paragraph::new(breadcrumb_text)
+            .style(Style::default().fg(Color::Cyan).bg(Color::Black));
+        frame.render_widget(paragraph, area);
+    }
+
     pub(super) fn draw_status(&self, frame: &mut Frame, area: Rect) {
         use crate::app::SearchScope;
         
@@ -381,9 +427,13 @@ impl App {
             (None, sections)
         };
         
-        // Determine title based on whether there's a header section
-        // If there's a header section, use its title only (don't duplicate with node_name)
+        // Determine title based on whether there's a header section or a single section
+        // If there's a header section, use its title
+        // If there's only one section (common for tables), use that section's title
+        // Otherwise fall back to "Details"
         let detail_title = if header_section.is_some() {
+            format!(" {} ", sections[0].title)
+        } else if sections.len() == 1 {
             format!(" {} ", sections[0].title)
         } else {
             " Details ".to_string()

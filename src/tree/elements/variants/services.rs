@@ -590,8 +590,10 @@ fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_servi
         }
     }
     
+    let total_count = own_services.len() + parent_services.len();
+    
     DetailSectionData {
-        title: "Diag-Comms".to_owned(),
+        title: format!("Diag-Comms ({})", total_count),
         render_as_header: false,
         content: DetailContent::Table {
             header,

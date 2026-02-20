@@ -75,11 +75,15 @@ pub fn add_diag_comms<'a>(
     let total_count = own_services.len() + parent_services.len();
     
     if total_count > 0 {
-        b.push(
+        // Build detail section for Diag-Comms header showing all services in a table
+        let detail_section = build_diag_comms_table_section(&own_services, &parent_services);
+        
+        b.push_details_structured(
             depth,
             format!("Diag-Comms ({})", total_count),
             false,
             true,
+            vec![detail_section],
             NodeType::SectionHeader,
         );
         
@@ -326,6 +330,7 @@ pub fn build_diag_comm_details(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
                     ColumnConstraint::Percentage(15),  // DOP
                     ColumnConstraint::Percentage(25),  // Semantic (decreased from 35)
                 ],
+                is_diag_comms: false,
             },
         }
     }
@@ -374,6 +379,7 @@ pub fn build_diag_comm_details(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
                 ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(20),
             ],
+            is_diag_comms: false,
         },
     });
 
@@ -441,6 +447,7 @@ pub fn build_diag_comm_details(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
                 ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(20),
             ],
+            is_diag_comms: false,
         },
     });
 
@@ -477,6 +484,7 @@ pub fn build_diag_comm_details(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
                 header, 
                 rows,
                 constraints: vec![ColumnConstraint::Percentage(100)],
+                is_diag_comms: false,
             },
         });
     }
@@ -497,8 +505,91 @@ pub fn build_diag_comm_details(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
                 indent: 0, 
             }],
             constraints: vec![ColumnConstraint::Percentage(100)],
+            is_diag_comms: false,
         },
     });
 
     sections
+}
+/// Build a table section for the Diag-Comms header showing all services
+fn build_diag_comms_table_section(own_services: &[DiagService<'_>], parent_services: &[DiagService<'_>]) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec!["ID".to_owned(), "Short Name".to_owned(), "Inherited".to_owned()],
+        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+        indent: 0,
+    };
+    
+    let mut rows = Vec::new();
+    
+    // Add own services first (inherited = false)
+    for ds in own_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "false".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    // Add parent services (inherited = true)
+    for ds in parent_services.iter() {
+        if let Some(dc) = ds.diag_comm() {
+            let name = dc.short_name().unwrap_or("?").to_owned();
+            
+            let id = if let Some(sid) = ds.request_id() {
+                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                    let sub_fn_str = if bit_len <= 8 {
+                        format!("{sub_fn:02X}")
+                    } else {
+                        format!("{sub_fn:04X}")
+                    };
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{}", full_id)
+                } else {
+                    format!("0x{:02X}", sid)
+                }
+            } else {
+                "-".to_owned()
+            };
+            
+            rows.push(DetailRow {
+                cells: vec![id, name, "true".to_owned()],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+            });
+        }
+    }
+    
+    DetailSectionData {
+        title: "Diag-Comms".to_owned(),
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(50),
+                ColumnConstraint::Percentage(30),
+            ],
+            is_diag_comms: true,
+        },
+    }
 }

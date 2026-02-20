@@ -489,8 +489,8 @@ impl App {
                 let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                 frame.render_widget(para, inner);
             }
-            DetailContent::Table { header, rows, constraints } => {
-                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset);
+            DetailContent::Table { header, rows, constraints, is_diag_comms } => {
+                self.render_table_content(frame, inner, content_area, header, rows, constraints, self.selected_tab + section_offset, *is_diag_comms);
             }
             DetailContent::Composite(subsections) => {
                 self.render_composite_content(frame, inner, subsections);
@@ -536,7 +536,7 @@ impl App {
                     let para = Paragraph::new(text).style(Style::default().fg(Color::White));
                     frame.render_widget(para, inner);
                 }
-                crate::tree::DetailContent::Table { header, rows, constraints } => {
+                crate::tree::DetailContent::Table { header, rows, constraints, .. } => {
                     // For composite tables, we don't track cursors/scrolling per subsection yet
                     // This is a simplified rendering
                     self.render_simple_table(frame, inner, header, rows, constraints);
@@ -607,13 +607,33 @@ impl App {
         rows: &[DetailRow],
         constraints: &[crate::tree::ColumnConstraint],
         section_idx: usize,
+        is_diag_comms: bool,
     ) {
         let viewport_height = inner.height as usize;
-        let max_columns = rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
+        
+        // Apply sorting for Diag-Comms if needed
+        let sorted_rows: Vec<DetailRow> = if is_diag_comms {
+            // Sort based on diagcomm_sort_by_id setting
+            let mut sorted = rows.to_vec();
+            sorted.sort_by(|a, b| {
+                if self.diagcomm_sort_by_id {
+                    // Sort by ID (first column)
+                    a.cells.get(0).unwrap_or(&String::new()).cmp(b.cells.get(0).unwrap_or(&String::new()))
+                } else {
+                    // Sort by Short Name (second column)
+                    a.cells.get(1).unwrap_or(&String::new()).cmp(b.cells.get(1).unwrap_or(&String::new()))
+                }
+            });
+            sorted
+        } else {
+            rows.to_vec()
+        };
 
-        let rows_refs: Vec<&DetailRow> = rows.iter().collect();
+        let max_columns = sorted_rows.iter().map(|r| r.cells.len()).max().unwrap_or(header.cells.len());
 
-        let row_count = rows.len();
+        let rows_refs: Vec<&DetailRow> = sorted_rows.iter().collect();
+
+        let row_count = rows_refs.len();
         if row_count > 0 && self.section_cursors[section_idx] >= row_count {
             self.section_cursors[section_idx] = row_count.saturating_sub(1);
         }
@@ -633,7 +653,7 @@ impl App {
 
         let focused_col = if self.focused_column >= max_columns { max_columns.saturating_sub(1) } else { self.focused_column };
         
-        // Build visible rows with column-specific highlighting
+        // Build visible rows with column-specific or row-specific highlighting
         let visible_rows: Vec<Row<'static>> = rows_refs.iter().enumerate()
             .skip(self.section_scrolls[section_idx])
             .take(viewport_height)
@@ -648,10 +668,19 @@ impl App {
                         cell_text.clone() 
                     };
                     
-                    // Apply column-specific highlighting for selected cell
-                    let style = if is_selected_row && col_idx == focused_col {
-                        // Selected cell: highlight with blue background, keep white text
-                        Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
+                    // Apply highlighting based on selection mode
+                    let style = if is_selected_row {
+                        if is_diag_comms {
+                            // Row selection mode: highlight entire row
+                            Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
+                        } else {
+                            // Cell selection mode: highlight only the selected cell
+                            if col_idx == focused_col {
+                                Style::default().fg(Color::White).bg(Color::Blue).add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(Color::White)
+                            }
+                        }
                     } else {
                         Style::default().fg(Color::White)
                     };

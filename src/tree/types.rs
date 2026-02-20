@@ -63,6 +63,7 @@ pub enum DetailContent {
         header: DetailRow,
         rows: Vec<DetailRow>,
         constraints: Vec<ColumnConstraint>,
+        is_diag_comms: bool,
     },
     /// Multiple subsections within a single tab, each with its own title and content
     Composite(Vec<DetailSectionData>),

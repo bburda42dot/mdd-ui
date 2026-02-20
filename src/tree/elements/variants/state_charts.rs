@@ -55,6 +55,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                         ColumnConstraint::Percentage(33),
                         ColumnConstraint::Percentage(33),
                     ],
+                    is_diag_comms: false,
                 }
             },
         };
@@ -84,6 +85,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                     },
                     rows: states,
                     constraints: vec![ColumnConstraint::Percentage(100)],
+                    is_diag_comms: false,
                 }
             },
         };

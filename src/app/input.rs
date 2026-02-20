@@ -216,8 +216,20 @@ impl App {
             }
             KeyCode::Enter => {
                 if self.detail_focused {
-                    // Check if current row has DOP and show popup
-                    self.try_show_dop_popup();
+                    // Check if we're on a Diag-Comms section, navigate to the service
+                    // Otherwise, check if current row has DOP and show popup
+                    if self.cursor < self.visible.len() {
+                        let node_idx = self.visible[self.cursor];
+                        let node = &self.all_nodes[node_idx];
+                        
+                        if node.text.starts_with("Diag-Comms (") {
+                            // Navigate to selected service
+                            self.try_navigate_to_service();
+                        } else {
+                            // Try to show DOP popup
+                            self.try_show_dop_popup();
+                        }
+                    }
                 } else {
                     self.try_expand();
                 }

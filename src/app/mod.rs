@@ -52,6 +52,8 @@ pub struct App {
     pub(crate) help_popup_visible: bool, // Help popup visibility
     pub(crate) tree_width_percentage: u16, // Tree pane width (0-100)
     pub(crate) diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
+    pub(crate) diag_comms_select_mode: bool, // true = select by row, false = select by cell
+    pub(crate) table_sort_columns: Vec<Option<usize>>, // Sorted column index for each table (None = default order)
     tree_area: Rect, // Cached tree area for mouse handling
     detail_area: Rect, // Cached detail area for mouse handling
     pub(crate) tab_area: Option<Rect>, // Cached tab area for mouse handling
@@ -95,6 +97,8 @@ impl App {
             help_popup_visible: false,
             tree_width_percentage: 40,
             diagcomm_sort_by_id: true, // Default: sort by ID
+            diag_comms_select_mode: true, // Diag-Comms uses row selection
+            table_sort_columns: Vec::new(), // No sorting by default
             tree_area: Rect::default(),
             detail_area: Rect::default(),
             tab_area: None,
@@ -477,7 +481,12 @@ impl App {
 
     pub(crate) fn move_up(&mut self) {
         if self.detail_focused {
-            self.detail_scroll = self.detail_scroll.saturating_sub(1);
+            // Move cursor up in the detail pane (typically a table row)
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = 
+                    self.section_cursors[section_idx].saturating_sub(1);
+            }
         } else {
             self.cursor = self.cursor.saturating_sub(1);
             self.detail_scroll = 0;
@@ -486,7 +495,12 @@ impl App {
 
     pub(crate) fn move_down(&mut self) {
         if self.detail_focused {
-            self.detail_scroll += 1;
+            // Move cursor down in the detail pane (typically a table row)
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = 
+                    self.section_cursors[section_idx].saturating_add(1);
+            }
         } else if self.cursor + 1 < self.visible.len() {
             self.cursor += 1;
             self.detail_scroll = 0;
@@ -495,7 +509,11 @@ impl App {
 
     pub(crate) fn page_up(&mut self, n: usize) {
         if self.detail_focused {
-            self.detail_scroll = self.detail_scroll.saturating_sub(n);
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = 
+                    self.section_cursors[section_idx].saturating_sub(n);
+            }
         } else {
             self.cursor = self.cursor.saturating_sub(n);
             self.detail_scroll = 0;
@@ -504,7 +522,11 @@ impl App {
 
     pub(crate) fn page_down(&mut self, n: usize) {
         if self.detail_focused {
-            self.detail_scroll += n;
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = 
+                    self.section_cursors[section_idx].saturating_add(n);
+            }
         } else {
             self.cursor = (self.cursor + n).min(self.visible.len().saturating_sub(1));
             self.detail_scroll = 0;
@@ -513,7 +535,10 @@ impl App {
 
     pub(crate) fn home(&mut self) {
         if self.detail_focused {
-            self.detail_scroll = 0;
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = 0;
+            }
         } else {
             self.cursor = 0;
             self.detail_scroll = 0;
@@ -522,7 +547,10 @@ impl App {
 
     pub(crate) fn end(&mut self) {
         if self.detail_focused {
-            self.detail_scroll = usize::MAX; // clamped during render
+            let section_idx = self.get_section_index();
+            if section_idx < self.section_cursors.len() {
+                self.section_cursors[section_idx] = usize::MAX; // clamped during render
+            }
         } else {
             self.cursor = self.visible.len().saturating_sub(1);
             self.detail_scroll = 0;
@@ -746,6 +774,118 @@ impl App {
         self.dop_popup = Some(DopPopupData { dop_name, dop_details });
     }
 
+    /// Navigate to a service in the tree from the Diag-Comms table
+    pub(crate) fn try_navigate_to_service(&mut self) {
+        // Validate cursor position and that we're on a Diag-Comms header
+        if self.cursor >= self.visible.len() {
+            self.status = "Cursor out of bounds".to_string();
+            return;
+        }
+        
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+        
+        // Check if this is a Diag-Comms header
+        if !node.text.starts_with("Diag-Comms (") {
+            self.status = "Not a Diag-Comms section".to_owned();
+            return;
+        }
+        
+        // Validate we have the details
+        if node.detail_sections.is_empty() {
+            self.status = "No details available".to_string();
+            return;
+        }
+
+        let section = &node.detail_sections[0]; // The Diag-Comms table is always first
+        
+        // Extract the short name from the table
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => {
+                self.status = "Diag-Comms details should be a table".to_owned();
+                return;
+            }
+        };
+        
+        // Get the selected row
+        if self.selected_tab >= self.section_cursors.len() {
+            self.status = "Section cursor not initialized".to_string();
+            return;
+        }
+        let row_cursor = self.section_cursors[0]; // Section 0 is the Diag-Comms table
+        
+        if row_cursor >= rows.len() {
+            self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
+            return;
+        }
+
+        let selected_row = &rows[row_cursor];
+        if selected_row.cells.len() < 2 {
+            self.status = "Invalid row structure".to_owned();
+            return;
+        }
+        
+        // The short name is in the second column
+        let service_name = selected_row.cells[1].clone();
+        
+        // Expand the Diag-Comms section if it's collapsed
+        if !self.all_nodes[node_idx].expanded {
+            self.all_nodes[node_idx].expanded = true;
+            self.rebuild_visible();
+            // After expanding, the cursor position in visible might have changed
+            // Re-find the Diag-Comms node in visible
+            if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == node_idx) {
+                self.cursor = new_cursor;
+            }
+        }
+        
+        // Find the service node in the tree that matches this name
+        // We need to search for a child of the current Diag-Comms node with a matching service name
+        let diag_comms_depth = self.all_nodes[node_idx].depth;
+        
+        // Look for service nodes immediately after this Diag-Comms node
+        // Service nodes have depth = diag_comms_depth + 1
+        let mut found_idx: Option<usize> = None;
+        
+        // Find all visible indices for children of this Diag-Comms node
+        for &vis_idx in &self.visible[self.cursor + 1..] {
+            let child_node = &self.all_nodes[vis_idx];
+            
+            // Stop if we've reached a node at the same or lower depth (left the Diag-Comms section)
+            if child_node.depth <= diag_comms_depth {
+                break;
+            }
+            
+            // Skip non-service nodes or nodes not directly under Diag-Comms
+            if child_node.depth != diag_comms_depth + 1 {
+                continue;
+            }
+            
+            // Check if this service node contains the service name in its text
+            // The text format is "0xXXXX - ServiceName"
+            if child_node.text.contains(&service_name) {
+                // Find the position of this node in visible
+                if let Some(pos) = self.visible.iter().position(|&idx| idx == vis_idx) {
+                    found_idx = Some(pos);
+                    break;
+                }
+            }
+        }
+        
+        if let Some(target_cursor) = found_idx {
+            // Navigate tree focus to this service
+            self.detail_focused = false;
+            self.cursor = target_cursor;
+            self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+            self.status = format!("Navigated to service: {}", service_name);
+        } else {
+            self.status = format!("Service '{}' not found in tree", service_name);
+        }
+    }
+
+
     pub(crate) fn resize_column(&mut self, delta: i16) {
         // Ensure we have column_widths entries for all sections
         while self.column_widths.len() <= self.selected_tab {
@@ -940,10 +1080,23 @@ impl App {
     }
 
     fn handle_double_click(&mut self, column: u16, row: u16) {
-        // Double-click in table content area should trigger DOP popup (same as Enter key)
+        // Double-click in table content area should trigger navigation or DOP popup
         if self.is_in_table_content_area(column, row) {
             self.detail_focused = true;
-            self.try_show_dop_popup();
+            
+            // Check if we're on a Diag-Comms section, navigate to the service
+            if self.cursor < self.visible.len() {
+                let node_idx = self.visible[self.cursor];
+                let node = &self.all_nodes[node_idx];
+                
+                if node.text.starts_with("Diag-Comms (") {
+                    // Navigate to selected service
+                    self.try_navigate_to_service();
+                } else {
+                    // Try to show DOP popup
+                    self.try_show_dop_popup();
+                }
+            }
         }
     }
 
@@ -1027,8 +1180,8 @@ impl App {
         
         // Extract table content
         use crate::tree::DetailContent;
-        let (rows, constraints) = match &node.detail_sections[self.selected_tab].content {
-            DetailContent::Table { rows, constraints, .. } => (rows, constraints),
+        let (rows, constraints, is_diag_comms) = match &node.detail_sections[self.selected_tab].content {
+            DetailContent::Table { header: _, rows, constraints, is_diag_comms } => (rows, constraints, *is_diag_comms),
             _ => return,
         };
         
@@ -1051,12 +1204,16 @@ impl App {
             return;
         }
         
-        // Update the row cursor and column
+        // Update the row cursor
         self.section_cursors[self.selected_tab] = clicked_row_idx;
         
-        let relative_col = column - area.x;
-        if let Some(col_idx) = self.calculate_clicked_column(relative_col, constraints) {
-            self.focused_column = col_idx;
+        // For non-Diag-Comms tables, also update the focused column (cell selection mode)
+        // For Diag-Comms, only select by row
+        if !is_diag_comms {
+            let relative_col = column - area.x;
+            if let Some(col_idx) = self.calculate_clicked_column(relative_col, constraints) {
+                self.focused_column = col_idx;
+            }
         }
     }
 

@@ -760,31 +760,43 @@ impl App {
         }
     }
 
-    /// Navigate back in history
+    /// Navigate back (up one level in hierarchy)
     pub(crate) fn navigate_back(&mut self) {
-        // Need at least 2 entries to go back (current + previous)
-        if self.navigation_history.len() < 2 || self.history_position <= 1 {
-            self.status = "No previous location in history".to_owned();
+        // Get the current node
+        if self.cursor >= self.visible.len() {
+            self.status = "No parent to navigate to".to_owned();
             return;
         }
 
-        // Move back in history
-        self.history_position = self.history_position.saturating_sub(1);
-        let target_cursor = self.navigation_history[self.history_position - 1];
+        let node_idx = self.visible[self.cursor];
+        let current_node = &self.all_nodes[node_idx];
+        let current_depth = current_node.depth;
 
-        // Navigate to the stored position
-        if target_cursor < self.visible.len() {
-            self.cursor = target_cursor;
-            self.detail_scroll = 0;
-            self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
-            self.status = format!(
-                "Navigated back (history: {}/{})",
-                self.history_position,
-                self.navigation_history.len()
-            );
-        } else {
-            // Position is no longer valid (tree structure changed)
-            self.status = "Previous location no longer valid".to_owned();
+        // If we're at the root level, can't go up
+        if current_depth == 0 {
+            self.status = "Already at root level".to_owned();
+            return;
+        }
+
+        // Find parent by looking for previous node with lower depth
+        let mut found_parent = false;
+        for i in (0..node_idx).rev() {
+            if self.all_nodes[i].depth < current_depth {
+                // Found parent node, now find it in visible list
+                if let Some(visible_pos) = self.visible.iter().position(|&idx| idx == i) {
+                    self.cursor = visible_pos;
+                    self.detail_scroll = 0;
+                    self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+                    self.detail_focused = false;
+                    self.status = format!("Navigated up to: {}", self.all_nodes[i].text);
+                    found_parent = true;
+                }
+                break;
+            }
+        }
+
+        if !found_parent {
+            self.status = "Parent not visible in tree".to_owned();
         }
     }
 

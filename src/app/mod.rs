@@ -1625,6 +1625,16 @@ impl App {
         if self.is_in_table_content_area(column, row) {
             self.detail_focused = true;
 
+            // Check if double-click is on table header and ignore it
+            if let Some(area) = self.table_content_area {
+                let relative_row = (row - area.y) as usize;
+                const HEADER_HEIGHT: usize = 3;
+                if relative_row < HEADER_HEIGHT {
+                    // Ignore double-clicks on header
+                    return;
+                }
+            }
+
             // Check what type of node we're on
             if self.cursor < self.visible.len() {
                 let node_idx = self.visible[self.cursor];
@@ -1858,7 +1868,13 @@ impl App {
         const HEADER_HEIGHT: usize = 3;
 
         if relative_row < HEADER_HEIGHT {
-            return; // Clicked on header
+            // Clicked on header - trigger column sort
+            let relative_col = column - area.x;
+            if let Some(col_idx) = self.calculate_clicked_column(relative_col) {
+                self.focused_column = col_idx;
+                self.toggle_table_column_sort();
+            }
+            return;
         }
 
         let clicked_row_idx = (relative_row - HEADER_HEIGHT) + self.section_scrolls[section_idx];

@@ -26,6 +26,8 @@ Use at your own risk. Contributions and feedback are welcome to help improve the
 - Data operation (DOP) information with popup details (press Enter on DOP rows)
 - Visual separation with color-coded headers
 - Customizable column widths with resize functionality
+- **Sortable Tables**: Click column headers to sort (ascending/descending), or press `s` in detail pane
+- Sort indicators show current sort column and direction (▲/▼)
 
 ### 🔍 Search Features
 - **Hierarchical Search Stack**: Build complex filtered views by chaining multiple searches
@@ -99,6 +101,7 @@ mdd-ui /path/to/diagnostic.mdd
 | `k` / `Up` | Move to previous row |
 | `h` / `Left` | Switch to previous tab |
 | `l` / `Right` | Switch to next tab |
+| `s` | Sort by focused column (toggle direction) |
 | `Enter` | Show DOP popup (when on DOP row) |
 | `Home` | Jump to first row in section |
 | `End` | Jump to last row in section |
@@ -134,6 +137,7 @@ mdd-ui /path/to/diagnostic.mdd
 | Click tree node | Select and focus tree node |
 | Double-click tree node | Toggle expand/collapse |
 | Click tab | Switch to that tab |
+| Click table header | Sort by that column (toggle ascending/descending) |
 | Click detail row | Select that row |
 | Double-click detail row | Show DOP popup (if applicable) |
 | Scroll wheel | Scroll tree or detail pane |
@@ -197,12 +201,14 @@ cargo run -- <path-to-mdd-database>
 ```
 
 ### Key Features to Test
-- Mouse support: Click nodes, tabs, and rows; scroll with mouse wheel
+- Mouse support: Click nodes, tabs, rows, and table headers; scroll with mouse wheel
+- Table sorting: Click column headers to sort, or press `s` when column is focused
 - Search stack: Use `/` to add searches, `x` to clear, Backspace to pop
 - Column resizing: Use `[`/`]` to resize columns in detail pane
 - Pane resizing: Use `+`/`-` to adjust tree/detail split
 - Help popup: Press `?` to view all controls
 - DOP popup: Press Enter on DOP rows to view details
+- Breadcrumb navigation: Shows current location in tree hierarchy
 
 ## Contributing
 

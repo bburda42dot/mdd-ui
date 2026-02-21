@@ -12,29 +12,113 @@ Use at your own risk. Contributions and feedback are welcome to help improve the
 <img src="img/demo.png">
 
 ### 🎯 Core Functionality
-- **Tree Navigation**: Browse ECU structure, variants, and diagnostic services
+- **Tree Navigation**: Browse ECU structure, variants, and diagnostic services with collapsible/expandable nodes
 - **Multi-Tab Detail Panes**: View comprehensive information with table-based formatting across multiple tabs
-- **Multi-Section Views**: Separate tabs for Request, Positive Response, and Negative Response
-- **Advanced Search**: Hierarchical search stack system with scope filtering (All/Variants/Services/DiagComms)
+- **Multi-Section Views**: Separate tabs for Request, Positive Response, and Negative Response with independent scrolling
+- **Advanced Search**: Hierarchical search stack system with scope filtering (All/Variants/FunctionalGroups/EcuSharedData/Services/DiagComms/Requests/Responses)
 - **Keyboard-First**: Vim-style navigation (h/j/k/l) with full keyboard control
 - **Mouse Support**: Full mouse interaction including click-to-select, scrolling, and double-click to expand/show details
 
-### 📊 Service Information Display
-- Service ID and Sub-function ID with proper formatting
-- Request and response parameters with full details
-- Parameter types, positions, coded values, and semantics
-- Data operation (DOP) information with popup details (press Enter on DOP rows)
-- Visual separation with color-coded headers
-- Customizable column widths with resize functionality
-- **Sortable Tables**: Click column headers to sort (ascending/descending), or press `s` in detail pane
-- Sort indicators show current sort column and direction (▲/▼)
+### 📁 Database Structure Support
+The tool provides full navigation and detailed views for:
+
+#### **Variants**
+- Base variants and specific variant configurations
+- Variant summary information (short name, long name, base status)
+- Parent references to other variants, ECU shared data, protocols, and functional groups
+- Visual distinction for base variants (`[base]` suffix)
+- Inherited service display from parent references (shown in gray)
+
+#### **Functional Groups**
+- Functional group definitions with diagnostic layers
+- Cross-variant service collection for each functional class
+- Aggregated view of services and jobs belonging to each class
+
+#### **ECU Shared Data**
+- Shared diagnostic data across multiple functional groups
+- Deduplication of shared data references
+- Full diagnostic layer hierarchy
+
+#### **Protocols**
+- Protocol-level diagnostic layers
+- Protocol specifications and configurations
+- Parent protocol references
+
+### 📊 Diagnostic Elements Display
+
+#### **Diagnostic Services (DiagComms)**
+- Service ID (SID) and Sub-function ID with hex formatting (0x01-0xFFFF)
+- Service sorting: by ID (default) or by name (toggle with `s`)
+- Inherited services from parent references (displayed with source layer)
+- Multiple detail views per service:
+  - **Overview**: Service metadata, semantic information, audience flags
+  - **Request**: Request parameters with types, positions, coded values, and DOP references
+  - **Positive Responses**: One or more positive response parameter tables
+  - **Negative Responses**: NRC (Negative Response Code) definitions
+  - **ComParam-Refs**: Communication parameter references
+  - **Audience**: Manufacturing, development, aftersales, and aftermarket flags
+
+#### **Single ECU Jobs**
+- Job definitions and parameters
+- Job-level diagnostic operations
+
+#### **Functional Classes**
+- Functional class definitions from base variants
+- Services and jobs grouped by functional class
+- Cross-variant aggregation of class members
+
+#### **State Charts**
+- State machine definitions
+- State transitions with source and target states
+- Individual state definitions
+
+#### **Requests Section**
+- All services with request definitions
+- Same detailed view as DiagComms (filtered to request-enabled services)
+- Parameter details: name, byte position, bit position, semantic, coded value, DOP reference
+
+#### **Positive Responses Section**
+- All services with positive response definitions
+- Multiple response definitions per service
+- Full parameter breakdown with encoding details
+
+#### **Negative Responses Section**
+- All services with negative response definitions
+- NRC (Negative Response Code) parameters
+
+#### **Parent References**
+- Parent reference type and short name
+- Not-inherited elements across multiple tabs:
+  - Not-Inherited Diag-Comms (clickable service references)
+  - Not-Inherited Diag-Variables
+  - Not-Inherited DOPs (Data Object Properties)
+  - Not-Inherited Tables
+
+### 🔍 Parameter Details
+For each parameter, the tool displays:
+- **Name**: Parameter short name
+- **Byte Position**: Starting byte in message
+- **Bit Position**: Starting bit within byte (if applicable)
+- **Semantic**: Parameter meaning/description
+- **Coded Value**: Hex-formatted constant values (0x01, 0x10, etc.)
+- **DOP (Data Object Property)**: Reference to data operation definitions
+- **Type**: Parameter type (CodedConst, Value, etc.)
 
 ### 🔍 Search Features
 - **Hierarchical Search Stack**: Build complex filtered views by chaining multiple searches
-- **Search Scopes**: Filter by All, Variants, Services, or DiagComms sections
+- **Search Scopes**: 
+  - All: Search everywhere
+  - Variants: Filter variant names only
+  - Functional Groups: Filter functional group names
+  - ECU Shared Data: Filter ECU shared data names
+  - Services: Filter service names only
+  - DiagComms: Filter diagnostic communication sections
+  - Requests: Filter request sections
+  - Responses: Filter response sections (positive and negative)
 - **Search Navigation**: Jump between matches with `n`/`N`
 - **Search Stack Management**: Clear entire search stack with `x`, pop last search with Backspace
 - **Scope Cycling**: Switch search scope with Shift+S
+- **Scope Indicators**: Visual indicators showing active scope (e.g., `[V]` for Variants, `[S]` for Services)
 
 ### 🎨 Visual Features
 - **Row-Level Navigation**: Select individual table rows with j/k
@@ -45,8 +129,24 @@ Use at your own risk. Contributions and feedback are welcome to help improve the
 - **Resizable Panes**: Adjust tree/detail pane split with `+`/`-` keys (20-80% range)
 - **Scrollbars**: Indicators when content exceeds viewport
 - **Tab Navigation**: Switch between detail tabs with h/l when detail pane is focused
-- **DOP Popup**: Press Enter on DOP rows to view detailed information
-- **Help Popup**: Press `?` to view keyboard shortcuts and controls
+- **DOP Popup**: Press Enter on DOP rows to view detailed Data Object Property information
+- **Help Popup**: Press `?` to view all keyboard shortcuts and controls
+- **Breadcrumb Navigation**: Shows current location in tree hierarchy at the top
+- **Clickable Breadcrumbs**: Click breadcrumb segments to jump to parent nodes
+- **Service Reference Links**: Click service references in not-inherited sections to navigate directly to services
+
+### 🎯 Interactive Features
+- **Sortable Tables**: 
+  - Click column headers to sort (ascending/descending)
+  - Press `s` when detail pane is focused to sort by current column
+  - Sort indicators show current sort column and direction (▲/▼)
+  - DiagComm sorting: toggle between ID-based and name-based with `s`
+- **Double-Click Actions**: 
+  - Tree nodes: expand/collapse
+  - Detail rows: show DOP popup (if available)
+  - Service references: navigate to service
+- **Mouse Scroll**: Scroll wheel support for both tree and detail panes
+- **Toggle Mouse Support**: Press `m` to enable/disable mouse input
 
 ## Installation
 
@@ -144,28 +244,105 @@ mdd-ui /path/to/diagnostic.mdd
 
 ## Structure
 
-The UI is organized into three main areas:
+The UI is organized into three main areas with hierarchical navigation:
 
-### Tree View
-- **ECU Level**: Top-level ECU information
-- **Services**: Diagnostic services with SID and sub-function
-- **Variants**: ECU variants (base and specific)
-- **State Charts**: State machines and transitions
-- **Jobs**: Single ECU jobs and their parameters
-- **DiagComms**: Diagnostic communication sections (sortable by ID or name)
-- **Inherited Services**: Services inherited from parent refs (shown in gray)
+### Tree View Hierarchy
+The tree view provides a complete hierarchical representation of the MDD database:
+
+#### **Top-Level Sections**
+- **Variants**: ECU variants (base and specific configurations)
+  - Each variant contains:
+    - Summary tab with variant metadata
+    - Parent Refs (if present) with not-inherited element tabs
+    - Functional Classes (with cross-variant service aggregation)
+    - Diag-Comms (diagnostic services and single ECU jobs)
+    - Requests (services with request parameters)
+    - Pos-Responses (services with positive responses)
+    - Neg-Responses (services with negative responses)
+    - State Charts (state machines and transitions)
+    - ComParam Refs (communication parameters)
+
+- **Functional Groups**: Diagnostic functional groupings
+  - Each group contains similar structure to variants
+
+- **ECU Shared Data**: Shared diagnostic data across functional groups
+  - Deduplicated references to shared layers
+
+- **Protocols**: Communication protocol definitions
+  - Protocol-level diagnostic layers
+
+#### **Service Display**
+- **DiagComms**: Main diagnostic services section
+  - Services sorted by ID (default) or name (toggle with `s`)
+  - Shows: Service ID (0xXX), Sub-function ID (if present), Service name
+  - Inherited services shown with source layer name and gray styling
+  - Single ECU Jobs listed after services
+
+- **Requests/Responses Sections**: Filtered views
+  - Same services as DiagComms but filtered by capability
+  - Maintains ID-based or name-based sorting
 
 ### Detail Panes
-When a service is selected, the detail pane displays information in a tabbed interface:
-- **Multiple Tabs**: Each section (Request, Positive Responses, Negative Responses) gets its own tab
-- **Independent Navigation**: Each tab maintains its own scroll position and cursor
-- **Service Details**: Overall service information
-- **Request**: Request parameters with types and values
-- **Positive Responses**: Success response parameters
-- **Negative Responses**: Error response parameters
-- **DOP Details**: Press Enter on rows with DOP information to view detailed popup
+When a node is selected, the detail pane displays comprehensive information in a tabbed interface:
 
-Each tab can be navigated independently using `h/l` keys when the detail pane is focused, and rows within tabs can be selected with `j/k`.
+#### **Service Detail Tabs**
+1. **Overview**: Service-level information
+   - Service ID and sub-function ID
+   - Semantic description
+   - Diagnostic layer reference
+
+2. **Request**: Request parameters (if present)
+   - Parameter name, byte position, bit position
+   - Semantic description
+   - Coded values (hex formatted)
+   - DOP references (clickable for details)
+
+3. **Positive Response(s)**: One or more tabs for positive responses
+   - Multiple response definitions displayed as separate tabs
+   - Same parameter detail format as Request
+
+4. **Negative Response(s)**: NRC definitions
+   - Negative Response Code parameters
+   - Error condition definitions
+
+5. **ComParam-Refs**: Communication parameter references
+   - Parameter values and complex values
+   - Protocol and protocol stack information
+
+6. **Audience**: Service audience flags
+   - Manufacturing, Development, Aftersales, Aftermarket indicators
+
+#### **Variant Detail Tabs**
+1. **Summary**: Basic variant information
+   - Variant name, base variant status
+   - Short name and long name
+
+2. **Parent Refs** (if present): Parent reference information
+   - Reference type (Variant, ECU Shared Data, Protocol, Functional Group)
+   - Reference short name
+
+#### **Parent Refs Detail Tabs**
+1. **Parent Refs List**: Basic reference information
+2. **Not Inherited DiagComms**: Services not inherited from parent (clickable references)
+3. **Not Inherited DiagVariables**: Variables excluded from inheritance
+4. **Not Inherited Dops**: Data Object Properties not inherited
+5. **Not Inherited Tables**: Tables excluded from inheritance
+
+#### **State Chart Detail**
+- **State Transitions**: Transition name, source state, target state
+- **States**: List of all states in the chart
+
+#### **Functional Class Detail**
+- **Class Definition**: Functional class metadata
+- **Services/Jobs**: All services and jobs belonging to this class (aggregated across variants)
+
+### Navigation Features
+- **Independent Tab Navigation**: Each tab maintains its own scroll position and cursor
+- **Row Selection**: Navigate within tables using j/k keys
+- **Column Focus**: Switch focused column with `,` and `.` for resizing
+- **Breadcrumb Trail**: Shows current location in hierarchy (clickable)
+- **Service References**: Click references to jump directly to service definitions
+- **History Support**: Navigate back through visited nodes (internal tracking)
 
 
 
@@ -180,13 +357,15 @@ Each tab can be navigated independently using `h/l` keys when the detail pane is
 - **anyhow**: Error handling
 
 ### Architecture
-- **Event-driven**: Responsive keyboard and mouse input handling
-- **Stateful**: Maintains tree expansion, cursor positions, scroll states, and search stack
-- **Efficient**: Only renders visible content
-- **Flexible**: Table-based layout adapts to terminal size
-- **Interactive**: Full mouse support with click, double-click, and scroll
-- **Hierarchical Search**: Stack-based search system for complex filtering
-- **Customizable**: Resizable columns and adjustable pane widths
+- **Event-driven**: Responsive keyboard and mouse input handling with 10ms polling
+- **Stateful**: Maintains tree expansion, cursor positions, scroll states, search stack, and sort preferences
+- **Efficient**: Only renders visible content with viewport clipping
+- **Flexible**: Table-based layout adapts to terminal size with dynamic column constraints
+- **Interactive**: Full mouse support with click, double-click, and scroll detection
+- **Hierarchical Search**: Stack-based search system for complex filtering with scope awareness
+- **Customizable**: Resizable columns (per-section), adjustable pane widths (20-80%), and sortable tables
+- **Navigation History**: Internal tracking of visited nodes for potential back/forward navigation
+- **Multi-Tab State**: Independent scroll and cursor state per detail tab/section
 
 ## Development
 
@@ -201,24 +380,33 @@ cargo run -- <path-to-mdd-database>
 ```
 
 ### Key Features to Test
-- Mouse support: Click nodes, tabs, rows, and table headers; scroll with mouse wheel
-- Table sorting: Click column headers to sort, or press `s` when column is focused
-- Search stack: Use `/` to add searches, `x` to clear, Backspace to pop
-- Column resizing: Use `[`/`]` to resize columns in detail pane
-- Pane resizing: Use `+`/`-` to adjust tree/detail split
-- Help popup: Press `?` to view all controls
-- DOP popup: Press Enter on DOP rows to view details
-- Breadcrumb navigation: Shows current location in tree hierarchy
+- **Mouse support**: Click nodes, tabs, rows, and table headers; scroll with mouse wheel; double-click for expand/navigate
+- **Table sorting**: Click column headers to sort, or press `s` when column is focused; toggle ascending/descending
+- **Search stack**: Use `/` to add searches, `x` to clear all, Backspace to pop last search
+- **Search scopes**: Press Shift+S to cycle through All/Variants/FunctionalGroups/EcuSharedData/Services/DiagComms/Requests/Responses
+- **Column resizing**: Use `[`/`]` to resize columns in detail pane; `,`/`.` to switch focused column
+- **Pane resizing**: Use `+`/`-` to adjust tree/detail split (20-80% range)
+- **Help popup**: Press `?` to view all keyboard controls and shortcuts
+- **DOP popup**: Press Enter on rows with DOP references to view detailed data operation information
+- **Breadcrumb navigation**: Click breadcrumb segments at the top to jump to parent nodes
+- **Service references**: Click service references in Parent Refs not-inherited sections
+- **DiagComm sorting**: Press `s` in DiagComm section header to toggle ID/name sorting
+- **Tab navigation**: Use `h`/`l` to switch between detail tabs when detail pane is focused
+- **Inherited services**: Services from parent refs shown in gray with source layer name
 
 ## Contributing
 
 Contributions are welcome! Areas for improvement:
-- Additional detail views for other diagnostic elements
-- Enhanced search capabilities and filtering
-- Export functionality for diagnostic data
-- Performance optimizations for very large databases
-- Adding CI/CD from opensovd/cicd-workflows
-- Code cleanup (clippy/fmt)
+- **Additional detail views**: Expand coverage for diagnostic variables, DOPs, and tables
+- **Enhanced search**: Add regex support, case-sensitive options, and more granular filtering
+- **Export functionality**: Export diagnostic data to JSON, CSV, or other formats
+- **Performance optimizations**: Improve rendering for very large databases (1000+ services)
+- **Navigation enhancements**: Implement forward/back navigation history with keyboard shortcuts
+- **Theme support**: Add customizable color schemes and terminal theme integration
+- **Filter improvements**: Add filter by audience, functional class, or parent ref
+- **Code quality**: Add CI/CD from opensovd/cicd-workflows, improve clippy/fmt compliance
+- **Documentation**: Add architecture diagrams, contribution guidelines, and code comments
+- **Testing**: Add unit tests for core logic and integration tests for UI components
 
 Please feel free to open issues or submit pull requests!
 

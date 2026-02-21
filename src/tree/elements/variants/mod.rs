@@ -37,8 +37,18 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
+        // Sort variants alphabetically by name
+        let mut sorted_variants: Vec<_> = variants.iter().enumerate().collect();
+        sorted_variants.sort_by_cached_key(|(_, v)| {
+            let vw = VariantWrap(*v);
+            vw.diag_layer()
+                .and_then(|l| l.short_name())
+                .unwrap_or("")
+                .to_lowercase()
+        });
+
         // Add each variant
-        for (vi, variant) in variants.iter().enumerate() {
+        for (vi, variant) in sorted_variants.into_iter() {
             let vw = VariantWrap(variant);
             let mut name = vw
                 .diag_layer()
@@ -101,7 +111,16 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        for fg in groups.iter() {
+        // Sort functional groups alphabetically by name
+        let mut sorted_groups: Vec<_> = groups.iter().collect();
+        sorted_groups.sort_by_cached_key(|fg| {
+            fg.diag_layer()
+                .and_then(|dl| DiagLayer(dl).short_name())
+                .unwrap_or("")
+                .to_lowercase()
+        });
+
+        for fg in sorted_groups.into_iter() {
             if let Some(dl) = fg.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
@@ -186,7 +205,16 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        for esd in unique_esd.iter() {
+        // Sort ECU shared data alphabetically by name
+        let mut sorted_esd = unique_esd.clone();
+        sorted_esd.sort_by_cached_key(|esd| {
+            esd.diag_layer()
+                .and_then(|dl| dl.short_name())
+                .unwrap_or("")
+                .to_lowercase()
+        });
+
+        for esd in sorted_esd.iter() {
             if let Some(dl) = esd.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
@@ -271,7 +299,16 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        for protocol in unique_protocols.iter() {
+        // Sort protocols alphabetically by name
+        let mut sorted_protocols = unique_protocols.clone();
+        sorted_protocols.sort_by_cached_key(|protocol| {
+            protocol.diag_layer()
+                .and_then(|dl| dl.short_name())
+                .unwrap_or("")
+                .to_lowercase()
+        });
+
+        for protocol in sorted_protocols.iter() {
             if let Some(dl) = protocol.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");

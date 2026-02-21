@@ -25,14 +25,20 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
         NodeType::SectionHeader,
     );
 
-    for chart in charts.iter() {
+    // Sort state charts alphabetically by name
+    let mut sorted_charts: Vec<_> = charts.iter().collect();
+    sorted_charts.sort_by_cached_key(|chart| {
+        chart.short_name().unwrap_or("").to_lowercase()
+    });
+
+    for chart in sorted_charts.into_iter() {
         let chart_name = chart.short_name().unwrap_or("unnamed");
 
         // Get semantic description if available
         let semantic = chart.semantic().unwrap_or("");
 
         // Build State Transitions table
-        let transitions: Vec<_> = chart
+        let mut transitions: Vec<_> = chart
             .state_transitions()
             .into_iter()
             .flatten()
@@ -49,6 +55,11 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                 }
             })
             .collect();
+
+        // Sort transitions alphabetically by name
+        transitions.sort_by(|a, b| {
+            a.cells[0].to_lowercase().cmp(&b.cells[0].to_lowercase())
+        });
 
         let transitions_section = DetailSectionData {
             title: "State Transitions".to_string(),
@@ -81,7 +92,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
         };
 
         // Build States table
-        let states: Vec<_> = chart
+        let mut states: Vec<_> = chart
             .states()
             .into_iter()
             .flatten()
@@ -96,6 +107,11 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                 }
             })
             .collect();
+
+        // Sort states alphabetically by name
+        states.sort_by(|a, b| {
+            a.cells[0].to_lowercase().cmp(&b.cells[0].to_lowercase())
+        });
 
         let states_section = DetailSectionData {
             title: "States".to_string(),

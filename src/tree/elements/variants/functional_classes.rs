@@ -60,13 +60,26 @@ pub fn add_functional_classes<'a>(
     // Add each functional class as a child node with its services/jobs from ALL variants
     for name in funct_class_data.iter() {
         // Collect services and jobs for this functional class
-        let (all_services, all_job_info) = if variants_vec.is_empty() {
+        let (mut all_services, mut all_job_info) = if variants_vec.is_empty() {
             // No variants provided, search only in the current layer
             collect_services_and_jobs_from_layer(name, layer)
         } else {
             // Variants provided, search across all of them
             collect_services_and_jobs_for_functional_class(name, &variants_vec)
         };
+        
+        // Sort services alphabetically by name
+        all_services.sort_by_cached_key(|(ds, _)| {
+            ds.diag_comm()
+                .and_then(|dc| dc.short_name())
+                .unwrap_or("")
+                .to_lowercase()
+        });
+        
+        // Sort jobs alphabetically by name
+        all_job_info.sort_by_cached_key(|(job_name, _)| {
+            job_name.to_lowercase()
+        });
         
         // Build detailed view for this functional class
         let details = build_functional_class_detail(

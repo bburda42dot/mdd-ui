@@ -71,18 +71,34 @@ pub fn add_diag_comms<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services
-    let own_services: Vec<DiagService<'_>> = layer
+    let mut own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| services.iter().map(DiagService).collect())
         .unwrap_or_default();
 
+    // Sort own services alphabetically by name
+    own_services.sort_by_cached_key(|ds| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
+
     // Collect services from parent refs with source layer names
-    let parent_services: Vec<(DiagService<'_>, String)> =
+    let mut parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
         } else {
             Vec::new()
         };
+
+    // Sort parent services alphabetically by name
+    parent_services.sort_by_cached_key(|(ds, _)| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
 
     // Count single ECU jobs
     let job_count = layer.single_ecu_jobs().map(|jobs| jobs.len()).unwrap_or(0);
@@ -93,7 +109,7 @@ pub fn add_diag_comms<'a>(
     if total_count > 0 {
         // Build detail section for Diag-Comms header showing all services and jobs
         // Collect job names from diag_com
-        let job_names: Vec<String> = layer
+        let mut job_names: Vec<String> = layer
             .single_ecu_jobs()
             .map(|jobs| {
                 jobs.iter()
@@ -106,6 +122,9 @@ pub fn add_diag_comms<'a>(
                     .collect()
             })
             .unwrap_or_default();
+        
+        // Sort job names alphabetically
+        job_names.sort_by_key(|name| name.to_lowercase());
         let detail_section =
             build_diag_comms_table_section(&own_services, &parent_services, &job_names);
 
@@ -193,7 +212,16 @@ pub fn add_diag_comms<'a>(
 
         // Add single ECU jobs after services
         if let Some(jobs) = layer.single_ecu_jobs() {
-            for job in jobs.iter() {
+            // Sort jobs alphabetically by name
+            let mut sorted_jobs: Vec<_> = jobs.iter().collect();
+            sorted_jobs.sort_by_cached_key(|job| {
+                job.diag_comm()
+                    .and_then(|dc| dc.short_name())
+                    .unwrap_or("")
+                    .to_lowercase()
+            });
+            
+            for job in sorted_jobs.into_iter() {
                 let job_name = job
                     .diag_comm()
                     .and_then(|dc| dc.short_name())

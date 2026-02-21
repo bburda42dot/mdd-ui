@@ -42,13 +42,13 @@ impl LayerExt for TreeBuilder {
         let parent_refs_vec: Option<Vec<ParentRef<'a>>> =
             variant_parent_refs.map(|iter| iter.collect());
 
-        // Functional Classes - pass all variants so it can search across them
-        add_functional_classes(
-            self,
-            layer,
-            depth,
-            all_variants,
-        );
+        // Elements are ordered alphabetically for easier navigation
+
+        // Additional Audiences
+        add_additional_audiences(self, layer, depth);
+
+        // ComParam Refs
+        add_com_params(self, layer, depth);
 
         // Diag-Comms
         add_diag_comms(
@@ -59,8 +59,24 @@ impl LayerExt for TreeBuilder {
             parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
 
-        // Requests (from diag-comms) - use EXACTLY the same logic as DiagComm
-        add_requests_section(
+        // Functional Classes - pass all variants so it can search across them
+        add_functional_classes(
+            self,
+            layer,
+            depth,
+            all_variants,
+        );
+
+        // Neg-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
+        add_neg_responses_section(
+            self,
+            layer,
+            depth,
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
+        );
+
+        // Parent Refs
+        add_parent_refs_with_details(
             self,
             layer,
             depth,
@@ -75,32 +91,18 @@ impl LayerExt for TreeBuilder {
             parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
 
-        // Neg-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
-        add_neg_responses_section(
+        // Requests (from diag-comms) - use EXACTLY the same logic as DiagComm
+        add_requests_section(
             self,
             layer,
             depth,
             parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
-
-        // State-Charts
-        add_state_charts(self, layer, depth);
-
-        // Additional Audiences
-        add_additional_audiences(self, layer, depth);
 
         // SDGs
         add_sdgs(self, layer, depth);
 
-        // ComParam Refs
-        add_com_params(self, layer, depth);
-
-        // Parent Refs
-        add_parent_refs_with_details(
-            self,
-            layer,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        // State-Charts
+        add_state_charts(self, layer, depth);
     }
 }

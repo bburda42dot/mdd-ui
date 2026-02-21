@@ -53,7 +53,7 @@ pub fn add_pos_responses_section<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services that have positive responses
-    let own_services: Vec<DiagService<'_>> = layer
+    let mut own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| {
             services
@@ -64,8 +64,16 @@ pub fn add_pos_responses_section<'a>(
         })
         .unwrap_or_default();
 
+    // Sort own services alphabetically by name
+    own_services.sort_by_cached_key(|ds| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
+
     // Collect services from parent refs with source layer names (that have positive responses)
-    let parent_services: Vec<(DiagService<'_>, String)> =
+    let mut parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
                 .into_iter()
@@ -74,6 +82,14 @@ pub fn add_pos_responses_section<'a>(
         } else {
             Vec::new()
         };
+
+    // Sort parent services alphabetically by name
+    parent_services.sort_by_cached_key(|(ds, _)| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
 
     let total_count = own_services.len() + parent_services.len();
 
@@ -169,7 +185,7 @@ pub fn add_neg_responses_section<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services that have negative responses
-    let own_services: Vec<DiagService<'_>> = layer
+    let mut own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| {
             services
@@ -180,8 +196,16 @@ pub fn add_neg_responses_section<'a>(
         })
         .unwrap_or_default();
 
+    // Sort own services alphabetically by name
+    own_services.sort_by_cached_key(|ds| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
+
     // Collect services from parent refs with source layer names (that have negative responses)
-    let parent_services: Vec<(DiagService<'_>, String)> =
+    let mut parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
                 .into_iter()
@@ -190,6 +214,14 @@ pub fn add_neg_responses_section<'a>(
         } else {
             Vec::new()
         };
+
+    // Sort parent services alphabetically by name
+    parent_services.sort_by_cached_key(|(ds, _)| {
+        ds.diag_comm()
+            .and_then(|dc| dc.short_name())
+            .unwrap_or("")
+            .to_lowercase()
+    });
 
     let total_count = own_services.len() + parent_services.len();
 

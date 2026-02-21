@@ -1309,10 +1309,17 @@ impl App {
 
         let selected_row = &sorted_rows[row_cursor];
 
-        // For all service lists (Diag-Comms, Functional Classes, Requests, Responses),
+        // Check if this is a functional class for special name matching
+        let is_functional_class =
+            self.is_service_list_type(node, crate::tree::ServiceListType::FunctionalClasses);
+
+        // For most service lists (Diag-Comms, Requests, Responses),
         // the short name is in column 1 (second column)
         // Column 0 is ID, Column 1 is Short Name, Column 2 is Type, Column 3 is Inherited
-        let name_column_index = 1;
+        // 
+        // For Functional Classes overview, the table only has 1 column:
+        // Column 0 is Short Name
+        let name_column_index = if is_functional_class { 0 } else { 1 };
 
         if selected_row.cells.len() <= name_column_index {
             self.status = "Invalid row structure".to_owned();
@@ -1320,10 +1327,6 @@ impl App {
         }
 
         let service_name = selected_row.cells[name_column_index].clone();
-
-        // Check if this is a functional class for special name matching
-        let is_functional_class =
-            self.is_service_list_type(node, crate::tree::ServiceListType::FunctionalClasses);
 
         // Expand the service list section if it's collapsed
         if !self.all_nodes[node_idx].expanded {
@@ -1360,39 +1363,33 @@ impl App {
                 continue;
             }
 
-            // Check if this is a service-related node (generic check for all service types)
-            // or a functional class node:
-            // - services use NodeType::Service, jobs use NodeType::Default
-            let is_service_node = matches!(
-                child_node.node_type,
-                NodeType::Service
-                    | NodeType::ParentRefService
-                    | NodeType::Request
-                    | NodeType::PosResponse
-                    | NodeType::NegResponse
-            );
+            // When navigating from Functional Classes overview, look for FunctionalClass nodes
+            // When navigating from other service lists, look for service nodes
+            let is_target_node = if is_functional_class {
+                // For Functional Classes overview, we're looking for FunctionalClass detail nodes
+                child_node.node_type == NodeType::FunctionalClass
+            } else {
+                // For other service lists, look for service-related nodes
+                matches!(
+                    child_node.node_type,
+                    NodeType::Service
+                        | NodeType::ParentRefService
+                        | NodeType::Request
+                        | NodeType::PosResponse
+                        | NodeType::NegResponse
+                )
+            };
 
-            // Functional classes: services use NodeType::Service, jobs use NodeType::Default
-            // Check if it's a job by looking for "[Job]" prefix
-            let is_functional_class_child = is_functional_class
-                && (child_node.node_type == NodeType::Service
-                    || (child_node.node_type == NodeType::Default
-                        && child_node.text.starts_with("[Job] ")));
-
-            if !is_service_node && !is_functional_class_child {
+            if !is_target_node {
                 continue;
             }
 
-            // Check if this service/functional class node matches the name
-            // For services: text format is "[Service] 0xXXXX - ServiceName"
-            // For jobs in functional classes: text format is "[Job] JobName"
-            // For diag-comms services: text format is "[Service] 0xXXXX - ServiceName"
+            // Check if this node's text matches the name
             let name_matches = if is_functional_class {
-                // For functional classes, check if the text ends with the service name
-                // to handle both "[Service] 0xXXXX - ServiceName" and "[Job] JobName"
-                child_node.text.ends_with(&service_name)
-                    || child_node.text.contains(&format!("- {}", service_name))
+                // For functional classes, the node text is just the functional class name
+                child_node.text == service_name
             } else {
+                // For services: text format is "[Service] 0xXXXX - ServiceName"
                 child_node.text.contains(&service_name)
             };
 
@@ -1413,7 +1410,12 @@ impl App {
             self.reset_detail_state();
             self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
         } else {
-            self.status = format!("Service '{}' not found in tree", service_name);
+            let item_type = if is_functional_class {
+                "Functional class"
+            } else {
+                "Service"
+            };
+            self.status = format!("{} '{}' not found in tree", item_type, service_name);
         }
     }
 
@@ -1860,6 +1862,259 @@ impl App {
         }
     }
 
+    /// Navigate to a layer from functional class detail view
+    /// The layer name is extracted from the "Layer" column of the selected row
+    /// Navigate to a service or job from a functional class detail view
+    /// Uses the ShortName column (column 0) to find the target
+    pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Verify we're on a functional class node
+        if !matches!(node.node_type, NodeType::FunctionalClass) {
+            self.status = "Not a functional class node".to_owned();
+            return;
+        }
+
+        // Get the actual section index
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // We should be in a Services section
+        if section.section_type != DetailSectionType::Services {
+            self.status = "Not in a services section".to_owned();
+            return;
+        }
+
+        // Get table rows
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+
+        // Get the selected row cursor
+        let row_cursor = if section_idx < self.section_cursors.len() {
+            self.section_cursors[section_idx]
+        } else {
+            return;
+        };
+
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+        if row_cursor >= sorted_rows.len() {
+            return;
+        }
+
+        let selected_row = &sorted_rows[row_cursor];
+
+        // ShortName is in column 0
+        if selected_row.cells.is_empty() {
+            self.status = "Invalid row structure".to_owned();
+            return;
+        }
+
+        let target_short_name = selected_row.cells[0].clone();
+
+        // Search for the service/job in the tree
+        self.navigate_to_service_or_job(&target_short_name);
+    }
+
+    pub(crate) fn try_navigate_to_layer_from_functional_class(&mut self) {
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Verify we're on a functional class node
+        if !matches!(node.node_type, NodeType::FunctionalClass) {
+            self.status = "Not a functional class node".to_owned();
+            return;
+        }
+
+        // Get the actual section index
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // We should be in a Services section (the table showing services for this functional class)
+        if section.section_type != DetailSectionType::Services {
+            self.status = "Not in a services section".to_owned();
+            return;
+        }
+
+        // Get table rows
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+
+        // Get the selected row cursor
+        let row_cursor = if section_idx < self.section_cursors.len() {
+            self.section_cursors[section_idx]
+        } else {
+            return;
+        };
+
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+        if row_cursor >= sorted_rows.len() {
+            return;
+        }
+
+        let selected_row = &sorted_rows[row_cursor];
+
+        // The table has columns: ShortName | Type | SID_RQ | Semantic | Addressing | Layer
+        // Layer name is in column 5 (index 5)
+        let layer_column_index = 5;
+
+        if selected_row.cells.len() <= layer_column_index {
+            self.status = "Invalid row structure".to_owned();
+            return;
+        }
+
+        let layer_name = selected_row.cells[layer_column_index].clone();
+
+        // Search for a layer node in the tree with matching name
+        // The layer name in the table is just the short name (e.g., "IDC_GEN6_C_17.00.09")
+        // In the tree, variant nodes are at depth 1 under "Variants" section
+        // and have text format: "short_name" or "short_name [base]"
+        let mut found_layer_idx: Option<usize> = None;
+
+        for (ni, n) in self.all_nodes.iter().enumerate() {
+            // Look for Container nodes (variants) that have the matching layer name
+            // The node text is either exactly the layer_name or "layer_name [base]"
+            if n.node_type == NodeType::Container {
+                // Strip any suffix like " [base]" before comparing
+                let node_name = if let Some(idx) = n.text.find(" [") {
+                    &n.text[..idx]
+                } else {
+                    &n.text
+                };
+                
+                if node_name == layer_name {
+                    found_layer_idx = Some(ni);
+                    break;
+                }
+            }
+        }
+
+        if let Some(layer_node_idx) = found_layer_idx {
+            // Expand all parents of the target node to make it visible
+            let layer_depth = self.all_nodes[layer_node_idx].depth;
+
+            // Expand parent nodes
+            if layer_depth > 0 {
+                for i in 0..layer_node_idx {
+                    let node = &mut self.all_nodes[i];
+                    if node.depth < layer_depth && node.has_children {
+                        node.expanded = true;
+                    }
+                }
+            }
+
+            // Rebuild visible list
+            self.rebuild_visible();
+
+            // Navigate to the layer
+            if let Some(new_cursor) = self
+                .visible
+                .iter()
+                .position(|&idx| idx == layer_node_idx)
+            {
+                self.push_to_history();
+                self.detail_focused = false;
+                self.cursor = new_cursor;
+                self.reset_detail_state();
+                self.scroll_offset = self.cursor.saturating_sub(5);
+                self.status = format!("Navigated to layer: {}", layer_name);
+            }
+        } else {
+            self.status = format!("Layer '{}' not found in tree", layer_name);
+        }
+    }
+
+    /// Helper function to navigate to a service or job by name
+    fn navigate_to_service_or_job(&mut self, target_short_name: &str) {
+        // Search for a Service, ParentRefService, or Job node with matching name
+        let mut found_service_idx: Option<usize> = None;
+
+        for (ni, n) in self.all_nodes.iter().enumerate() {
+            let matches = if matches!(n.node_type, NodeType::Service | NodeType::ParentRefService) {
+                // Service nodes have format "0xXXXX - ShortName"
+                let service_name = if let Some(dash_idx) = n.text.find(" - ") {
+                    &n.text[dash_idx + 3..]
+                } else {
+                    &n.text
+                };
+                service_name == target_short_name
+            } else if n.node_type == NodeType::Default && n.text.starts_with("[Job]") {
+                // Job nodes have format "[Job] ShortName"
+                let job_name = n.text.strip_prefix("[Job] ").unwrap_or(&n.text);
+                job_name == target_short_name
+            } else {
+                false
+            };
+
+            if matches {
+                found_service_idx = Some(ni);
+                break;
+            }
+        }
+
+        if let Some(service_node_idx) = found_service_idx {
+            // Expand all parents of the target node to make it visible
+            let service_depth = self.all_nodes[service_node_idx].depth;
+
+            // Expand parent nodes
+            if service_depth > 0 {
+                for i in 0..service_node_idx {
+                    let node = &mut self.all_nodes[i];
+                    if node.depth < service_depth && node.has_children {
+                        node.expanded = true;
+                    }
+                }
+            }
+
+            // Rebuild visible list
+            self.rebuild_visible();
+
+            // Navigate to the service/job
+            if let Some(new_cursor) = self
+                .visible
+                .iter()
+                .position(|&idx| idx == service_node_idx)
+            {
+                self.push_to_history();
+                self.detail_focused = false;
+                self.cursor = new_cursor;
+                self.reset_detail_state();
+                self.scroll_offset = self.cursor.saturating_sub(5);
+                self.status = format!("Navigated to: {}", target_short_name);
+            }
+        } else {
+            self.status = format!("Service/Job '{}' not found in tree", target_short_name);
+        }
+    }
+
     pub(crate) fn resize_column(&mut self, delta: i16) {
         // Get the actual section index accounting for header sections
         let section_idx = self.get_section_index();
@@ -2113,9 +2368,21 @@ impl App {
                         | NodeType::NegResponse
                 );
 
+                // Check if this is a functional class node
+                let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
+
                 if is_service_list {
                     // Navigate to selected service from service list table
                     self.try_navigate_to_service();
+                } else if is_functional_class {
+                    // For functional class nodes, check which column is focused
+                    // Column 0 (ShortName): navigate to service/job
+                    // Column 5 (Layer): navigate to variant/layer
+                    if self.focused_column == 0 {
+                        self.try_navigate_to_service_from_functional_class();
+                    } else if self.focused_column == 5 {
+                        self.try_navigate_to_layer_from_functional_class();
+                    }
                 } else if is_service_node {
                     // Check if we're on the "Inherited From" row in Overview
                     let mut should_navigate_to_parent = false;

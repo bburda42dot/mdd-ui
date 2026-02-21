@@ -19,6 +19,7 @@ pub enum NodeType {
     Request,
     PosResponse,
     NegResponse,
+    FunctionalClass, // Functional class node
     Default,
 }
 

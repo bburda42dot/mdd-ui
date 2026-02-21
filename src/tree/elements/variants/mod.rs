@@ -23,6 +23,12 @@ use crate::tree::{
 pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     // Add Variants section
     if let Some(variants) = ecu.variants() {
+        // Collect all variants for cross-variant lookups (e.g., functional classes)
+        let all_variants_vec: Vec<VariantWrap> = variants
+            .iter()
+            .map(|v| VariantWrap(v))
+            .collect();
+        
         b.push(
             0,
             "Variants".to_string(),
@@ -73,7 +79,9 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 let parent_refs_iter = vw
                     .parent_refs()
                     .map(|pr| pr.iter().map(cda_database::datatypes::ParentRef));
-                b.add_diag_layer_structured(&layer, 2, &name, is_base, parent_refs_iter);
+                // Pass all variants for cross-variant lookups
+                let all_variants_iter = all_variants_vec.iter().cloned();
+                b.add_diag_layer_structured(&layer, 2, &name, is_base, parent_refs_iter, Some(all_variants_iter));
             }
         }
     }
@@ -101,12 +109,14 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 b.push(1, name.to_string(), false, true, NodeType::Container);
 
                 // Functional groups don't have parent refs like variants
+                // add_diag_layer_structured will handle adding functional classes
                 b.add_diag_layer_structured(
                     &layer,
                     2,
                     name,
                     false,
                     None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+                    None::<std::iter::Empty<cda_database::datatypes::Variant>>,
                 );
             }
         }
@@ -184,12 +194,14 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 b.push(1, name.to_string(), false, true, NodeType::Container);
 
                 // ECU shared data doesn't have parent refs like variants
+                // add_diag_layer_structured will handle adding functional classes
                 b.add_diag_layer_structured(
                     &layer,
                     2,
                     name,
                     false,
                     None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+                    None::<std::iter::Empty<cda_database::datatypes::Variant>>,
                 );
             }
         }
@@ -273,6 +285,7 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                     name,
                     false,
                     None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+                    None::<std::iter::Empty<cda_database::datatypes::Variant>>,
                 );
             }
         }

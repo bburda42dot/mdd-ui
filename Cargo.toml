@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cda-database = { git = "https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git", rev = "2e94da1dfe68e4d335ac732aeaa5cf6eb52eff05" }
-cda-interfaces = { git = "https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git", rev = "2e94da1dfe68e4d335ac732aeaa5cf6eb52eff05" }
+cda-database = { git = "https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git", rev = "dbaddf1f9d615613b899198277f85400e0b0a91e" }
+cda-interfaces = { git = "https://github.com/eclipse-opensovd/classic-diagnostic-adapter.git", rev = "dbaddf1f9d615613b899198277f85400e0b0a91e" }
 
 # TUI
 ratatui = "0.30.0"

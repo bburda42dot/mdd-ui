@@ -27,6 +27,7 @@ fn node_style(node: &TreeNode) -> Style {
         NodeType::Request => Style::default().fg(Color::White),
         NodeType::PosResponse => Style::default().fg(Color::White),
         NodeType::NegResponse => Style::default().fg(Color::White),
+        NodeType::FunctionalClass => Style::default().fg(Color::White),
         NodeType::Default => Style::default().fg(Color::White),
     }
 }

@@ -255,9 +255,21 @@ impl App {
                                 | NodeType::NegResponse
                         );
 
+                        // Check if this is a functional class node
+                        let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
+
                         if is_service_list {
                             // Navigate to selected service from service list table
                             self.try_navigate_to_service();
+                        } else if is_functional_class {
+                            // For functional class nodes, check which column is focused
+                            // Column 0 (ShortName): navigate to service/job
+                            // Column 5 (Layer): navigate to variant/layer
+                            if self.focused_column == 0 {
+                                self.try_navigate_to_service_from_functional_class();
+                            } else if self.focused_column == 5 {
+                                self.try_navigate_to_layer_from_functional_class();
+                            }
                         } else if is_service_node {
                             // Check if we're on the "Inherited From" row in Overview
                             let mut should_navigate_to_parent = false;

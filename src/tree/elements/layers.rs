@@ -1,4 +1,4 @@
-use cda_database::datatypes::{DiagLayer, ParentRef};
+use cda_database::datatypes::{DiagLayer, ParentRef, Variant};
 
 use super::variants::{
     com_params::add_com_params,
@@ -26,8 +26,7 @@ pub trait LayerExt {
         depth: usize,
         layer_name: &str,
         _expand: bool,
-        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
-    );
+        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,        all_variants: Option<impl Iterator<Item = Variant<'a>> + 'a>,    );
 }
 
 impl LayerExt for TreeBuilder {
@@ -38,13 +37,19 @@ impl LayerExt for TreeBuilder {
         layer_name: &str,
         _expand: bool,
         variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
+        all_variants: Option<impl Iterator<Item = Variant<'a>> + 'a>,
     ) {
         // Collect parent refs into a vector so we can reuse them for multiple sections
         let parent_refs_vec: Option<Vec<ParentRef<'a>>> =
             variant_parent_refs.map(|iter| iter.collect());
 
-        // Functional Classes
-        add_functional_classes(self, layer, depth);
+        // Functional Classes - pass all variants so it can search across them
+        add_functional_classes(
+            self,
+            layer,
+            depth,
+            all_variants,
+        );
 
         // Diag-Data-Dictionary-Spec
         add_diag_data_dictionary_spec(self, layer, depth);
@@ -97,7 +102,7 @@ impl LayerExt for TreeBuilder {
         // ComParam Refs
         add_com_params(self, layer, depth);
 
-        // Parent Refs - with detailed tabs for not-inherited elements
+        // Parent Refs
         add_parent_refs_with_details(
             self,
             layer,

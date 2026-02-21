@@ -307,10 +307,11 @@ impl App {
                         continue;
                     }
                     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
                     if self.searching {
                         self.handle_search_key(key.code)
                     } else {
-                        self.handle_normal_key(key.code, ctrl)
+                        self.handle_normal_key(key.code, ctrl, shift)
                     }
                 }
                 Event::Mouse(mouse) => {
@@ -805,8 +806,39 @@ impl App {
         }
     }
 
-    /// Navigate back (up one level in hierarchy)
-    pub(crate) fn navigate_back(&mut self) {
+    /// Navigate to the previous element in navigation history
+    pub(crate) fn navigate_to_previous_in_history(&mut self) {
+        // Need at least 2 elements (current + previous)
+        if self.navigation_history.len() < 2 {
+            self.status = "No previous element in history".to_owned();
+            return;
+        }
+
+        // Go back one step in history
+        if self.history_position > 1 {
+            self.history_position -= 1;
+            let target_cursor = self.navigation_history[self.history_position - 1];
+
+            // Validate the target cursor is still valid in visible
+            if target_cursor < self.visible.len() {
+                self.cursor = target_cursor;
+                self.reset_detail_state();
+                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+                self.detail_focused = false;
+                
+                if let Some(&node_idx) = self.visible.get(self.cursor) {
+                    self.status = format!("Navigated to: {}", self.all_nodes[node_idx].text);
+                }
+            } else {
+                self.status = "Previous element no longer visible".to_owned();
+            }
+        } else {
+            self.status = "Already at oldest element in history".to_owned();
+        }
+    }
+
+    /// Navigate up one level in hierarchy (parent node)
+    pub(crate) fn navigate_up_one_layer(&mut self) {
         // Get the current node
         if self.cursor >= self.visible.len() {
             self.status = "No parent to navigate to".to_owned();

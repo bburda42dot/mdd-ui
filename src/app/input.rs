@@ -91,7 +91,7 @@ impl App {
     }
 
     /// Handle a key press in normal (non-search) mode.
-    pub(super) fn handle_normal_key(&mut self, code: KeyCode, ctrl: bool) -> Action {
+    pub(super) fn handle_normal_key(&mut self, code: KeyCode, ctrl: bool, shift: bool) -> Action {
         // Check if help popup is open
         if self.help_popup_visible {
             // Help popup is open - ? or Escape closes it
@@ -115,9 +115,15 @@ impl App {
             KeyCode::Char('c') if ctrl => return Action::Quit,
 
             KeyCode::Backspace => {
-                // Navigate back in history (when not in search mode and not in detail pane)
+                // Navigate in tree (when not in search mode and not in detail pane)
                 if !self.detail_focused {
-                    self.navigate_back();
+                    if shift {
+                        // Shift+Backspace: Navigate up one layer in hierarchy
+                        self.navigate_up_one_layer();
+                    } else {
+                        // Backspace: Jump to last element in history
+                        self.navigate_to_previous_in_history();
+                    }
                 }
             }
 

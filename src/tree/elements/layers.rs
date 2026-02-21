@@ -16,7 +16,8 @@ use crate::tree::builder::TreeBuilder;
 /// Extension trait for adding DiagLayer structures to the tree
 pub trait LayerExt {
     /// Add a complete diag layer with structured hierarchy for containers
-    /// variant_parent_refs: Optional iterator to parent refs from the variant for fetching inherited services
+    /// variant_parent_refs: Optional iterator to parent refs from the variant
+    /// for fetching inherited services
     fn add_diag_layer_structured<'a>(
         &mut self,
         layer: &DiagLayer<'a>,

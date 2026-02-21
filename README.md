@@ -163,23 +163,7 @@ When a service is selected, the detail pane displays information in a tabbed int
 
 Each tab can be navigated independently using `h/l` keys when the detail pane is focused, and rows within tabs can be selected with `j/k`.
 
-## Color Scheme
 
-| Element | Color | Style |
-|---------|-------|-------|
-| ECU Nodes | Cyan | Bold |
-| Container Nodes | Blue | Bold |
-| Section Headers | Yellow | Bold |
-| Parameter Headers | Yellow | Bold |
-| Services | White | - |
-| Inherited Services | Dark Gray | - |
-| Regular Headers | White | Bold |
-| Property Keys | Cyan | - |
-| Property Values | Gray | - |
-| Selected Row | White on Dark Gray | - |
-| Focused Border | Cyan | - |
-| Unfocused Border | Dark Gray | - |
-| Separators | Dark Gray | - |
 
 ## Technical Details
 

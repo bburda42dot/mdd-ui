@@ -7,7 +7,8 @@ use crate::tree::{
 };
 
 /// Add requests section to the tree
-/// This uses EXACTLY the same logic and display as DiagComm - just filtered to show only services with requests
+/// This uses EXACTLY the same logic and display as DiagComm - just filtered
+/// to show only services with requests
 pub fn add_requests_section<'a>(
     b: &mut TreeBuilder,
     layer: &DiagLayer<'a>,

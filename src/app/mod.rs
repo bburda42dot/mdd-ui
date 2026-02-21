@@ -73,14 +73,15 @@ pub struct App {
     pub(crate) help_popup_visible: bool, // Help popup visibility
     pub(crate) tree_width_percentage: u16, // Tree pane width (0-100)
     pub(crate) diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
-    pub(crate) row_selection_mode: bool, // true = select by row, false = select by cell
-    pub(crate) table_sort_state: Vec<Option<TableSortState>>, // Sort state for each table section (None = default order)
-    tree_area: Rect,                                          // Cached tree area for mouse handling
+    // Sort state for each table section (None = default order)
+    pub(crate) table_sort_state: Vec<Option<TableSortState>>,
+    tree_area: Rect,                    // Cached tree area for mouse handling
     detail_area: Rect,                  // Cached detail area for mouse handling
     pub(crate) tab_area: Option<Rect>,  // Cached tab area for mouse handling
     pub(crate) tab_titles: Vec<String>, // Cached tab titles for click detection
-    pub(crate) table_content_area: Option<Rect>, // Cached table content area for row/cell clicking
-    pub(crate) cached_ratatui_constraints: Vec<ratatui::layout::Constraint>, // Exact constraints used in Table
+    pub(crate) table_content_area: Option<Rect>, // Cached table content area
+    // Exact constraints used in Table
+    pub(crate) cached_ratatui_constraints: Vec<ratatui::layout::Constraint>,
     last_click_time: Option<Instant>, // Time of last click for double-click detection
     last_click_pos: (u16, u16),       // Position of last click (column, row)
     pub(crate) mouse_enabled: bool,   // Whether mouse input is enabled
@@ -120,7 +121,6 @@ impl App {
             help_popup_visible: false,
             tree_width_percentage: 40,
             diagcomm_sort_by_id: true,    // Default: sort by ID
-            row_selection_mode: true,     // Default: row selection mode
             table_sort_state: Vec::new(), // No sorting by default
             tree_area: Rect::default(),
             detail_area: Rect::default(),
@@ -618,7 +618,8 @@ impl App {
 
         let column = self.focused_column;
 
-        // Toggle sort state: if already sorting by this column, toggle direction, otherwise sort ascending by this column
+        // Toggle sort state: if already sorting by this column, toggle direction,
+        // otherwise sort ascending by this column
         self.table_sort_state[section_idx] = match self.table_sort_state[section_idx] {
             Some(state) if state.column == column => {
                 // Same column clicked: toggle direction
@@ -662,10 +663,10 @@ impl App {
         }
 
         // Don't store duplicate consecutive positions
-        if let Some(&last) = self.navigation_history.last() {
-            if last == self.cursor {
-                return;
-            }
+        if let Some(&last) = self.navigation_history.last()
+            && last == self.cursor
+        {
+            return;
         }
 
         // If we're not at the end of history, truncate forward history
@@ -1073,7 +1074,8 @@ impl App {
         }
     }
 
-    /// Navigate to a service in the tree from a service list table (Diag-Comms, Requests, Responses)
+    /// Navigate to a service in the tree from a service list table
+    /// (Diag-Comms, Requests, Responses)
     pub(crate) fn try_navigate_to_service(&mut self) {
         // Validate cursor position and that we're on a service list header
         if self.cursor >= self.visible.len() {
@@ -1146,7 +1148,8 @@ impl App {
         }
 
         // Find the service node in the tree that matches this name
-        // We need to search for a child of the current service list node with a matching service name
+        // We need to search for a child of the current service list node
+        // with a matching service name
         let service_list_depth = self.all_nodes[node_idx].depth;
 
         // Look for service nodes immediately after this Diag-Comms node
@@ -1157,7 +1160,8 @@ impl App {
         for &vis_idx in &self.visible[self.cursor + 1..] {
             let child_node = &self.all_nodes[vis_idx];
 
-            // Stop if we've reached a node at the same or lower depth (left the service list section)
+            // Stop if we've reached a node at the same or lower depth
+            // (left the service list section)
             if child_node.depth <= service_list_depth {
                 break;
             }
@@ -1234,7 +1238,8 @@ impl App {
         };
 
         // Find the Overview section
-        // If there's a header section (render_as_header = true), Overview is at index 1, otherwise 0
+        // If there's a header section (render_as_header = true),
+        // Overview is at index 1, otherwise 0
         if node.detail_sections.is_empty() {
             return;
         }
@@ -1278,7 +1283,8 @@ impl App {
             let parent_layer_name = selected_row.cells[1].clone();
 
             // Search for a node in the tree that matches this parent layer name
-            // We need to find variants, protocols, functional groups, or EcuSharedData nodes with this name
+            // We need to find variants, protocols, functional groups,
+            // or EcuSharedData nodes with this name
             let mut found_container_idx: Option<usize> = None;
 
             // Search through ALL nodes, not just visible ones
@@ -1567,7 +1573,8 @@ impl App {
                     self.handle_click(column, row);
                     // Then handle the double-click action
                     self.handle_double_click(column, row);
-                    // Reset click tracking to avoid triple-click being detected as another double-click
+                    // Reset click tracking to avoid triple-click being detected
+                    // as another double-click
                     self.last_click_time = None;
                 } else {
                     self.handle_click(column, row);
@@ -1651,22 +1658,21 @@ impl App {
 
                     if section_idx < node.detail_sections.len() {
                         let section = &node.detail_sections[section_idx];
-                        if section.title == "Overview" {
-                            if let crate::tree::DetailContent::Table { rows, .. } = &section.content
-                            {
-                                let row_cursor = if section_idx < self.section_cursors.len() {
-                                    self.section_cursors[section_idx]
-                                } else {
-                                    0
-                                };
+                        if section.title == "Overview"
+                            && let crate::tree::DetailContent::Table { rows, .. } = &section.content
+                        {
+                            let row_cursor = if section_idx < self.section_cursors.len() {
+                                self.section_cursors[section_idx]
+                            } else {
+                                0
+                            };
 
-                                if row_cursor < rows.len() {
-                                    let selected_row = &rows[row_cursor];
-                                    if selected_row.cells.len() >= 2
-                                        && selected_row.cells[0] == "Inherited From"
-                                    {
-                                        should_navigate_to_parent = true;
-                                    }
+                            if row_cursor < rows.len() {
+                                let selected_row = &rows[row_cursor];
+                                if selected_row.cells.len() >= 2
+                                    && selected_row.cells[0] == "Inherited From"
+                                {
+                                    should_navigate_to_parent = true;
                                 }
                             }
                         }

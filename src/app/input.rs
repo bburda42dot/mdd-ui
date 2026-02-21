@@ -260,24 +260,22 @@ impl App {
 
                             if section_idx < node.detail_sections.len() {
                                 let section = &node.detail_sections[section_idx];
-                                if section.title == "Overview" {
-                                    if let crate::tree::DetailContent::Table { rows, .. } =
+                                if section.title == "Overview"
+                                    && let crate::tree::DetailContent::Table { rows, .. } =
                                         &section.content
-                                    {
-                                        let row_cursor = if section_idx < self.section_cursors.len()
-                                        {
-                                            self.section_cursors[section_idx]
-                                        } else {
-                                            0
-                                        };
+                                {
+                                    let row_cursor = if section_idx < self.section_cursors.len() {
+                                        self.section_cursors[section_idx]
+                                    } else {
+                                        0
+                                    };
 
-                                        if row_cursor < rows.len() {
-                                            let selected_row = &rows[row_cursor];
-                                            if selected_row.cells.len() >= 2
-                                                && selected_row.cells[0] == "Inherited From"
-                                            {
-                                                should_navigate_to_parent = true;
-                                            }
+                                    if row_cursor < rows.len() {
+                                        let selected_row = &rows[row_cursor];
+                                        if selected_row.cells.len() >= 2
+                                            && selected_row.cells[0] == "Inherited From"
+                                        {
+                                            should_navigate_to_parent = true;
                                         }
                                     }
                                 }

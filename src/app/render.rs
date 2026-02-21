@@ -21,7 +21,8 @@ fn node_style(node: &TreeNode) -> Style {
         NodeType::Container => style(Color::Blue, true),
         NodeType::SectionHeader => style(Color::Yellow, true),
         NodeType::Service => Style::default().fg(Color::White),
-        NodeType::ParentRefService => Style::default().fg(Color::DarkGray), // Gray for inherited services
+        // Gray for inherited services
+        NodeType::ParentRefService => Style::default().fg(Color::DarkGray),
         NodeType::Request => Style::default().fg(Color::White),
         NodeType::PosResponse => Style::default().fg(Color::White),
         NodeType::NegResponse => Style::default().fg(Color::White),
@@ -468,9 +469,7 @@ impl App {
         // If there's a header section, use its title
         // If there's only one section (common for tables), use that section's title
         // Otherwise fall back to "Details"
-        let detail_title = if header_section.is_some() {
-            format!(" {} ", sections[0].title)
-        } else if sections.len() == 1 {
+        let detail_title = if header_section.is_some() || sections.len() == 1 {
             format!(" {} ", sections[0].title)
         } else {
             " Details ".to_string()
@@ -543,12 +542,12 @@ impl App {
             None
         };
 
-        if let (Some(area), Some(hdr)) = (header_area, header_section) {
-            if let DetailContent::PlainText(lines) = &hdr.content {
-                let text = lines.join("\n");
-                let para = Paragraph::new(text).style(Style::default().fg(Color::White));
-                frame.render_widget(para, area);
-            }
+        if let (Some(area), Some(hdr)) = (header_area, header_section)
+            && let DetailContent::PlainText(lines) = &hdr.content
+        {
+            let text = lines.join("\n");
+            let para = Paragraph::new(text).style(Style::default().fg(Color::White));
+            frame.render_widget(para, area);
         }
 
         let (tab_area, content_area) = if show_tabs {

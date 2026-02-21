@@ -4,11 +4,6 @@ use crate::tree::{builder::TreeBuilder, types::NodeType};
 
 /// Add placeholder sections that are not fully implemented yet
 /// These are kept for structure but may be expanded in the future
-pub fn add_functional_classes(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize) {
-    // Functional classes API not directly available
-    // Adding as placeholder
-    b.push_leaf(depth, "Functional Classes".to_string(), NodeType::Default);
-}
 
 pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Check if layer has diagnostic data dictionary specifications

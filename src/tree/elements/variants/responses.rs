@@ -78,13 +78,13 @@ pub fn add_pos_responses_section<'a>(
         // Build detail section for Pos-Responses header showing all services in a table
         let detail_section = build_pos_responses_table_section(&own_services, &parent_services);
 
-        b.push_details_structured(
+        b.push_service_list_header(
             depth,
             format!("Pos-Responses ({})", total_count),
             false,
             true,
             vec![detail_section],
-            NodeType::SectionHeader,
+            crate::tree::ServiceListType::PosResponses,
         );
 
         // Add own services first
@@ -194,13 +194,13 @@ pub fn add_neg_responses_section<'a>(
         // Build detail section for Neg-Responses header showing all services in a table
         let detail_section = build_neg_responses_table_section(&own_services, &parent_services);
 
-        b.push_details_structured(
+        b.push_service_list_header(
             depth,
             format!("Neg-Responses ({})", total_count),
             false,
             true,
             vec![detail_section],
-            NodeType::SectionHeader,
+            crate::tree::ServiceListType::NegResponses,
         );
 
         // Add own services first

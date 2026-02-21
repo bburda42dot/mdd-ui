@@ -1,4 +1,4 @@
-use super::types::{DetailSectionData, NodeType, TreeNode};
+use super::types::{DetailSectionData, NodeType, ServiceListType, TreeNode};
 
 /// Accumulates `TreeNode`s while walking the database model.
 ///
@@ -29,6 +29,7 @@ impl TreeBuilder {
             has_children,
             detail_sections: Vec::new(),
             node_type,
+            service_list_type: None,
         });
     }
 
@@ -49,6 +50,28 @@ impl TreeBuilder {
             has_children,
             detail_sections: sections,
             node_type,
+            service_list_type: None,
+        });
+    }
+
+    /// Push a service list section header with type information
+    pub(crate) fn push_service_list_header(
+        &mut self,
+        depth: usize,
+        text: String,
+        expanded: bool,
+        has_children: bool,
+        sections: Vec<DetailSectionData>,
+        service_list_type: ServiceListType,
+    ) {
+        self.nodes.push(TreeNode {
+            depth,
+            text,
+            expanded,
+            has_children,
+            detail_sections: sections,
+            node_type: NodeType::SectionHeader,
+            service_list_type: Some(service_list_type),
         });
     }
 

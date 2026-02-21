@@ -144,6 +144,16 @@ impl App {
         app
     }
 
+    /// Helper: Check if a node is a service list section header
+    fn is_service_list_section(&self, node: &TreeNode) -> bool {
+        node.service_list_type.is_some()
+    }
+
+    /// Helper: Check if a node is a specific service list type
+    fn is_service_list_type(&self, node: &TreeNode, list_type: crate::tree::ServiceListType) -> bool {
+        matches!(&node.service_list_type, Some(t) if *t == list_type)
+    }
+
     /// Get the actual section index accounting for header section offset
     fn get_section_index(&self) -> usize {
         // Check if current node has a header section (rendered above tabs)
@@ -361,19 +371,19 @@ impl App {
                             )
                         }
                         SearchScope::DiagComms => {
-                            self.all_nodes[i].text.starts_with("Diag-Comms (")
+                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::DiagComms)
                                 || matches!(
                                     self.all_nodes[i].node_type,
                                     NodeType::Service | NodeType::ParentRefService
                                 )
                         }
                         SearchScope::Requests => {
-                            self.all_nodes[i].text.starts_with("Requests (")
+                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::Requests)
                                 || matches!(self.all_nodes[i].node_type, NodeType::Request)
                         }
                         SearchScope::Responses => {
-                            self.all_nodes[i].text.starts_with("Pos-Responses (")
-                                || self.all_nodes[i].text.starts_with("Neg-Responses (")
+                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::PosResponses)
+                                || self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::NegResponses)
                                 || matches!(
                                     self.all_nodes[i].node_type,
                                     NodeType::PosResponse | NodeType::NegResponse
@@ -543,7 +553,7 @@ impl App {
             let node = &self.all_nodes[i];
 
             // Skip non-Diag-Comms nodes early
-            if !node.text.starts_with("Diag-Comms (") {
+            if !self.is_service_list_type(node, crate::tree::ServiceListType::DiagComms) {
                 i += 1;
                 continue;
             }
@@ -1092,11 +1102,7 @@ impl App {
         let node = &self.all_nodes[node_idx];
 
         // Check if this is a service list section header
-        if !node.text.starts_with("Diag-Comms (")
-            && !node.text.starts_with("Requests (")
-            && !node.text.starts_with("Pos-Responses (")
-            && !node.text.starts_with("Neg-Responses (")
-        {
+        if !self.is_service_list_section(node) {
             self.status = "Not a service list section".to_owned();
             return;
         }
@@ -1133,13 +1139,18 @@ impl App {
         }
 
         let selected_row = &rows[row_cursor];
-        if selected_row.cells.len() < 2 {
+        
+        // For Functional Classes, the short name is in the first column
+        // For services (Diag-Comms/Requests/Responses), the short name is in the second column
+        let is_functional_class = self.is_service_list_type(node, crate::tree::ServiceListType::FunctionalClasses);
+        let name_column_index = if is_functional_class { 0 } else { 1 };
+        
+        if selected_row.cells.len() <= name_column_index {
             self.status = "Invalid row structure".to_owned();
             return;
         }
 
-        // The short name is in the second column
-        let service_name = selected_row.cells[1].clone();
+        let service_name = selected_row.cells[name_column_index].clone();
 
         // Expand the service list section if it's collapsed
         if !self.all_nodes[node_idx].expanded {
@@ -1177,6 +1188,7 @@ impl App {
             }
 
             // Check if this is a service-related node (generic check for all service types)
+            // or a functional class node
             let is_service_node = matches!(
                 child_node.node_type,
                 NodeType::Service
@@ -1185,14 +1197,24 @@ impl App {
                     | NodeType::PosResponse
                     | NodeType::NegResponse
             );
+            
+            // Functional classes use NodeType::Default, so we need to check the name match directly
+            let is_functional_class_child = is_functional_class && child_node.node_type == NodeType::Default;
 
-            if !is_service_node {
+            if !is_service_node && !is_functional_class_child {
                 continue;
             }
 
-            // Check if this service node contains the service name in its text
-            // The text format is "0xXXXX - ServiceName"
-            if child_node.text.contains(&service_name) {
+            // Check if this service/functional class node matches the name
+            // For services: text format is "0xXXXX - ServiceName"
+            // For functional classes: text is just the name
+            let name_matches = if is_functional_class {
+                child_node.text == service_name
+            } else {
+                child_node.text.contains(&service_name)
+            };
+            
+            if name_matches {
                 // Find the position of this node in visible
                 if let Some(pos) = self.visible.iter().position(|&idx| idx == vis_idx) {
                     found_idx = Some(pos);
@@ -1211,6 +1233,189 @@ impl App {
             self.status = format!("Service '{}' not found in tree", service_name);
         }
     }
+
+    /// Navigate to a service from a functional class's Services table
+    pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
+        // Validate cursor position
+        if self.cursor >= self.visible.len() {
+            self.status = "Cursor out of bounds".to_string();
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Check if this is a functional class detail node
+        if node.node_type != NodeType::Default
+            || !node.detail_sections.iter().any(|s| s.title.starts_with("Functional Class -"))
+        {
+            self.status = "Not a functional class detail node".to_owned();
+            return;
+        }
+
+        // Find the "Services" section
+        let services_section = node.detail_sections.iter().find(|s| s.title == "Services");
+        
+        if services_section.is_none() {
+            self.status = "No Services section found".to_string();
+            return;
+        }
+
+        let section = services_section.unwrap();
+
+        // Extract the service name from the table
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => {
+                self.status = "Services section should be a table".to_owned();
+                return;
+            }
+        };
+
+        // Get the currently selected section index (which should be the Services section)
+        let section_idx = self.get_section_index();
+        
+        if section_idx >= node.detail_sections.len() {
+            self.status = "Section index out of bounds".to_string();
+            return;
+        }
+        
+        // Verify we're on the Services section
+        if node.detail_sections[section_idx].title != "Services" {
+            self.status = "Not on Services section".to_string();
+            return;
+        }
+        
+        if section_idx >= self.section_cursors.len() {
+            self.status = "Section cursor not initialized".to_string();
+            return;
+        }
+        
+        let row_cursor = self.section_cursors[section_idx];
+
+        if row_cursor >= rows.len() {
+            self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
+            return;
+        }
+
+        let selected_row = &rows[row_cursor];
+        
+        // Check if this is the empty placeholder row
+        if selected_row.cells.len() == 1 && selected_row.cells[0].contains("No services") {
+            self.status = "No services available in this functional class".to_owned();
+            return;
+        }
+        
+        if selected_row.cells.is_empty() {
+            self.status = "Invalid row structure".to_owned();
+            return;
+        }
+
+        // The service short name is in the first column (index 0)
+        let service_name = selected_row.cells[0].clone();
+
+        // Now find the Diag-Comms section in the tree that is a sibling of the Functional Classes section
+        // We need to go up to the parent level and find the Diag-Comms section
+        let current_depth = node.depth;
+        
+        // Find the Diag-Comms section at the same depth or parent level
+        let mut diag_comms_idx: Option<usize> = None;
+        
+        // Search backwards from current position to find Diag-Comms section
+        for i in (0..node_idx).rev() {
+            let candidate = &self.all_nodes[i];
+            
+            // If we've gone too far up, stop
+            if candidate.depth < current_depth - 1 {
+                break;
+            }
+            
+            // Look for Diag-Comms at the same level as Functional Classes (sibling)
+            if candidate.depth == current_depth - 1 && self.is_service_list_type(candidate, crate::tree::ServiceListType::DiagComms) {
+                diag_comms_idx = Some(i);
+                break;
+            }
+        }
+        
+        // If not found before, search forward
+        if diag_comms_idx.is_none() {
+            for i in node_idx + 1..self.all_nodes.len() {
+                let candidate = &self.all_nodes[i];
+                
+                // If we've gone too far, stop
+                if candidate.depth < current_depth - 1 {
+                    break;
+                }
+                
+                // Look for Diag-Comms at the same level as Functional Classes (sibling)
+                if candidate.depth == current_depth - 1 && self.is_service_list_type(candidate, crate::tree::ServiceListType::DiagComms) {
+                    diag_comms_idx = Some(i);
+                    break;
+                }
+            }
+        }
+
+        if diag_comms_idx.is_none() {
+            self.status = "Diag-Comms section not found".to_owned();
+            return;
+        }
+
+        let diag_comms_node_idx = diag_comms_idx.unwrap();
+        
+        // Expand the Diag-Comms section if it's collapsed
+        if !self.all_nodes[diag_comms_node_idx].expanded {
+            self.all_nodes[diag_comms_node_idx].expanded = true;
+            self.rebuild_visible();
+        }
+
+        let diag_comms_depth = self.all_nodes[diag_comms_node_idx].depth;
+
+        // Find the service node in Diag-Comms children that matches this name
+        let mut found_idx: Option<usize> = None;
+
+        for i in diag_comms_node_idx + 1..self.all_nodes.len() {
+            let child_node = &self.all_nodes[i];
+
+            // Stop if we've left the Diag-Comms section
+            if child_node.depth <= diag_comms_depth {
+                break;
+            }
+
+            // Only look at immediate children
+            if child_node.depth != diag_comms_depth + 1 {
+                continue;
+            }
+
+            // Check if this is a service node
+            if !matches!(
+                child_node.node_type,
+                NodeType::Service | NodeType::ParentRefService
+            ) {
+                continue;
+            }
+
+            // Check if this service node contains the service name
+            if child_node.text.contains(&service_name) {
+                // Find the position of this node in visible
+                if let Some(pos) = self.visible.iter().position(|&idx| idx == i) {
+                    found_idx = Some(pos);
+                    break;
+                }
+            }
+        }
+
+        if let Some(target_cursor) = found_idx {
+            // Navigate tree focus to this service
+            self.push_to_history(); // Store old position before jumping
+            self.detail_focused = false;
+            self.cursor = target_cursor;
+            self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+        } else {
+            self.status = format!("Service '{}' not found in Diag-Comms", service_name);
+        }
+    }
+
 
     /// Navigate to an inherited parent layer in the tree
     pub(crate) fn try_navigate_to_inherited_parent(&mut self) {
@@ -1341,7 +1546,7 @@ impl App {
 
                     // Look for the Diag-Comms section
                     if child_node.depth == container_depth + 1
-                        && child_node.text.starts_with("Diag-Comms (")
+                        && self.is_service_list_type(child_node, crate::tree::ServiceListType::DiagComms)
                     {
                         diagcomm_node_idx = Some(i);
                         break;
@@ -1649,10 +1854,7 @@ impl App {
                 let node = &self.all_nodes[node_idx];
 
                 // Check if this is a service list header (generic check)
-                let is_service_list = node.text.starts_with("Diag-Comms (")
-                    || node.text.starts_with("Requests (")
-                    || node.text.starts_with("Pos-Responses (")
-                    || node.text.starts_with("Neg-Responses (");
+                let is_service_list = self.is_service_list_section(node);
 
                 // Check if this is any service-related node type (generic check)
                 let is_service_node = matches!(

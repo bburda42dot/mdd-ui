@@ -2,8 +2,9 @@ use cda_database::datatypes::{DiagLayer, ParentRef};
 
 use super::variants::{
     com_params::add_com_params,
+    functional_classes::add_functional_classes,
     placeholders::{
-        add_additional_audiences, add_diag_data_dictionary_spec, add_functional_classes,
+        add_additional_audiences, add_diag_data_dictionary_spec,
         add_parent_refs, add_sdgs, add_sub_components,
     },
     requests::add_requests_section,

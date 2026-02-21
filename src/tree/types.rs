@@ -1,3 +1,13 @@
+/// Type of service list section
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ServiceListType {
+    DiagComms,
+    Requests,
+    PosResponses,
+    NegResponses,
+    FunctionalClasses,
+}
+
 /// Type of node for styling purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NodeType {
@@ -21,6 +31,8 @@ pub struct TreeNode {
     pub has_children: bool,
     pub detail_sections: Vec<DetailSectionData>,
     pub node_type: NodeType,
+    /// If this is a SectionHeader, specifies which kind of service list it represents
+    pub service_list_type: Option<ServiceListType>,
 }
 
 /// Type of cell content for interaction purposes

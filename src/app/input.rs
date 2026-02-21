@@ -233,10 +233,7 @@ impl App {
                         let node = &self.all_nodes[node_idx];
 
                         // Check if this is a service list header (generic check)
-                        let is_service_list = node.text.starts_with("Diag-Comms (")
-                            || node.text.starts_with("Requests (")
-                            || node.text.starts_with("Pos-Responses (")
-                            || node.text.starts_with("Neg-Responses (");
+                        let is_service_list = self.is_service_list_section(node);
 
                         // Check if this is any service-related node type (generic check)
                         let is_service_node = matches!(
@@ -248,9 +245,19 @@ impl App {
                                 | NodeType::NegResponse
                         );
 
+                        // Check if this is a functional class detail node AND we're on the Services tab
+                        let section_idx = self.get_section_index();
+                        let is_functional_class_detail = node.node_type == NodeType::Default
+                            && section_idx < node.detail_sections.len()
+                            && node.detail_sections[section_idx].title == "Services"
+                            && node.detail_sections.iter().any(|s| s.title.starts_with("Functional Class -"));
+
                         if is_service_list {
                             // Navigate to selected service from service list table
                             self.try_navigate_to_service();
+                        } else if is_functional_class_detail {
+                            // Navigate to selected service from functional class services table
+                            self.try_navigate_to_service_from_functional_class();
                         } else if is_service_node {
                             // Check if we're on the "Inherited From" row in Overview
                             let mut should_navigate_to_parent = false;

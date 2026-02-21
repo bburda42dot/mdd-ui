@@ -44,13 +44,13 @@ pub fn add_requests_section<'a>(
         // Build detail section for Requests header showing all services in a table
         let detail_section = build_requests_table_section(&own_services, &parent_services);
 
-        b.push_details_structured(
+        b.push_service_list_header(
             depth,
             format!("Requests ({})", total_count),
             false,
             true,
             vec![detail_section],
-            NodeType::SectionHeader,
+            crate::tree::ServiceListType::Requests,
         );
 
         // Add own services first - using EXACTLY the same display as DiagComm

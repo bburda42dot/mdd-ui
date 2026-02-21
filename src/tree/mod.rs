@@ -7,7 +7,7 @@ use cda_database::datatypes::DiagnosticDatabase;
 use elements::{add_ecu_shared_data, add_functional_groups, add_variants};
 // Re-export public types
 pub use types::{
-    CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, NodeType, TreeNode,
+    CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, NodeType, ServiceListType, TreeNode,
     lines_to_single_section,
 };
 

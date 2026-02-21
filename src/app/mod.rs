@@ -37,6 +37,65 @@ pub(crate) enum SearchScope {
     Responses,        // Search only in Responses (Pos and Neg)
 }
 
+impl std::fmt::Display for SearchScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchScope::All => write!(f, "All"),
+            SearchScope::Variants => write!(f, "Variants"),
+            SearchScope::FunctionalGroups => write!(f, "functional groups"),
+            SearchScope::EcuSharedData => write!(f, "ECU shared data"),
+            SearchScope::Services => write!(f, "Services"),
+            SearchScope::DiagComms => write!(f, "Diag-Comms"),
+            SearchScope::Requests => write!(f, "Requests"),
+            SearchScope::Responses => write!(f, "Responses"),
+        }
+    }
+}
+
+impl SearchScope {
+    /// Returns the scope indicator for search mode (e.g., " [variants]")
+    pub(crate) fn search_indicator(&self) -> &str {
+        match self {
+            SearchScope::All => "",
+            SearchScope::Variants => " [variants]",
+            SearchScope::FunctionalGroups => " [functional groups]",
+            SearchScope::EcuSharedData => " [ECU shared data]",
+            SearchScope::Services => " [services]",
+            SearchScope::DiagComms => " [diag-comms]",
+            SearchScope::Requests => " [requests]",
+            SearchScope::Responses => " [responses]",
+        }
+    }
+
+    /// Returns the scope indicator for status line (e.g., " | scope: variants")
+    pub(crate) fn status_indicator(&self) -> &str {
+        match self {
+            SearchScope::All => "",
+            SearchScope::Variants => " | scope: variants",
+            SearchScope::FunctionalGroups => " | scope: functional groups",
+            SearchScope::EcuSharedData => " | scope: ECU shared data",
+            SearchScope::Services => " | scope: services",
+            SearchScope::DiagComms => " | scope: diag-comms",
+            SearchScope::Requests => " | scope: requests",
+            SearchScope::Responses => " | scope: responses",
+        }
+    }
+
+    /// Returns the abbreviated scope indicator (e.g., "[V]" for Variants)
+    pub(crate) fn abbrev(&self) -> &str {
+        match self {
+            SearchScope::All => "",
+            SearchScope::Variants => "[V]",
+            SearchScope::FunctionalGroups => "[FG]",
+            SearchScope::EcuSharedData => "[ESD]",
+            SearchScope::Services => "[S]",
+            SearchScope::DiagComms => "[D]",
+            SearchScope::Requests => "[Rq]",
+            SearchScope::Responses => "[Rs]",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub(crate) enum SortDirection {
     Ascending,
@@ -1616,8 +1675,11 @@ impl App {
     }
 
     pub(crate) fn resize_column(&mut self, delta: i16) {
+        // Get the actual section index accounting for header sections
+        let section_idx = self.get_section_index();
+        
         // Ensure we have column_widths entries for all sections
-        while self.column_widths.len() <= self.selected_tab {
+        while self.column_widths.len() <= section_idx {
             self.column_widths.push(Vec::new());
         }
 
@@ -1626,10 +1688,10 @@ impl App {
         }
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
-        if self.selected_tab >= node.detail_sections.len() {
+        if section_idx >= node.detail_sections.len() {
             return;
         }
-        let section = &node.detail_sections[self.selected_tab];
+        let section = &node.detail_sections[section_idx];
         use crate::tree::DetailContent;
         let constraints = match &section.content {
             DetailContent::Table { constraints, .. } => constraints,
@@ -1640,7 +1702,7 @@ impl App {
         };
 
         // Initialize column widths from constraints if not already done
-        if self.column_widths[self.selected_tab].is_empty() {
+        if self.column_widths[section_idx].is_empty() {
             // First pass: convert to initial widths
             let mut widths: Vec<u16> = constraints
                 .iter()
@@ -1675,16 +1737,16 @@ impl App {
                 }
             }
 
-            self.column_widths[self.selected_tab] = widths;
+            self.column_widths[section_idx] = widths;
         }
 
-        let num_cols = self.column_widths[self.selected_tab].len();
+        let num_cols = self.column_widths[section_idx].len();
         if num_cols == 0 || self.focused_column >= num_cols {
             return;
         }
 
         // Calculate new width for focused column
-        let current_width = self.column_widths[self.selected_tab][self.focused_column] as i16;
+        let current_width = self.column_widths[section_idx][self.focused_column] as i16;
         let new_current = (current_width + delta).clamp(3, 95) as u16; // Min 3%, Max 95%
         let actual_delta = new_current as i16 - current_width;
 
@@ -1694,12 +1756,12 @@ impl App {
         }
 
         // Apply the change to the focused column
-        self.column_widths[self.selected_tab][self.focused_column] = new_current;
+        self.column_widths[section_idx][self.focused_column] = new_current;
 
         // Distribute the delta across all other columns proportionally
         let num_other_cols = num_cols - 1;
         if num_other_cols > 0 {
-            let total_other: u16 = self.column_widths[self.selected_tab]
+            let total_other: u16 = self.column_widths[section_idx]
                 .iter()
                 .enumerate()
                 .filter(|(i, _)| *i != self.focused_column)
@@ -1710,34 +1772,34 @@ impl App {
                 // Distribute the negative delta proportionally across other columns
                 for i in 0..num_cols {
                     if i != self.focused_column {
-                        let old_width = self.column_widths[self.selected_tab][i] as i16;
+                        let old_width = self.column_widths[section_idx][i] as i16;
                         let proportion = old_width as f32 / total_other as f32;
                         let adjustment = (-actual_delta as f32 * proportion).round() as i16;
                         let new_width = (old_width + adjustment).max(3) as u16;
-                        self.column_widths[self.selected_tab][i] = new_width;
+                        self.column_widths[section_idx][i] = new_width;
                     }
                 }
             }
         }
 
         // Normalize to ensure total is exactly 100%
-        let total: u16 = self.column_widths[self.selected_tab].iter().sum();
+        let total: u16 = self.column_widths[section_idx].iter().sum();
         if total > 0 && total != 100 {
             // Scale all widths proportionally to sum to 100
-            let normalized: Vec<u16> = self.column_widths[self.selected_tab]
+            let normalized: Vec<u16> = self.column_widths[section_idx]
                 .iter()
                 .map(|&w| ((w as f32 / total as f32) * 100.0).round() as u16)
                 .collect();
 
-            self.column_widths[self.selected_tab] = normalized;
+            self.column_widths[section_idx] = normalized;
 
             // Handle rounding errors: adjust the focused column to make total exactly 100
-            let new_total: u16 = self.column_widths[self.selected_tab].iter().sum();
+            let new_total: u16 = self.column_widths[section_idx].iter().sum();
             if new_total != 100 {
                 let diff = 100i16 - new_total as i16;
                 let focused_width =
-                    self.column_widths[self.selected_tab][self.focused_column] as i16;
-                self.column_widths[self.selected_tab][self.focused_column] =
+                    self.column_widths[section_idx][self.focused_column] as i16;
+                self.column_widths[section_idx][self.focused_column] =
                     (focused_width + diff).max(1) as u16;
             }
         }
@@ -1745,8 +1807,8 @@ impl App {
         self.status = format!(
             "Column {} width: {}% (total: {}%)",
             self.focused_column,
-            self.column_widths[self.selected_tab][self.focused_column],
-            self.column_widths[self.selected_tab].iter().sum::<u16>()
+            self.column_widths[section_idx][self.focused_column],
+            self.column_widths[section_idx].iter().sum::<u16>()
         );
     }
 
@@ -1958,19 +2020,16 @@ impl App {
             return;
         };
 
-        // Account for border (1 column from left, 1 row from top)
-        let inner_x = tab_area.x + 1;
-        let inner_y = tab_area.y + 1;
-
-        if column < inner_x || row < inner_y {
+        // No borders on tab area - tabs render directly
+        if column < tab_area.x || row < tab_area.y {
             return;
         }
 
-        let relative_col = (column - inner_x) as usize;
-        let relative_row = (row - inner_y) as usize;
+        let relative_col = (column - tab_area.x) as usize;
+        let relative_row = (row - tab_area.y) as usize;
 
-        // Calculate available width for tabs
-        let available_width = (tab_area.width.saturating_sub(2)) as usize; // -2 for borders
+        // Calculate available width for tabs (full width, no borders)
+        let available_width = tab_area.width as usize;
 
         // Build tab strings with decorators to match rendering logic
         let tab_strings: Vec<String> = self

@@ -154,11 +154,31 @@ impl App {
         if !detail_sections.is_empty() {
             self.draw_detail_panes(frame, area, &detail_sections, &node_text);
         } else {
+            // Draw a default/dummy pane with helpful information
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(border(self.detail_focused))
                 .title(" Details ");
+            
+            let inner = block.inner(area);
             frame.render_widget(block, area);
+            
+            // Add helpful message in the center
+            let help_message = vec![
+                "",
+                "No detailed information available for this item.",
+                "",
+                "Navigate the tree to select items with more details.",
+                "",
+                "Press ? for help.",
+            ];
+            
+            let paragraph = Paragraph::new(help_message.join("\n"))
+                .style(Style::default().fg(Color::DarkGray))
+                .alignment(ratatui::layout::Alignment::Center)
+                .wrap(ratatui::widgets::Wrap { trim: false });
+            
+            frame.render_widget(paragraph, inner);
         }
     }
 
@@ -243,16 +263,6 @@ impl App {
         use crate::app::SearchScope;
 
         let (text, st) = if self.searching {
-            let scope_indicator = match self.search_scope {
-                SearchScope::All => "",
-                SearchScope::Variants => " [variants]",
-                SearchScope::FunctionalGroups => " [functional groups]",
-                SearchScope::EcuSharedData => " [ECU shared data]",
-                SearchScope::Services => " [services]",
-                SearchScope::DiagComms => " [diag-comms]",
-                SearchScope::Requests => " [requests]",
-                SearchScope::Responses => " [responses]",
-            };
             let current_search_info = if !self.search_stack.is_empty() {
                 let stack_display: Vec<String> = self
                     .search_stack
@@ -264,22 +274,14 @@ impl App {
                 String::new()
             };
 
-            let scope_name = match self.search_scope {
-                SearchScope::All => "All",
-                SearchScope::Variants => "Variants",
-                SearchScope::FunctionalGroups => "functional groups",
-                SearchScope::EcuSharedData => "ECU shared data",
-                SearchScope::Services => "Services",
-                SearchScope::DiagComms => "Diag-Comms",
-                SearchScope::Requests => "Requests",
-                SearchScope::Responses => "Responses",
-            };
-
             (
                 format!(
                     " /{}█{}{}  (scope: {} | Shift+S to change (leave search first) | Enter to \
                      add, Esc to cancel |  Backspace to undo last search)",
-                    self.search, scope_indicator, current_search_info, scope_name
+                    self.search,
+                    self.search_scope.search_indicator(),
+                    current_search_info,
+                    self.search_scope
                 ),
                 Style::default().fg(Color::Yellow).bg(Color::DarkGray),
             )
@@ -295,34 +297,11 @@ impl App {
                 "tree"
             };
 
-            let scope_indicator = match self.search_scope {
-                SearchScope::All => "",
-                SearchScope::Variants => " | scope: variants",
-                SearchScope::FunctionalGroups => " | scope: functional groups",
-                SearchScope::EcuSharedData => " | scope: ECU shared data",
-                SearchScope::Services => " | scope: services",
-                SearchScope::DiagComms => " | scope: diag-comms",
-                SearchScope::Requests => " | scope: requests",
-                SearchScope::Responses => " | scope: responses",
-            };
-
             let search_info = if !self.search_stack.is_empty() {
                 let stack_display: Vec<String> = self
                     .search_stack
                     .iter()
-                    .map(|(term, scope)| {
-                        let scope_abbrev = match scope {
-                            SearchScope::All => "",
-                            SearchScope::Variants => "[V]",
-                            SearchScope::FunctionalGroups => "[FG]",
-                            SearchScope::EcuSharedData => "[ESD]",
-                            SearchScope::Services => "[S]",
-                            SearchScope::DiagComms => "[D]",
-                            SearchScope::Requests => "[Rq]",
-                            SearchScope::Responses => "[Rs]",
-                        };
-                        format!("{}{}", term, scope_abbrev)
-                    })
+                    .map(|(term, scope)| format!("{}{}", term, scope.abbrev()))
                     .collect();
                 format!(" | searches: {}", stack_display.join(" → "))
             } else {
@@ -335,7 +314,7 @@ impl App {
                     self.visible.len(),
                     self.all_nodes.len(),
                     self.cursor + 1,
-                    scope_indicator,
+                    self.search_scope.status_indicator(),
                     search_info,
                 ),
                 Style::default().fg(Color::Gray),
@@ -543,18 +522,8 @@ impl App {
         };
 
         let show_tabs = tab_sections.len() > 1;
-        let tab_lines_needed = if show_tabs {
-            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            self.calculate_tab_lines(&tab_titles, outer_inner.width as usize)
-        } else {
-            0
-        };
-
-        if show_tabs {
-            let tab_height =
-                (tab_lines_needed as u16 + 2).min(outer_inner.height.saturating_sub(3));
-            constraints.push(Constraint::Length(tab_height));
-        }
+        
+        // Add remaining content area
         constraints.push(Constraint::Min(0)); // Content area
 
         let chunks = Layout::default()
@@ -581,34 +550,7 @@ impl App {
             frame.render_widget(para, area);
         }
 
-        let (tab_area, content_area) = if show_tabs {
-            let tab_area = chunks[chunk_idx];
-            chunk_idx += 1;
-            let content_area = chunks[chunk_idx];
-            (Some(tab_area), content_area)
-        } else {
-            (None, chunks[chunk_idx])
-        };
-
-        // Cache tab area and titles for mouse handling
-        self.tab_area = tab_area;
-        if show_tabs {
-            self.tab_titles = tab_sections.iter().map(|s| s.title.clone()).collect();
-        } else {
-            self.tab_titles.clear();
-        }
-
-        // Render tabs if there are multiple tab sections
-        if let Some(tab_area) = tab_area {
-            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            self.render_wrapped_tabs(
-                frame,
-                tab_area,
-                &tab_titles,
-                self.selected_tab,
-                self.detail_focused,
-            );
-        }
+        let content_area = chunks[chunk_idx];
 
         // Render the selected tab's content (accounting for header offset)
         let section_offset = if header_section.is_some() { 1 } else { 0 };
@@ -625,8 +567,47 @@ impl App {
             .border_style(border(self.detail_focused))
             .title_bottom(help_text);
 
-        let inner = block.inner(content_area);
+        let block_inner = block.inner(content_area);
         frame.render_widget(block, content_area);
+
+        // If tabs are shown, render them inside the content block and split the area
+        let inner = if show_tabs {
+            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
+            let tab_lines_needed = self.calculate_tab_lines(&tab_titles, block_inner.width as usize);
+            let tab_height = (tab_lines_needed as u16).max(1);
+
+            // Split the block_inner area into tab area and content area
+            let tab_constraints = vec![
+                Constraint::Length(tab_height),
+                Constraint::Min(0),
+            ];
+            let tab_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(tab_constraints)
+                .split(block_inner);
+
+            let tab_area = tab_chunks[0];
+            let content_inner = tab_chunks[1];
+
+            // Cache tab area for mouse handling
+            self.tab_area = Some(tab_area);
+            self.tab_titles = tab_titles.clone();
+
+            // Render tabs
+            self.render_wrapped_tabs(
+                frame,
+                tab_area,
+                &tab_titles,
+                self.selected_tab,
+                self.detail_focused,
+            );
+
+            content_inner
+        } else {
+            self.tab_area = None;
+            self.tab_titles.clear();
+            block_inner
+        };
 
         // Cache the inner area for table content clicking
         self.table_content_area = Some(inner);
@@ -1072,17 +1053,11 @@ impl App {
         area: Rect,
         tab_titles: &[String],
         selected: usize,
-        focused: bool,
+        _focused: bool,
     ) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(border(focused));
-
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
+        // No block needed - tabs are rendered directly in the provided area
         // Calculate how to distribute tabs across lines
-        let available_width = inner.width as usize;
+        let available_width = area.width as usize;
         if available_width < 5 {
             return; // Too narrow to render anything meaningful
         }
@@ -1119,12 +1094,12 @@ impl App {
         // Render each line of tabs
         let num_tab_lines = lines.len();
         for (line_idx, line_tabs) in lines.iter().enumerate() {
-            if line_idx >= inner.height.saturating_sub(1) as usize {
+            if line_idx >= area.height.saturating_sub(1) as usize {
                 break; // Reserve space for separator line
             }
 
-            let y = inner.y + line_idx as u16;
-            let mut x = inner.x;
+            let y = area.y + line_idx as u16;
+            let mut x = area.x;
 
             for (i, (tab_idx, tab_str)) in line_tabs.iter().enumerate() {
                 let is_selected = *tab_idx == selected;
@@ -1170,17 +1145,17 @@ impl App {
         }
 
         // Draw a horizontal separator line below all tabs
-        if num_tab_lines > 0 && inner.height > num_tab_lines as u16 {
-            let separator_y = inner.y + num_tab_lines as u16;
+        if num_tab_lines > 0 && area.height > num_tab_lines as u16 {
+            let separator_y = area.y + num_tab_lines as u16;
             let separator_line = "─".repeat(available_width);
             let sep_style = Style::default().fg(Color::DarkGray);
 
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(separator_line, sep_style))),
                 Rect {
-                    x: inner.x,
+                    x: area.x,
                     y: separator_y,
-                    width: inner.width,
+                    width: area.width,
                     height: 1,
                 },
             );

@@ -35,6 +35,38 @@ pub struct TreeNode {
     pub service_list_type: Option<ServiceListType>,
 }
 
+/// Type of detail section for logic purposes
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DetailSectionType {
+    Header,           // Just a title/header section
+    Overview,         // Overview table with key-value pairs
+    Services,         // Services list table
+    Requests,         // Request parameters
+    PosResponses,     // Positive responses
+    NegResponses,     // Negative responses
+    ComParams,        // Communication parameters
+    States,           // State information
+    RelatedRefs,      // Related references
+    FunctionalClass,  // Functional class details
+    Custom,           // Fallback for dynamic sections
+}
+
+/// Type of row for interaction purposes
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DetailRowType {
+    Normal,           // Regular data row
+    Header,           // Table header row
+    InheritedFrom,    // "Inherited From" navigation row
+    ServiceRef,       // Reference to a service (clickable)
+}
+
+/// Metadata for special rows
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RowMetadata {
+    InheritedFrom { layer_name: String },
+    ServiceReference { service_name: String },
+}
+
 /// Type of cell content for interaction purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CellType {
@@ -54,6 +86,20 @@ pub struct DetailRow {
     pub cells: Vec<String>,
     pub cell_types: Vec<CellType>,
     pub indent: usize,
+    pub row_type: DetailRowType,
+    pub metadata: Option<RowMetadata>,
+}
+
+impl Default for DetailRow {
+    fn default() -> Self {
+        Self {
+            cells: Vec::new(),
+            cell_types: Vec::new(),
+            indent: 0,
+            row_type: DetailRowType::Normal,
+            metadata: None,
+        }
+    }
 }
 
 /// Column constraint for table layout
@@ -88,13 +134,68 @@ pub struct DetailSectionData {
     pub content: DetailContent,
     /// If true, this section is rendered as a header above tabs, not as a tab itself
     pub render_as_header: bool,
+    /// Type of section for logic purposes
+    pub section_type: DetailSectionType,
+}
+
+impl DetailSectionData {
+    /// Create a new DetailSectionData with Custom type by default
+    pub fn new(title: String, content: DetailContent, render_as_header: bool) -> Self {
+        Self {
+            title,
+            content,
+            render_as_header,
+            section_type: DetailSectionType::Custom,
+        }
+    }
+
+    /// Create with a specific section type
+    pub fn with_type(mut self, section_type: DetailSectionType) -> Self {
+        self.section_type = section_type;
+        self
+    }
+}
+
+impl DetailRow {
+    /// Create a normal data row
+    pub fn normal(cells: Vec<String>, cell_types: Vec<CellType>, indent: usize) -> Self {
+        Self {
+            cells,
+            cell_types,
+            indent,
+            row_type: DetailRowType::Normal,
+            metadata: None,
+        }
+    }
+
+    /// Create a table header row
+    pub fn header(cells: Vec<String>, cell_types: Vec<CellType>) -> Self {
+        Self {
+            cells,
+            cell_types,
+            indent: 0,
+            row_type: DetailRowType::Header,
+            metadata: None,
+        }
+    }
+
+    /// Create an "Inherited From" navigation row
+    pub fn inherited_from(layer_name: String) -> Self {
+        Self {
+            cells: vec!["Inherited From".to_owned(), layer_name.clone()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 0,
+            row_type: DetailRowType::InheritedFrom,
+            metadata: Some(RowMetadata::InheritedFrom { layer_name }),
+        }
+    }
 }
 
 /// Helper to create a plain text detail section
 pub fn lines_to_single_section(title: &str, lines: Vec<String>) -> DetailSectionData {
-    DetailSectionData {
-        title: title.to_owned(),
-        content: DetailContent::PlainText(lines),
-        render_as_header: false,
-    }
+    DetailSectionData::new(
+        title.to_owned(),
+        DetailContent::PlainText(lines),
+        false,
+    )
 }

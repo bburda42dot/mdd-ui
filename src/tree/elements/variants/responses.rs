@@ -3,7 +3,7 @@ use cda_database::datatypes::{DiagLayer, DiagService, Parameter, ParentRef};
 use super::services::{extract_coded_value, extract_dop_name, get_parent_ref_services_recursive};
 use crate::tree::{
     builder::TreeBuilder,
-    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, NodeType},
+    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData, DetailSectionType, NodeType},
 };
 
 /// Build Pos-Response sections - this is the core rendering logic for Pos-Response data
@@ -292,6 +292,7 @@ fn build_pos_response_view_sections(
     sections.push(DetailSectionData {
         title: header_title,
         render_as_header: true,
+        section_type: DetailSectionType::Header,
         content: DetailContent::PlainText(vec![]),
     });
 
@@ -322,6 +323,7 @@ fn build_neg_response_view_sections(
     sections.push(DetailSectionData {
         title: header_title,
         render_as_header: true,
+        section_type: DetailSectionType::Header,
         content: DetailContent::PlainText(vec![]),
     });
 
@@ -343,6 +345,7 @@ fn build_overview_section(
         cells: vec!["Property".to_owned(), "Value".to_owned()],
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
+        ..Default::default()
     };
 
     let mut rows = Vec::new();
@@ -353,6 +356,7 @@ fn build_overview_section(
                 cells: vec!["Service".to_owned(), sn.to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
         if let Some(semantic) = dc.semantic() {
@@ -360,6 +364,7 @@ fn build_overview_section(
                 cells: vec!["Semantic".to_owned(), semantic.to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
     }
@@ -368,6 +373,7 @@ fn build_overview_section(
             cells: vec!["SID".to_owned(), format!("0x{sid:02X}")],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
+            ..Default::default()
         });
     }
     if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
@@ -378,12 +384,14 @@ fn build_overview_section(
             ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
+            ..Default::default()
         });
     }
     rows.push(DetailRow {
         cells: vec!["Addressing".to_owned(), format!("{:?}", ds.addressing())],
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
+        ..Default::default()
     });
     rows.push(DetailRow {
         cells: vec![
@@ -392,6 +400,7 @@ fn build_overview_section(
         ],
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
+        ..Default::default()
     });
 
     if let Some(parent_name) = parent_layer_name {
@@ -399,12 +408,14 @@ fn build_overview_section(
             cells: vec!["Inherited From".to_owned(), parent_name],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
+            ..Default::default()
         });
     }
 
     DetailSectionData {
         title: "Overview".to_owned(),
         render_as_header: false,
+        section_type: DetailSectionType::Overview,
         content: DetailContent::Table {
             header,
             rows,
@@ -444,6 +455,7 @@ where
             CellType::Text,
         ],
         indent: 0,
+        ..Default::default()
     };
 
     let mut rows: Vec<DetailRow> = Vec::new();
@@ -485,12 +497,14 @@ where
                 CellType::Text,
             ],
             indent: 0,
+            ..Default::default()
         });
     }
 
     DetailSectionData {
         title: title.to_owned(),
         render_as_header: false,
+        section_type: DetailSectionType::PosResponses,
         content: DetailContent::Table {
             header,
             rows,
@@ -522,6 +536,7 @@ fn build_pos_responses_table_section(
         ],
         cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
         indent: 0,
+        ..Default::default()
     };
 
     let mut rows = Vec::new();
@@ -551,6 +566,7 @@ fn build_pos_responses_table_section(
                 cells: vec![id, name, "false".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
     }
@@ -580,6 +596,7 @@ fn build_pos_responses_table_section(
                 cells: vec![id, name, "true".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
     }
@@ -589,6 +606,7 @@ fn build_pos_responses_table_section(
     DetailSectionData {
         title: format!("Pos-Responses ({})", total_count),
         render_as_header: false,
+        section_type: DetailSectionType::PosResponses,
         content: DetailContent::Table {
             header,
             rows,
@@ -615,6 +633,7 @@ fn build_neg_responses_table_section(
         ],
         cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
         indent: 0,
+        ..Default::default()
     };
 
     let mut rows = Vec::new();
@@ -644,6 +663,7 @@ fn build_neg_responses_table_section(
                 cells: vec![id, name, "false".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
     }
@@ -673,6 +693,7 @@ fn build_neg_responses_table_section(
                 cells: vec![id, name, "true".to_owned()],
                 cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                 indent: 0,
+                ..Default::default()
             });
         }
     }
@@ -682,6 +703,7 @@ fn build_neg_responses_table_section(
     DetailSectionData {
         title: format!("Neg-Responses ({})", total_count),
         render_as_header: false,
+        section_type: DetailSectionType::NegResponses,
         content: DetailContent::Table {
             header,
             rows,

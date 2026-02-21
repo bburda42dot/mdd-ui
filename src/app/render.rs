@@ -163,15 +163,16 @@ impl App {
     }
 
     /// Build breadcrumb path for the currently selected node
-    fn build_breadcrumb_path(&self) -> String {
+    /// Returns a vector of (text, node_idx) pairs in root-to-leaf order
+    fn build_breadcrumb_segments(&self) -> Vec<(String, usize)> {
         if let Some(&node_idx) = self.visible.get(self.cursor) {
-            let mut path_parts = Vec::new();
+            let mut path_segments = Vec::new();
             let mut current_idx = node_idx;
 
             // Walk up the tree to build the path
             loop {
                 let node = &self.all_nodes[current_idx];
-                path_parts.push(node.text.clone());
+                path_segments.push((node.text.clone(), current_idx));
 
                 // Find parent by looking for previous node with lower depth
                 let current_depth = node.depth;
@@ -194,15 +195,45 @@ impl App {
             }
 
             // Reverse to get root-to-leaf order
-            path_parts.reverse();
-            path_parts.join(" > ")
+            path_segments.reverse();
+            path_segments
         } else {
-            String::new()
+            Vec::new()
         }
     }
 
-    pub(super) fn draw_breadcrumb(&self, frame: &mut Frame, area: Rect) {
-        let breadcrumb_text = self.build_breadcrumb_path();
+    pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
+        // Get breadcrumb segments with their node indices
+        let segments = self.build_breadcrumb_segments();
+        
+        // Build the display text and track segment positions
+        let mut breadcrumb_segments = Vec::new();
+        let mut col_position: u16 = area.x;
+        
+        for (i, (text, node_idx)) in segments.iter().enumerate() {
+            let start_col = col_position;
+            let text_len = text.len() as u16;
+            let end_col = start_col + text_len;
+            
+            breadcrumb_segments.push((text.clone(), *node_idx, start_col, end_col));
+            col_position = end_col;
+            
+            // Add separator if not the last segment
+            if i < segments.len() - 1 {
+                col_position += 3; // " > " is 3 characters
+            }
+        }
+        
+        // Store segments for click handling
+        self.breadcrumb_segments = breadcrumb_segments;
+        
+        // Build display string
+        let breadcrumb_text: String = segments
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect::<Vec<_>>()
+            .join(" > ");
+        
         let paragraph = Paragraph::new(breadcrumb_text)
             .style(Style::default().fg(Color::Cyan).bg(Color::Black));
         frame.render_widget(paragraph, area);

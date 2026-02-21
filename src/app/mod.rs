@@ -87,6 +87,8 @@ pub struct App {
     pub(crate) mouse_enabled: bool,   // Whether mouse input is enabled
     navigation_history: Vec<usize>,   // History of cursor positions (node indices in visible)
     history_position: usize, // Current position in history (for potential forward navigation)
+    breadcrumb_area: Rect,            // Cached breadcrumb area for mouse handling
+    breadcrumb_segments: Vec<(String, usize, u16, u16)>, // (text, node_idx, start_col, end_col)
 }
 
 #[derive(Clone)]
@@ -133,6 +135,8 @@ impl App {
             mouse_enabled: true, // Mouse enabled by default
             navigation_history: Vec::new(),
             history_position: 0,
+            breadcrumb_area: Rect::default(),
+            breadcrumb_segments: Vec::new(),
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();
@@ -240,6 +244,7 @@ impl App {
         // Cache areas for mouse handling
         self.tree_area = tree_area;
         self.detail_area = detail_area;
+        self.breadcrumb_area = breadcrumb_bar;
 
         self.draw_tree(frame, tree_area);
         self.draw_detail(frame, detail_area);
@@ -1605,8 +1610,11 @@ impl App {
     }
 
     fn handle_click(&mut self, column: u16, row: u16) {
-        // Check if click is in tree area
-        if self.is_in_tree_area(column, row) {
+        // Check if click is in breadcrumb area first
+        if self.is_in_breadcrumb_area(column, row) {
+            self.handle_breadcrumb_click(column);
+        } else if self.is_in_tree_area(column, row) {
+            // Click in tree area
             self.detail_focused = false;
             self.handle_tree_click(row);
         } else if self.is_in_detail_area(column, row) {
@@ -1959,6 +1967,87 @@ impl App {
             self.cursor = target_cursor;
             self.detail_scroll = 0;
         }
+    }
+
+    fn is_in_breadcrumb_area(&self, column: u16, row: u16) -> bool {
+        column >= self.breadcrumb_area.x
+            && column < self.breadcrumb_area.x + self.breadcrumb_area.width
+            && row >= self.breadcrumb_area.y
+            && row < self.breadcrumb_area.y + self.breadcrumb_area.height
+    }
+
+    fn handle_breadcrumb_click(&mut self, column: u16) {
+        // Find which breadcrumb segment was clicked
+        // Clone the data we need to avoid borrow checker issues
+        let clicked_segment = self.breadcrumb_segments
+            .iter()
+            .find(|(_, _, start_col, end_col)| column >= *start_col && column < *end_col)
+            .map(|(text, node_idx, _, _)| (text.clone(), *node_idx));
+        
+        if let Some((text, node_idx)) = clicked_segment {
+            // Navigate to this node
+            self.navigate_to_node(node_idx);
+            self.status = format!("Jumped to: {}", text);
+        }
+    }
+
+    /// Navigate to a specific node by its index in all_nodes
+    fn navigate_to_node(&mut self, target_node_idx: usize) {
+        // Find the position of this node in visible
+        if let Some(_visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+            // Ensure the target node is expanded if needed
+            self.ensure_node_visible(target_node_idx);
+            
+            // Find the updated position after expanding
+            if let Some(new_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+                self.push_to_history(); // Store old position before jumping
+                self.detail_focused = false;
+                self.cursor = new_pos;
+                self.detail_scroll = 0;
+                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+            }
+        } else {
+            // Node is not currently visible (might be collapsed), try to make it visible
+            self.ensure_node_visible(target_node_idx);
+            
+            // Try to find it again after expanding parents
+            if let Some(visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+                self.push_to_history(); // Store old position before jumping
+                self.detail_focused = false;
+                self.cursor = visible_pos;
+                self.detail_scroll = 0;
+                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+            }
+        }
+    }
+
+    /// Ensure a node is visible by expanding all its parent nodes
+    fn ensure_node_visible(&mut self, target_node_idx: usize) {
+        if target_node_idx >= self.all_nodes.len() {
+            return;
+        }
+
+        // Find all ancestors of the target node
+        let mut ancestors = Vec::new();
+        let target_depth = self.all_nodes[target_node_idx].depth;
+        
+        // Walk backwards from target to find all ancestors
+        for i in (0..target_node_idx).rev() {
+            if self.all_nodes[i].depth < target_depth {
+                ancestors.push(i);
+                if self.all_nodes[i].depth == 0 {
+                    break; // Reached root
+                }
+            }
+        }
+
+        // Expand all ancestors
+        for ancestor_idx in ancestors {
+            self.all_nodes[ancestor_idx].expanded = true;
+        }
+
+        // Rebuild visible list to reflect expansions
+        self.rebuild_visible();
     }
 }
 

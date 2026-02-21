@@ -275,7 +275,7 @@ pub fn build_diag_comm_details_with_parent(
             let full_id = format!("{sid:02X}{sub_fn_str}");
             format!("Diag-Comm - 0x{} - {}", full_id, service_name)
         } else {
-            format!("Diag-Comm -  0x{:02X} - {}", sid, service_name)
+            format!("Diag-Comm - 0x{:02X} - {}", sid, service_name)
         }
     } else {
         format!("Diag-Comm - {}", service_name)

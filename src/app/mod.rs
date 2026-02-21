@@ -19,7 +19,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use crate::tree::{CellType, DetailRow, NodeType, TreeNode};
+use crate::tree::{CellType, DetailRow, DetailRowType, DetailSectionType, NodeType, RowMetadata, TreeNode};
 
 // -----------------------------------------------------------------------
 // Application state
@@ -785,7 +785,7 @@ impl App {
                 // Found parent node, now find it in visible list
                 if let Some(visible_pos) = self.visible.iter().position(|&idx| idx == i) {
                     self.cursor = visible_pos;
-                    self.detail_scroll = 0;
+                    self.reset_detail_state();
                     self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
                     self.detail_focused = false;
                     self.status = format!("Navigated up to: {}", self.all_nodes[i].text);
@@ -804,6 +804,19 @@ impl App {
     // Cursor movement
     // -------------------------------------------------------------------
 
+    /// Reset detail pane state when changing nodes
+    fn reset_detail_state(&mut self) {
+        self.detail_scroll = 0;
+        self.selected_tab = 0;
+        self.focused_section = 0;
+        self.focused_column = 0;
+        // Clear per-section state to force reinitialization for the new node
+        self.section_scrolls.clear();
+        self.section_cursors.clear();
+        self.column_widths.clear();
+        self.table_sort_state.clear();
+    }
+
     pub(crate) fn move_up(&mut self) {
         if self.detail_focused {
             // Move cursor up in the detail pane (typically a table row)
@@ -815,10 +828,10 @@ impl App {
         } else {
             let old_cursor = self.cursor;
             self.cursor = self.cursor.saturating_sub(1);
-            self.detail_scroll = 0;
 
-            // Only push to history if we moved to a different node
+            // Reset detail state when moving to a different node
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -835,10 +848,10 @@ impl App {
         } else if self.cursor + 1 < self.visible.len() {
             let old_cursor = self.cursor;
             self.cursor += 1;
-            self.detail_scroll = 0;
 
-            // Only push to history if we moved to a different node
+            // Reset detail state when moving to a different node
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -854,8 +867,8 @@ impl App {
         } else {
             let old_cursor = self.cursor;
             self.cursor = self.cursor.saturating_sub(n);
-            self.detail_scroll = 0;
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -871,8 +884,8 @@ impl App {
         } else {
             let old_cursor = self.cursor;
             self.cursor = (self.cursor + n).min(self.visible.len().saturating_sub(1));
-            self.detail_scroll = 0;
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -887,8 +900,8 @@ impl App {
         } else {
             let old_cursor = self.cursor;
             self.cursor = 0;
-            self.detail_scroll = 0;
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -903,8 +916,8 @@ impl App {
         } else {
             let old_cursor = self.cursor;
             self.cursor = self.visible.len().saturating_sub(1);
-            self.detail_scroll = 0;
             if old_cursor != self.cursor {
+                self.reset_detail_state();
                 self.push_to_history();
             }
         }
@@ -963,7 +976,7 @@ impl App {
         // Rebuild visible list with the search stack
         self.rebuild_visible();
         self.cursor = 0;
-        self.detail_scroll = 0;
+        self.reset_detail_state();
         self.search_matches.clear();
         self.search_match_cursor = 0;
     }
@@ -974,6 +987,7 @@ impl App {
         self.status = "Search cleared".to_owned();
         self.rebuild_visible();
         self.cursor = 0;
+        self.reset_detail_state();
     }
 
     pub(crate) fn cycle_search_scope(&mut self) {
@@ -1031,7 +1045,7 @@ impl App {
         }
         self.search_match_cursor = (self.search_match_cursor + 1) % self.search_matches.len();
         self.cursor = self.search_matches[self.search_match_cursor];
-        self.detail_scroll = 0;
+        self.reset_detail_state();
         self.status = format!(
             "Match {}/{}",
             self.search_match_cursor + 1,
@@ -1049,7 +1063,7 @@ impl App {
             self.search_match_cursor - 1
         };
         self.cursor = self.search_matches[self.search_match_cursor];
-        self.detail_scroll = 0;
+        self.reset_detail_state();
         self.status = format!(
             "Match {}/{}",
             self.search_match_cursor + 1,
@@ -1299,6 +1313,7 @@ impl App {
             self.push_to_history(); // Store old position before jumping
             self.detail_focused = false;
             self.cursor = target_cursor;
+            self.reset_detail_state();
             self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
         } else {
             self.status = format!("Service '{}' not found in tree", service_name);
@@ -1318,14 +1333,14 @@ impl App {
 
         // Check if this is a functional class detail node
         if node.node_type != NodeType::Default
-            || !node.detail_sections.iter().any(|s| s.title.starts_with("Functional Class -"))
+            || !node.detail_sections.iter().any(|s| s.section_type == DetailSectionType::FunctionalClass)
         {
             self.status = "Not a functional class detail node".to_owned();
             return;
         }
 
         // Find the "Services" section
-        let services_section = node.detail_sections.iter().find(|s| s.title == "Services");
+        let services_section = node.detail_sections.iter().find(|s| s.section_type == DetailSectionType::Services);
         
         if services_section.is_none() {
             self.status = "No Services section found".to_string();
@@ -1353,7 +1368,7 @@ impl App {
         }
         
         // Verify we're on the Services section
-        if node.detail_sections[section_idx].title != "Services" {
+        if node.detail_sections[section_idx].section_type != DetailSectionType::Services {
             self.status = "Not on Services section".to_string();
             return;
         }
@@ -1481,6 +1496,7 @@ impl App {
             self.push_to_history(); // Store old position before jumping
             self.detail_focused = false;
             self.cursor = target_cursor;
+            self.reset_detail_state();
             self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
         } else {
             self.status = format!("Service '{}' not found in Diag-Comms", service_name);
@@ -1560,8 +1576,18 @@ impl App {
         let selected_row = &rows[row_cursor];
 
         // Check if this is the "Inherited From" row
-        if selected_row.cells.len() >= 2 && selected_row.cells[0] == "Inherited From" {
-            let parent_layer_name = selected_row.cells[1].clone();
+        if selected_row.row_type == DetailRowType::InheritedFrom {
+            let parent_layer_name = if let Some(RowMetadata::InheritedFrom { layer_name }) = &selected_row.metadata {
+                layer_name.clone()
+            } else {
+                // Fallback to cell data if metadata is not set
+                if selected_row.cells.len() >= 2 {
+                    selected_row.cells[1].clone()
+                } else {
+                    self.status = "Invalid Inherited From row".to_owned();
+                    return;
+                }
+            };
 
             // Search for a node in the tree that matches this parent layer name
             // We need to find variants, protocols, functional groups,
@@ -1663,6 +1689,7 @@ impl App {
                         self.push_to_history(); // Store old position before jumping
                         self.detail_focused = false;
                         self.cursor = new_cursor;
+                        self.reset_detail_state();
                         self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
                     }
                 } else {
@@ -1677,6 +1704,7 @@ impl App {
                         self.push_to_history();
                         self.detail_focused = false;
                         self.cursor = new_cursor;
+                        self.reset_detail_state();
                         self.scroll_offset = self.cursor.saturating_sub(5);
                     }
                 }
@@ -1952,7 +1980,7 @@ impl App {
 
                     if section_idx < node.detail_sections.len() {
                         let section = &node.detail_sections[section_idx];
-                        if section.title == "Overview"
+                        if section.section_type == DetailSectionType::Overview
                             && let crate::tree::DetailContent::Table { rows, .. } = &section.content
                         {
                             let row_cursor = if section_idx < self.section_cursors.len() {
@@ -1963,8 +1991,7 @@ impl App {
 
                             if row_cursor < rows.len() {
                                 let selected_row = &rows[row_cursor];
-                                if selected_row.cells.len() >= 2
-                                    && selected_row.cells[0] == "Inherited From"
+                                if selected_row.row_type == DetailRowType::InheritedFrom
                                 {
                                     should_navigate_to_parent = true;
                                 }
@@ -2238,7 +2265,7 @@ impl App {
         } else {
             self.push_to_history(); // Store old position before jumping
             self.cursor = target_cursor;
-            self.detail_scroll = 0;
+            self.reset_detail_state();
         }
     }
 
@@ -2276,7 +2303,7 @@ impl App {
                 self.push_to_history(); // Store old position before jumping
                 self.detail_focused = false;
                 self.cursor = new_pos;
-                self.detail_scroll = 0;
+                self.reset_detail_state();
                 self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
             }
         } else {
@@ -2288,7 +2315,7 @@ impl App {
                 self.push_to_history(); // Store old position before jumping
                 self.detail_focused = false;
                 self.cursor = visible_pos;
-                self.detail_scroll = 0;
+                self.reset_detail_state();
                 self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
             }
         }

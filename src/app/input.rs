@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 
 use super::App;
-use crate::tree::NodeType;
+use crate::tree::{DetailRowType, DetailSectionType, NodeType};
 
 /// Result of processing a key press.
 pub enum Action {
@@ -260,7 +260,7 @@ impl App {
 
                             if section_idx < node.detail_sections.len() {
                                 let section = &node.detail_sections[section_idx];
-                                if section.title == "Overview"
+                                if section.section_type == DetailSectionType::Overview
                                     && let crate::tree::DetailContent::Table { rows, .. } =
                                         &section.content
                                 {
@@ -272,8 +272,7 @@ impl App {
 
                                     if row_cursor < rows.len() {
                                         let selected_row = &rows[row_cursor];
-                                        if selected_row.cells.len() >= 2
-                                            && selected_row.cells[0] == "Inherited From"
+                                        if selected_row.row_type == DetailRowType::InheritedFrom
                                         {
                                             should_navigate_to_parent = true;
                                         }

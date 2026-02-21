@@ -189,6 +189,36 @@ fn build_functional_class_details(item: &FunctionalClassItem) -> Vec<DetailSecti
         .with_type(DetailSectionType::Overview),
     );
 
+    // Services tab - List of services in this functional class
+    let service_header = DetailRow::header(
+        vec!["Short Name".to_owned()],
+        vec![CellType::Text],
+    );
+
+    let service_rows = vec![
+        // Placeholder row - in a real implementation, this would query
+        // the services associated with this functional class
+        DetailRow::normal(
+            vec!["No services available yet".to_owned()],
+            vec![CellType::Text],
+            0,
+        ),
+    ];
+
+    sections.push(
+        DetailSectionData::new(
+            "Services".to_owned(),
+            DetailContent::Table {
+                header: service_header,
+                rows: service_rows,
+                constraints: vec![ColumnConstraint::Percentage(100)],
+                use_row_selection: true,
+            },
+            false,
+        )
+        .with_type(DetailSectionType::Services),
+    );
+
     // Details tab (dummy content)
     sections.push(DetailSectionData::new(
         "Details".to_owned(),

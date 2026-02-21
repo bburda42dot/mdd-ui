@@ -4,20 +4,8 @@ use crate::tree::{builder::TreeBuilder, types::NodeType};
 
 /// Add placeholder sections that are not fully implemented yet
 /// These are kept for structure but may be expanded in the future
-pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
-    // Check if layer has diagnostic data dictionary specifications
-    // This would typically be accessed through specific methods if available
-    // For now, we'll add a placeholder if the layer has data operations or similar
-    let has_spec = layer.diag_services().is_some_and(|s| !s.is_empty());
-
-    if has_spec {
-        b.push_leaf(
-            depth,
-            "Diag-Data-Dictionary-Spec".to_string(),
-            NodeType::Default,
-        );
-    }
-}
+// Diag-Data-Dictionary-Spec is not supported and has been removed
+// pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) { ... }
 
 pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Additional audiences would be part of admin data or metadata
@@ -37,13 +25,8 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
     }
 }
 
-pub fn add_sub_components(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
-    // Sub-components would be nested diagnostic layers or related structures
-    // Placeholder for now
-    if let Some(_jobs) = layer.single_ecu_jobs() {
-        b.push_leaf(depth, "Sub-Components".to_string(), NodeType::Default);
-    }
-}
+// Sub-Components is not supported and has been removed
+// pub fn add_sub_components(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) { ... }
 
 pub fn add_sdgs(b: &mut TreeBuilder, _layer: &DiagLayer<'_>, depth: usize) {
     // SDGs (Special Data Groups) from the layer

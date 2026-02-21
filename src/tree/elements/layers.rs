@@ -5,8 +5,7 @@ use super::variants::{
     functional_classes::add_functional_classes,
     parent_refs::add_parent_refs_with_details,
     placeholders::{
-        add_additional_audiences, add_diag_data_dictionary_spec, add_sdgs,
-        add_sub_components,
+        add_additional_audiences, add_sdgs,
     },
     requests::add_requests_section,
     responses::{add_neg_responses_section, add_pos_responses_section},
@@ -51,9 +50,6 @@ impl LayerExt for TreeBuilder {
             all_variants,
         );
 
-        // Diag-Data-Dictionary-Spec
-        add_diag_data_dictionary_spec(self, layer, depth);
-
         // Diag-Comms
         add_diag_comms(
             self,
@@ -92,9 +88,6 @@ impl LayerExt for TreeBuilder {
 
         // Additional Audiences
         add_additional_audiences(self, layer, depth);
-
-        // Sub-Components
-        add_sub_components(self, layer, depth);
 
         // SDGs
         add_sdgs(self, layer, depth);

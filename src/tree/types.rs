@@ -38,33 +38,39 @@ pub struct TreeNode {
 /// Type of detail section for logic purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DetailSectionType {
-    Header,           // Just a title/header section
-    Overview,         // Overview table with key-value pairs
-    Services,         // Services list table
-    Requests,         // Request parameters
-    PosResponses,     // Positive responses
-    NegResponses,     // Negative responses
-    ComParams,        // Communication parameters
-    States,           // State information
-    RelatedRefs,      // Related references
-    FunctionalClass,  // Functional class details
-    Custom,           // Fallback for dynamic sections
+    Header,          // Just a title/header section
+    Overview,        // Overview table with key-value pairs
+    Services,        // Services list table
+    Requests,        // Request parameters
+    PosResponses,    // Positive responses
+    NegResponses,    // Negative responses
+    ComParams,       // Communication parameters
+    States,          // State information
+    RelatedRefs,     // Related references
+    FunctionalClass, // Functional class details
+    Custom,          // Fallback for dynamic sections
 }
 
 /// Type of row for interaction purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DetailRowType {
-    Normal,           // Regular data row
-    Header,           // Table header row
-    InheritedFrom,    // "Inherited From" navigation row
-    ServiceRef,       // Reference to a service (clickable)
+    Normal,        // Regular data row
+    Header,        // Table header row
+    InheritedFrom, // "Inherited From" navigation row
+    #[allow(dead_code)]
+    ServiceRef, // Reference to a service (clickable)
 }
 
 /// Metadata for special rows
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowMetadata {
-    InheritedFrom { layer_name: String },
-    ServiceReference { service_name: String },
+    InheritedFrom {
+        layer_name: String,
+    },
+    #[allow(dead_code)]
+    ServiceReference {
+        service_name: String,
+    },
 }
 
 /// Type of cell content for interaction purposes
@@ -193,9 +199,5 @@ impl DetailRow {
 
 /// Helper to create a plain text detail section
 pub fn lines_to_single_section(title: &str, lines: Vec<String>) -> DetailSectionData {
-    DetailSectionData::new(
-        title.to_owned(),
-        DetailContent::PlainText(lines),
-        false,
-    )
+    DetailSectionData::new(title.to_owned(), DetailContent::PlainText(lines), false)
 }

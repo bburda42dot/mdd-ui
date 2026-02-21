@@ -4,8 +4,8 @@ use super::variants::{
     com_params::add_com_params,
     functional_classes::add_functional_classes,
     placeholders::{
-        add_additional_audiences, add_diag_data_dictionary_spec,
-        add_parent_refs, add_sdgs, add_sub_components,
+        add_additional_audiences, add_diag_data_dictionary_spec, add_parent_refs, add_sdgs,
+        add_sub_components,
     },
     requests::add_requests_section,
     responses::{add_neg_responses_section, add_pos_responses_section},
@@ -97,6 +97,11 @@ impl LayerExt for TreeBuilder {
         add_com_params(self, layer, depth);
 
         // Parent Refs
-        add_parent_refs(self, layer, depth);
+        add_parent_refs(
+            self,
+            layer,
+            depth,
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
+        );
     }
 }

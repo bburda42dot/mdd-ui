@@ -19,7 +19,9 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use crate::tree::{CellType, DetailRow, DetailRowType, DetailSectionType, NodeType, RowMetadata, TreeNode};
+use crate::tree::{
+    CellType, DetailRow, DetailRowType, DetailSectionType, NodeType, RowMetadata, TreeNode,
+};
 
 // -----------------------------------------------------------------------
 // Application state
@@ -146,7 +148,7 @@ pub struct App {
     pub(crate) mouse_enabled: bool,   // Whether mouse input is enabled
     navigation_history: Vec<usize>,   // History of cursor positions (node indices in visible)
     history_position: usize, // Current position in history (for potential forward navigation)
-    breadcrumb_area: Rect,            // Cached breadcrumb area for mouse handling
+    breadcrumb_area: Rect,   // Cached breadcrumb area for mouse handling
     breadcrumb_segments: Vec<(String, usize, u16, u16)>, // (text, node_idx, start_col, end_col)
 }
 
@@ -209,7 +211,11 @@ impl App {
     }
 
     /// Helper: Check if a node is a specific service list type
-    fn is_service_list_type(&self, node: &TreeNode, list_type: crate::tree::ServiceListType) -> bool {
+    fn is_service_list_type(
+        &self,
+        node: &TreeNode,
+        list_type: crate::tree::ServiceListType,
+    ) -> bool {
         matches!(&node.service_list_type, Some(t) if *t == list_type)
     }
 
@@ -252,6 +258,37 @@ impl App {
     /// Get the actual table section index for storing/retrieving sort state
     fn get_table_section_idx(&self) -> usize {
         self.selected_tab + self.get_section_offset()
+    }
+
+    /// Apply sorting to rows if a sort state exists for the given section
+    fn apply_table_sort(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
+        if section_idx < self.table_sort_state.len() {
+            if let Some(sort_state) = &self.table_sort_state[section_idx] {
+                let mut sorted = rows.to_vec();
+                let col = sort_state.column;
+                let dir = sort_state.direction;
+                sorted.sort_by(|a, b| {
+                    let a_cell = a.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+                    let b_cell = b.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+
+                    // Try to parse as numbers first, fall back to string comparison
+                    let cmp = match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
+                        (Ok(a_num), Ok(b_num)) => a_num
+                            .partial_cmp(&b_num)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        _ => a_cell.cmp(b_cell),
+                    };
+
+                    // Apply direction
+                    match dir {
+                        SortDirection::Ascending => cmp,
+                        SortDirection::Descending => cmp.reverse(),
+                    }
+                });
+                return sorted;
+            }
+        }
+        rows.to_vec()
     }
 
     // -------------------------------------------------------------------
@@ -430,23 +467,31 @@ impl App {
                             )
                         }
                         SearchScope::DiagComms => {
-                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::DiagComms)
-                                || matches!(
-                                    self.all_nodes[i].node_type,
-                                    NodeType::Service | NodeType::ParentRefService
-                                )
+                            self.is_service_list_type(
+                                &self.all_nodes[i],
+                                crate::tree::ServiceListType::DiagComms,
+                            ) || matches!(
+                                self.all_nodes[i].node_type,
+                                NodeType::Service | NodeType::ParentRefService
+                            )
                         }
                         SearchScope::Requests => {
-                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::Requests)
-                                || matches!(self.all_nodes[i].node_type, NodeType::Request)
+                            self.is_service_list_type(
+                                &self.all_nodes[i],
+                                crate::tree::ServiceListType::Requests,
+                            ) || matches!(self.all_nodes[i].node_type, NodeType::Request)
                         }
                         SearchScope::Responses => {
-                            self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::PosResponses)
-                                || self.is_service_list_type(&self.all_nodes[i], crate::tree::ServiceListType::NegResponses)
-                                || matches!(
-                                    self.all_nodes[i].node_type,
-                                    NodeType::PosResponse | NodeType::NegResponse
-                                )
+                            self.is_service_list_type(
+                                &self.all_nodes[i],
+                                crate::tree::ServiceListType::PosResponses,
+                            ) || self.is_service_list_type(
+                                &self.all_nodes[i],
+                                crate::tree::ServiceListType::NegResponses,
+                            ) || matches!(
+                                self.all_nodes[i].node_type,
+                                NodeType::PosResponse | NodeType::NegResponse
+                            )
                         }
                     };
 
@@ -1003,6 +1048,7 @@ impl App {
         };
 
         let scope_name = match self.search_scope {
+            // todo use strum crate to avoid this repetition
             SearchScope::All => "All",
             SearchScope::Variants => "Variants",
             SearchScope::FunctionalGroups => "Functional Groups",
@@ -1115,14 +1161,17 @@ impl App {
             }
         };
 
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_index);
+
         // Validate row exists
-        if row_cursor >= rows.len() {
-            self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
+        if row_cursor >= sorted_rows.len() {
+            self.status = format!("Row {} out of {} lines", row_cursor, sorted_rows.len());
             return;
         }
 
         // Get the selected row
-        let selected_row: &DetailRow = &rows[row_cursor];
+        let selected_row: &DetailRow = &sorted_rows[row_cursor];
         let cells = &selected_row.cells;
         let cell_types = &selected_row.cell_types;
 
@@ -1218,24 +1267,31 @@ impl App {
         }
         let row_cursor = self.section_cursors[section_index];
 
-        if row_cursor >= rows.len() {
-            self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_index);
+
+        if row_cursor >= sorted_rows.len() {
+            self.status = format!("Row {} out of {} lines", row_cursor, sorted_rows.len());
             return;
         }
 
-        let selected_row = &rows[row_cursor];
-        
-        // For Functional Classes, the short name is in the first column
-        // For services (Diag-Comms/Requests/Responses), the short name is in the second column
-        let is_functional_class = self.is_service_list_type(node, crate::tree::ServiceListType::FunctionalClasses);
-        let name_column_index = if is_functional_class { 0 } else { 1 };
-        
+        let selected_row = &sorted_rows[row_cursor];
+
+        // For all service lists (Diag-Comms, Functional Classes, Requests, Responses),
+        // the short name is in column 1 (second column)
+        // Column 0 is ID, Column 1 is Short Name, Column 2 is Type, Column 3 is Inherited
+        let name_column_index = 1;
+
         if selected_row.cells.len() <= name_column_index {
             self.status = "Invalid row structure".to_owned();
             return;
         }
 
         let service_name = selected_row.cells[name_column_index].clone();
+
+        // Check if this is a functional class for special name matching
+        let is_functional_class =
+            self.is_service_list_type(node, crate::tree::ServiceListType::FunctionalClasses);
 
         // Expand the service list section if it's collapsed
         if !self.all_nodes[node_idx].expanded {
@@ -1273,7 +1329,8 @@ impl App {
             }
 
             // Check if this is a service-related node (generic check for all service types)
-            // or a functional class node
+            // or a functional class node:
+            // - services use NodeType::Service, jobs use NodeType::Default
             let is_service_node = matches!(
                 child_node.node_type,
                 NodeType::Service
@@ -1282,23 +1339,31 @@ impl App {
                     | NodeType::PosResponse
                     | NodeType::NegResponse
             );
-            
-            // Functional classes use NodeType::Default, so we need to check the name match directly
-            let is_functional_class_child = is_functional_class && child_node.node_type == NodeType::Default;
+
+            // Functional classes: services use NodeType::Service, jobs use NodeType::Default
+            // Check if it's a job by looking for "[Job]" prefix
+            let is_functional_class_child = is_functional_class
+                && (child_node.node_type == NodeType::Service
+                    || (child_node.node_type == NodeType::Default
+                        && child_node.text.starts_with("[Job] ")));
 
             if !is_service_node && !is_functional_class_child {
                 continue;
             }
 
             // Check if this service/functional class node matches the name
-            // For services: text format is "0xXXXX - ServiceName"
-            // For functional classes: text is just the name
+            // For services: text format is "[Service] 0xXXXX - ServiceName"
+            // For jobs in functional classes: text format is "[Job] JobName"
+            // For diag-comms services: text format is "[Service] 0xXXXX - ServiceName"
             let name_matches = if is_functional_class {
-                child_node.text == service_name
+                // For functional classes, check if the text ends with the service name
+                // to handle both "[Service] 0xXXXX - ServiceName" and "[Job] JobName"
+                child_node.text.ends_with(&service_name)
+                    || child_node.text.contains(&format!("- {}", service_name))
             } else {
                 child_node.text.contains(&service_name)
             };
-            
+
             if name_matches {
                 // Find the position of this node in visible
                 if let Some(pos) = self.visible.iter().position(|&idx| idx == vis_idx) {
@@ -1319,190 +1384,6 @@ impl App {
             self.status = format!("Service '{}' not found in tree", service_name);
         }
     }
-
-    /// Navigate to a service from a functional class's Services table
-    pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
-        // Validate cursor position
-        if self.cursor >= self.visible.len() {
-            self.status = "Cursor out of bounds".to_string();
-            return;
-        }
-
-        let node_idx = self.visible[self.cursor];
-        let node = &self.all_nodes[node_idx];
-
-        // Check if this is a functional class detail node
-        if node.node_type != NodeType::Default
-            || !node.detail_sections.iter().any(|s| s.section_type == DetailSectionType::FunctionalClass)
-        {
-            self.status = "Not a functional class detail node".to_owned();
-            return;
-        }
-
-        // Find the "Services" section
-        let services_section = node.detail_sections.iter().find(|s| s.section_type == DetailSectionType::Services);
-        
-        if services_section.is_none() {
-            self.status = "No Services section found".to_string();
-            return;
-        }
-
-        let section = services_section.unwrap();
-
-        // Extract the service name from the table
-        use crate::tree::DetailContent;
-        let rows = match &section.content {
-            DetailContent::Table { rows, .. } => rows,
-            _ => {
-                self.status = "Services section should be a table".to_owned();
-                return;
-            }
-        };
-
-        // Get the currently selected section index (which should be the Services section)
-        let section_idx = self.get_section_index();
-        
-        if section_idx >= node.detail_sections.len() {
-            self.status = "Section index out of bounds".to_string();
-            return;
-        }
-        
-        // Verify we're on the Services section
-        if node.detail_sections[section_idx].section_type != DetailSectionType::Services {
-            self.status = "Not on Services section".to_string();
-            return;
-        }
-        
-        if section_idx >= self.section_cursors.len() {
-            self.status = "Section cursor not initialized".to_string();
-            return;
-        }
-        
-        let row_cursor = self.section_cursors[section_idx];
-
-        if row_cursor >= rows.len() {
-            self.status = format!("Row {} out of {} lines", row_cursor, rows.len());
-            return;
-        }
-
-        let selected_row = &rows[row_cursor];
-        
-        // Check if this is the empty placeholder row
-        if selected_row.cells.len() == 1 && selected_row.cells[0].contains("No services") {
-            self.status = "No services available in this functional class".to_owned();
-            return;
-        }
-        
-        if selected_row.cells.is_empty() {
-            self.status = "Invalid row structure".to_owned();
-            return;
-        }
-
-        // The service short name is in the first column (index 0)
-        let service_name = selected_row.cells[0].clone();
-
-        // Now find the Diag-Comms section in the tree that is a sibling of the Functional Classes section
-        // We need to go up to the parent level and find the Diag-Comms section
-        let current_depth = node.depth;
-        
-        // Find the Diag-Comms section at the same depth or parent level
-        let mut diag_comms_idx: Option<usize> = None;
-        
-        // Search backwards from current position to find Diag-Comms section
-        for i in (0..node_idx).rev() {
-            let candidate = &self.all_nodes[i];
-            
-            // If we've gone too far up, stop
-            if candidate.depth < current_depth - 1 {
-                break;
-            }
-            
-            // Look for Diag-Comms at the same level as Functional Classes (sibling)
-            if candidate.depth == current_depth - 1 && self.is_service_list_type(candidate, crate::tree::ServiceListType::DiagComms) {
-                diag_comms_idx = Some(i);
-                break;
-            }
-        }
-        
-        // If not found before, search forward
-        if diag_comms_idx.is_none() {
-            for i in node_idx + 1..self.all_nodes.len() {
-                let candidate = &self.all_nodes[i];
-                
-                // If we've gone too far, stop
-                if candidate.depth < current_depth - 1 {
-                    break;
-                }
-                
-                // Look for Diag-Comms at the same level as Functional Classes (sibling)
-                if candidate.depth == current_depth - 1 && self.is_service_list_type(candidate, crate::tree::ServiceListType::DiagComms) {
-                    diag_comms_idx = Some(i);
-                    break;
-                }
-            }
-        }
-
-        if diag_comms_idx.is_none() {
-            self.status = "Diag-Comms section not found".to_owned();
-            return;
-        }
-
-        let diag_comms_node_idx = diag_comms_idx.unwrap();
-        
-        // Expand the Diag-Comms section if it's collapsed
-        if !self.all_nodes[diag_comms_node_idx].expanded {
-            self.all_nodes[diag_comms_node_idx].expanded = true;
-            self.rebuild_visible();
-        }
-
-        let diag_comms_depth = self.all_nodes[diag_comms_node_idx].depth;
-
-        // Find the service node in Diag-Comms children that matches this name
-        let mut found_idx: Option<usize> = None;
-
-        for i in diag_comms_node_idx + 1..self.all_nodes.len() {
-            let child_node = &self.all_nodes[i];
-
-            // Stop if we've left the Diag-Comms section
-            if child_node.depth <= diag_comms_depth {
-                break;
-            }
-
-            // Only look at immediate children
-            if child_node.depth != diag_comms_depth + 1 {
-                continue;
-            }
-
-            // Check if this is a service node
-            if !matches!(
-                child_node.node_type,
-                NodeType::Service | NodeType::ParentRefService
-            ) {
-                continue;
-            }
-
-            // Check if this service node contains the service name
-            if child_node.text.contains(&service_name) {
-                // Find the position of this node in visible
-                if let Some(pos) = self.visible.iter().position(|&idx| idx == i) {
-                    found_idx = Some(pos);
-                    break;
-                }
-            }
-        }
-
-        if let Some(target_cursor) = found_idx {
-            // Navigate tree focus to this service
-            self.push_to_history(); // Store old position before jumping
-            self.detail_focused = false;
-            self.cursor = target_cursor;
-            self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
-        } else {
-            self.status = format!("Service '{}' not found in Diag-Comms", service_name);
-        }
-    }
-
 
     /// Navigate to an inherited parent layer in the tree
     pub(crate) fn try_navigate_to_inherited_parent(&mut self) {
@@ -1569,25 +1450,29 @@ impl App {
             return;
         };
 
-        if row_cursor >= rows.len() {
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, overview_idx);
+
+        if row_cursor >= sorted_rows.len() {
             return;
         }
 
-        let selected_row = &rows[row_cursor];
+        let selected_row = &sorted_rows[row_cursor];
 
         // Check if this is the "Inherited From" row
         if selected_row.row_type == DetailRowType::InheritedFrom {
-            let parent_layer_name = if let Some(RowMetadata::InheritedFrom { layer_name }) = &selected_row.metadata {
-                layer_name.clone()
-            } else {
-                // Fallback to cell data if metadata is not set
-                if selected_row.cells.len() >= 2 {
-                    selected_row.cells[1].clone()
+            let parent_layer_name =
+                if let Some(RowMetadata::InheritedFrom { layer_name }) = &selected_row.metadata {
+                    layer_name.clone()
                 } else {
-                    self.status = "Invalid Inherited From row".to_owned();
-                    return;
-                }
-            };
+                    // Fallback to cell data if metadata is not set
+                    if selected_row.cells.len() >= 2 {
+                        selected_row.cells[1].clone()
+                    } else {
+                        self.status = "Invalid Inherited From row".to_owned();
+                        return;
+                    }
+                };
 
             // Search for a node in the tree that matches this parent layer name
             // We need to find variants, protocols, functional groups,
@@ -1643,7 +1528,10 @@ impl App {
 
                     // Look for the Diag-Comms section
                     if child_node.depth == container_depth + 1
-                        && self.is_service_list_type(child_node, crate::tree::ServiceListType::DiagComms)
+                        && self.is_service_list_type(
+                            child_node,
+                            crate::tree::ServiceListType::DiagComms,
+                        )
                     {
                         diagcomm_node_idx = Some(i);
                         break;
@@ -1714,10 +1602,120 @@ impl App {
         }
     }
 
+    /// Navigate to a parent ref element from the Parent References table
+    pub(crate) fn try_navigate_to_parent_ref(&mut self) {
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Get the actual section index
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // Get table rows
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+
+        // Get the selected row cursor
+        let row_cursor = if section_idx < self.section_cursors.len() {
+            self.section_cursors[section_idx]
+        } else {
+            return;
+        };
+
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+        if row_cursor >= sorted_rows.len() {
+            return;
+        }
+
+        let selected_row = &sorted_rows[row_cursor];
+
+        // Extract the short name from the first column (was second before reordering)
+        if selected_row.cells.len() < 2 {
+            self.status = "Invalid parent ref row".to_owned();
+            return;
+        }
+
+        let target_short_name = selected_row.cells[0].clone();
+
+        // Search for a node in the tree that matches this short name
+        // We need to find Containers (variants, functional groups, ECU shared data, protocols)
+        let mut found_container_idx: Option<usize> = None;
+
+        for (ni, n) in self.all_nodes.iter().enumerate() {
+            // Check if this is a Container with matching name
+            if matches!(n.node_type, NodeType::Container) {
+                // Extract name from text (may include [base] suffix for variants)
+                let name = if let Some(idx) = n.text.find(" [") {
+                    &n.text[..idx]
+                } else {
+                    &n.text
+                };
+
+                if name == target_short_name {
+                    found_container_idx = Some(ni);
+                    break;
+                }
+            }
+        }
+
+        if let Some(container_node_idx) = found_container_idx {
+            // Expand all parents of the target node to make it visible
+            let container_depth = self.all_nodes[container_node_idx].depth;
+
+            // Expand parent nodes
+            if container_depth > 0 {
+                for i in 0..container_node_idx {
+                    let node = &mut self.all_nodes[i];
+                    if node.depth < container_depth && node.has_children {
+                        node.expanded = true;
+                    }
+                }
+            }
+
+            // Expand the container node itself if it has children
+            if self.all_nodes[container_node_idx].has_children {
+                self.all_nodes[container_node_idx].expanded = true;
+            }
+
+            // Rebuild visible list
+            self.rebuild_visible();
+
+            // Navigate to the container
+            if let Some(new_cursor) = self
+                .visible
+                .iter()
+                .position(|&idx| idx == container_node_idx)
+            {
+                self.push_to_history();
+                self.detail_focused = false;
+                self.cursor = new_cursor;
+                self.reset_detail_state();
+                self.scroll_offset = self.cursor.saturating_sub(5);
+                self.status = format!("Navigated to: {}", target_short_name);
+            }
+        } else {
+            self.status = format!("Element '{}' not found in tree", target_short_name);
+        }
+    }
+
     pub(crate) fn resize_column(&mut self, delta: i16) {
         // Get the actual section index accounting for header sections
         let section_idx = self.get_section_index();
-        
+
         // Ensure we have column_widths entries for all sections
         while self.column_widths.len() <= section_idx {
             self.column_widths.push(Vec::new());
@@ -1837,8 +1835,7 @@ impl App {
             let new_total: u16 = self.column_widths[section_idx].iter().sum();
             if new_total != 100 {
                 let diff = 100i16 - new_total as i16;
-                let focused_width =
-                    self.column_widths[section_idx][self.focused_column] as i16;
+                let focused_width = self.column_widths[section_idx][self.focused_column] as i16;
                 self.column_widths[section_idx][self.focused_column] =
                     (focused_width + diff).max(1) as u16;
             }
@@ -1989,10 +1986,12 @@ impl App {
                                 0
                             };
 
-                            if row_cursor < rows.len() {
-                                let selected_row = &rows[row_cursor];
-                                if selected_row.row_type == DetailRowType::InheritedFrom
-                                {
+                            // Apply sorting if active for this section
+                            let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+                            if row_cursor < sorted_rows.len() {
+                                let selected_row = &sorted_rows[row_cursor];
+                                if selected_row.row_type == DetailRowType::InheritedFrom {
                                     should_navigate_to_parent = true;
                                 }
                             }
@@ -2006,6 +2005,18 @@ impl App {
                         self.try_show_detail_popup();
                     }
                 } else {
+                    // Check if we're in a Parent References section
+                    let section_idx = self.get_section_index();
+                    if section_idx < node.detail_sections.len() {
+                        let section = &node.detail_sections[section_idx];
+                        if section.section_type == DetailSectionType::RelatedRefs
+                            && section.title == "Parent References"
+                        {
+                            self.try_navigate_to_parent_ref();
+                            return;
+                        }
+                    }
+
                     // Try to show DOP popup
                     self.try_show_detail_popup();
                 }
@@ -2279,11 +2290,12 @@ impl App {
     fn handle_breadcrumb_click(&mut self, column: u16) {
         // Find which breadcrumb segment was clicked
         // Clone the data we need to avoid borrow checker issues
-        let clicked_segment = self.breadcrumb_segments
+        let clicked_segment = self
+            .breadcrumb_segments
             .iter()
             .find(|(_, _, start_col, end_col)| column >= *start_col && column < *end_col)
             .map(|(text, node_idx, _, _)| (text.clone(), *node_idx));
-        
+
         if let Some((text, node_idx)) = clicked_segment {
             // Navigate to this node
             self.navigate_to_node(node_idx);
@@ -2297,7 +2309,7 @@ impl App {
         if let Some(_visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
             // Ensure the target node is expanded if needed
             self.ensure_node_visible(target_node_idx);
-            
+
             // Find the updated position after expanding
             if let Some(new_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
                 self.push_to_history(); // Store old position before jumping
@@ -2309,7 +2321,7 @@ impl App {
         } else {
             // Node is not currently visible (might be collapsed), try to make it visible
             self.ensure_node_visible(target_node_idx);
-            
+
             // Try to find it again after expanding parents
             if let Some(visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
                 self.push_to_history(); // Store old position before jumping
@@ -2330,7 +2342,7 @@ impl App {
         // Find all ancestors of the target node
         let mut ancestors = Vec::new();
         let target_depth = self.all_nodes[target_node_idx].depth;
-        
+
         // Walk backwards from target to find all ancestors
         for i in (0..target_node_idx).rev() {
             if self.all_nodes[i].depth < target_depth {

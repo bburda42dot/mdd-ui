@@ -2,7 +2,10 @@ use cda_database::datatypes::DiagLayer;
 
 use crate::tree::{
     builder::TreeBuilder,
-    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData, DetailSectionType, NodeType},
+    types::{
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
+        DetailSectionType, NodeType,
+    },
 };
 
 /// Add state charts section to the tree
@@ -37,7 +40,9 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                 let name = tr.short_name().unwrap_or("?");
                 let src = tr.source_short_name_ref().unwrap_or("?");
                 let tgt = tr.target_short_name_ref().unwrap_or("?");
-                DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
                     cells: vec![name.to_string(), src.to_string(), tgt.to_string()],
                     cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                     indent: 0,
@@ -53,7 +58,9 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                 DetailContent::PlainText(vec!["No state transitions".to_string()])
             } else {
                 DetailContent::Table {
-                    header: DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                    header: DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
                         cells: vec![
                             "Name".to_string(),
                             "Source".to_string(),
@@ -80,7 +87,9 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
             .flatten()
             .map(|state| {
                 let sn = state.short_name().unwrap_or("?");
-                DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
                     cells: vec![sn.to_string()],
                     cell_types: vec![CellType::Text],
                     indent: 0,
@@ -96,7 +105,9 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
                 DetailContent::PlainText(vec!["No states".to_string()])
             } else {
                 DetailContent::Table {
-                    header: DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                    header: DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
                         cells: vec!["Name".to_string()],
                         cell_types: vec![CellType::Text],
                         indent: 0,

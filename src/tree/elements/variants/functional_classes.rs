@@ -1,24 +1,31 @@
-use cda_database::datatypes::DiagLayer;
+use cda_database::datatypes::{DiagLayer, DiagService};
 
+// Import the detail building functions from services module
+use super::services::{build_diag_comm_details_with_parent, build_simple_job_details_with_name};
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData,
-        DetailSectionType, NodeType,
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
+        NodeType,
     },
 };
 
 /// Represents a functional class item (either a service or a job)
 #[derive(Clone, Debug)]
-enum FunctionalClassItem {
-    Service(String),
+enum FunctionalClassItem<'a> {
+    Service(DiagService<'a>),
     Job(String),
 }
 
-impl FunctionalClassItem {
-    fn name(&self) -> &str {
+impl<'a> FunctionalClassItem<'a> {
+    fn name(&self) -> String {
         match self {
-            FunctionalClassItem::Service(name) | FunctionalClassItem::Job(name) => name,
+            FunctionalClassItem::Service(ds) => ds
+                .diag_comm()
+                .and_then(|dc| dc.short_name())
+                .unwrap_or("?")
+                .to_owned(),
+            FunctionalClassItem::Job(name) => name.clone(),
         }
     }
 
@@ -28,31 +35,84 @@ impl FunctionalClassItem {
             FunctionalClassItem::Job(_) => "Job",
         }
     }
+
+    fn id(&self) -> String {
+        match self {
+            FunctionalClassItem::Service(ds) => {
+                if let Some(sid) = ds.request_id() {
+                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                        let sub_fn_str = if bit_len <= 8 {
+                            format!("{sub_fn:02X}")
+                        } else {
+                            format!("{sub_fn:04X}")
+                        };
+                        let full_id = format!("{sid:02X}{sub_fn_str}");
+                        format!("0x{}", full_id)
+                    } else {
+                        format!("0x{:02X}", sid)
+                    }
+                } else {
+                    "-".to_owned()
+                }
+            }
+            FunctionalClassItem::Job(_) => "-".to_owned(),
+        }
+    }
+
+    fn display_name(&self) -> String {
+        match self {
+            FunctionalClassItem::Service(ds) => {
+                let name = self.name();
+                // Format with service ID with proper padding for alignment
+                if let Some(sid) = ds.request_id() {
+                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
+                        let sub_fn_str = if bit_len <= 8 {
+                            format!("{sub_fn:02X}")
+                        } else {
+                            format!("{sub_fn:04X}")
+                        };
+                        let full_id = format!("{sid:02X}{sub_fn_str}");
+                        format!("0x{:6} - {}", full_id, name)
+                    } else {
+                        format!("0x{:6} - {}", format!("{sid:02X}"), name)
+                    }
+                } else {
+                    name
+                }
+            }
+            FunctionalClassItem::Job(name) => name.clone(),
+        }
+    }
+
+    fn build_details(&self) -> Vec<DetailSectionData> {
+        match self {
+            FunctionalClassItem::Service(ds) => {
+                // Reuse the exact same detail view as diag-comm services
+                build_diag_comm_details_with_parent(ds, None)
+            }
+            FunctionalClassItem::Job(name) => {
+                // Reuse the exact same detail view as diag-comm jobs
+                build_simple_job_details_with_name(name)
+            }
+        }
+    }
 }
 
 /// Add functional classes section from the diagnostic layer
 pub fn add_functional_classes(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
-    // Collect services
-    let services: Vec<FunctionalClassItem> = layer
+    // Collect services - store actual DiagService references
+    let services: Vec<FunctionalClassItem<'_>> = layer
         .diag_services()
         .map(|services| {
             services
                 .iter()
-                .map(|s| {
-                    let ds = cda_database::datatypes::DiagService(s);
-                    let name = ds
-                        .diag_comm()
-                        .and_then(|dc| dc.short_name())
-                        .unwrap_or("Unnamed")
-                        .to_owned();
-                    FunctionalClassItem::Service(name)
-                })
+                .map(|s| FunctionalClassItem::Service(DiagService(s)))
                 .collect()
         })
         .unwrap_or_default();
 
-    // Collect jobs
-    let jobs: Vec<FunctionalClassItem> = layer
+    // Collect jobs - store job names
+    let jobs: Vec<FunctionalClassItem<'_>> = layer
         .single_ecu_jobs()
         .map(|jobs| {
             jobs.iter()
@@ -68,6 +128,10 @@ pub fn add_functional_classes(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth:
         })
         .unwrap_or_default();
 
+    // Count services and jobs separately
+    let service_count = services.len();
+    let job_count = jobs.len();
+
     // Combine services and jobs
     let mut items = services;
     items.extend(jobs);
@@ -77,9 +141,9 @@ pub fn add_functional_classes(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth:
     }
 
     // Build table section for the Functional Classes header
-    let detail_section = build_functional_classes_table_section(&items);
+    let detail_section = build_functional_classes_table_section(&items, service_count, job_count);
 
-    let total_count = items.len();
+    let total_count = service_count + job_count;
 
     b.push_service_list_header(
         depth,
@@ -92,24 +156,49 @@ pub fn add_functional_classes(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth:
 
     // Add each functional class as a child node with details
     for item in items.iter() {
-        let sections = build_functional_class_details(item);
+        // Use the exact same detail views as diag-comm
+        let sections = item.build_details();
+
+        let node_type = match item {
+            FunctionalClassItem::Service(_) => NodeType::Service,
+            FunctionalClassItem::Job(_) => NodeType::Default,
+        };
+
+        let prefix = match item {
+            FunctionalClassItem::Service(_) => "[Service] ",
+            FunctionalClassItem::Job(_) => "[Job] ",
+        };
 
         b.push_details_structured(
             depth + 1,
-            item.name().to_owned(),
+            format!("{}{}", prefix, item.display_name()),
             false,
             false,
             sections,
-            NodeType::Default,
+            node_type,
         );
     }
 }
 
 /// Build a table section for the Functional Classes header showing all classes
-fn build_functional_classes_table_section(items: &[FunctionalClassItem]) -> DetailSectionData {
+fn build_functional_classes_table_section(
+    items: &[FunctionalClassItem],
+    service_count: usize,
+    job_count: usize,
+) -> DetailSectionData {
     let header = DetailRow::header(
-        vec!["Short Name".to_owned()],
-        vec![CellType::Text],
+        vec![
+            "ID".to_owned(),
+            "Short Name".to_owned(),
+            "Type".to_owned(),
+            "Inherited".to_owned(),
+        ],
+        vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
     );
 
     let mut rows = Vec::new();
@@ -117,121 +206,39 @@ fn build_functional_classes_table_section(items: &[FunctionalClassItem]) -> Deta
     // Add each functional class to the table
     for item in items.iter() {
         rows.push(DetailRow::normal(
-            vec![item.name().to_owned()],
-            vec![CellType::Text],
+            vec![
+                item.id(),
+                item.name().to_owned(),
+                item.item_type().to_owned(),
+                "false".to_owned(),
+            ],
+            vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
             0,
         ));
     }
 
     DetailSectionData::new(
-        "Overview".to_owned(),
+        format!(
+            "Functional Classes ({} services, {} jobs)",
+            service_count, job_count
+        ),
         DetailContent::Table {
             header,
             rows,
-            constraints: vec![ColumnConstraint::Percentage(100)],
+            constraints: vec![
+                ColumnConstraint::Percentage(15),
+                ColumnConstraint::Percentage(45),
+                ColumnConstraint::Percentage(15),
+                ColumnConstraint::Percentage(25),
+            ],
             use_row_selection: true,
         },
         false,
     )
     .with_type(DetailSectionType::FunctionalClass)
-}
-
-/// Build detailed sections for a functional class (dummy implementation)
-fn build_functional_class_details(item: &FunctionalClassItem) -> Vec<DetailSectionData> {
-    let mut sections = Vec::new();
-
-    // Add header section with the name
-    sections.push(DetailSectionData {
-        title: format!("Functional Class - {}", item.name()),
-        render_as_header: true,
-        content: DetailContent::PlainText(vec![]),
-        section_type: DetailSectionType::Header,
-    });
-
-    // Overview tab (dummy content)
-    let header = DetailRow::header(
-        vec!["Property".to_owned(), "Value".to_owned()],
-        vec![CellType::Text, CellType::Text],
-    );
-
-    let rows = vec![
-        DetailRow::normal(
-            vec!["Name".to_owned(), item.name().to_owned()],
-            vec![CellType::Text, CellType::Text],
-            0,
-        ),
-        DetailRow::normal(
-            vec!["Type".to_owned(), item.item_type().to_owned()],
-            vec![CellType::Text, CellType::Text],
-            0,
-        ),
-        DetailRow::normal(
-            vec!["Status".to_owned(), "Active".to_owned()],
-            vec![CellType::Text, CellType::Text],
-            0,
-        ),
-    ];
-
-    sections.push(
-        DetailSectionData::new(
-            "Overview".to_owned(),
-            DetailContent::Table {
-                header,
-                rows,
-                constraints: vec![
-                    ColumnConstraint::Percentage(30),
-                    ColumnConstraint::Percentage(70),
-                ],
-                use_row_selection: false,
-            },
-            false,
-        )
-        .with_type(DetailSectionType::Overview),
-    );
-
-    // Services tab - List of services in this functional class
-    let service_header = DetailRow::header(
-        vec!["Short Name".to_owned()],
-        vec![CellType::Text],
-    );
-
-    let service_rows = vec![
-        // Placeholder row - in a real implementation, this would query
-        // the services associated with this functional class
-        DetailRow::normal(
-            vec!["No services available yet".to_owned()],
-            vec![CellType::Text],
-            0,
-        ),
-    ];
-
-    sections.push(
-        DetailSectionData::new(
-            "Services".to_owned(),
-            DetailContent::Table {
-                header: service_header,
-                rows: service_rows,
-                constraints: vec![ColumnConstraint::Percentage(100)],
-                use_row_selection: true,
-            },
-            false,
-        )
-        .with_type(DetailSectionType::Services),
-    );
-
-    // Details tab (dummy content)
-    sections.push(DetailSectionData::new(
-        "Details".to_owned(),
-        DetailContent::PlainText(vec![
-            format!(
-                "Functional class {} details will be displayed here.",
-                item.item_type().to_lowercase()
-            ),
-            String::new(),
-            "This is a placeholder implementation.".to_owned(),
-        ]),
-        false,
-    ));
-
-    sections
 }

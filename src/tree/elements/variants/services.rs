@@ -5,7 +5,10 @@ use super::requests::build_request_section;
 use super::responses::{build_neg_responses_sections, build_pos_responses_sections};
 use crate::tree::{
     builder::TreeBuilder,
-    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData, DetailSectionType, NodeType, RowMetadata},
+    types::{
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
+        DetailSectionType, NodeType,
+    },
 };
 
 // Helper functions to extract parameter data
@@ -90,21 +93,28 @@ pub fn add_diag_comms<'a>(
     if total_count > 0 {
         // Build detail section for Diag-Comms header showing all services and jobs
         // Collect job names from diag_com
-        let job_names: Vec<String> = layer.single_ecu_jobs()
+        let job_names: Vec<String> = layer
+            .single_ecu_jobs()
             .map(|jobs| {
-                jobs.iter().map(|job| {
-                    job.diag_comm()
-                        .and_then(|dc| dc.short_name())
-                        .unwrap_or("Unnamed")
-                        .to_owned()
-                }).collect()
+                jobs.iter()
+                    .map(|job| {
+                        job.diag_comm()
+                            .and_then(|dc| dc.short_name())
+                            .unwrap_or("Unnamed")
+                            .to_owned()
+                    })
+                    .collect()
             })
             .unwrap_or_default();
-        let detail_section = build_diag_comms_table_section(&own_services, &parent_services, &job_names);
+        let detail_section =
+            build_diag_comms_table_section(&own_services, &parent_services, &job_names);
 
         b.push_service_list_header(
             depth,
-            format!("Diag-Comms ({} services, {} jobs)", service_count, job_count),
+            format!(
+                "Diag-Comms ({} services, {} jobs)",
+                service_count, job_count
+            ),
             false,
             true,
             vec![detail_section],
@@ -184,11 +194,12 @@ pub fn add_diag_comms<'a>(
         // Add single ECU jobs after services
         if let Some(jobs) = layer.single_ecu_jobs() {
             for job in jobs.iter() {
-                let job_name = job.diag_comm()
+                let job_name = job
+                    .diag_comm()
                     .and_then(|dc| dc.short_name())
                     .unwrap_or("Unnamed");
                 let sections = build_simple_job_details_with_name(job_name);
-               
+
                 b.push_details_structured(
                     depth + 1,
                     format!("[Job] {}", job_name),
@@ -382,19 +393,22 @@ pub fn build_diag_comm_details_with_parent(
         rows.push(DetailRow::inherited_from(parent_name));
     }
 
-    sections.push(DetailSectionData::new(
-        "Overview".to_owned(),
-        DetailContent::Table {
-            header,
-            rows,
-            constraints: vec![
-                ColumnConstraint::Percentage(30),
-                ColumnConstraint::Percentage(70),
-            ],
-            use_row_selection: true, // Use row selection for Overview
-        },
-        false,
-    ).with_type(DetailSectionType::Overview));
+    sections.push(
+        DetailSectionData::new(
+            "Overview".to_owned(),
+            DetailContent::Table {
+                header,
+                rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(30),
+                    ColumnConstraint::Percentage(70),
+                ],
+                use_row_selection: true, // Use row selection for Overview
+            },
+            false,
+        )
+        .with_type(DetailSectionType::Overview),
+    );
 
     // Request params - use rendering logic from requests module
     if let Some(request_section) = build_request_section(ds) {
@@ -408,7 +422,9 @@ pub fn build_diag_comm_details_with_parent(
     sections.extend(build_neg_responses_sections(ds));
 
     // ComParam refs
-    let comparam_header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+    let comparam_header = DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
         cells: vec![
             "ComParam".to_owned(),
             "Value".to_owned(),
@@ -431,7 +447,9 @@ pub fn build_diag_comm_details_with_parent(
         section_type: DetailSectionType::ComParams,
         content: DetailContent::Table {
             header: comparam_header,
-            rows: vec![DetailRow { row_type: DetailRowType::Normal, metadata: None,
+            rows: vec![DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
                 cells: vec!["(No ComParam refs at comm level)".to_owned()],
                 cell_types: vec![CellType::Text],
                 indent: 0,
@@ -528,7 +546,9 @@ pub fn build_diag_comm_details_with_parent(
     }
 
     // SDGs
-    let sdg_header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+    let sdg_header = DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
         cells: vec![
             "Short Name".to_owned(),
             "SD".to_owned(),
@@ -549,7 +569,9 @@ pub fn build_diag_comm_details_with_parent(
         section_type: DetailSectionType::Custom,
         content: DetailContent::Table {
             header: sdg_header,
-            rows: vec![DetailRow { row_type: DetailRowType::Normal, metadata: None,
+            rows: vec![DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
                 cells: vec!["(SDGs not available at comm level)".to_owned()],
                 cell_types: vec![CellType::Text],
                 indent: 0,
@@ -566,7 +588,9 @@ pub fn build_diag_comm_details_with_parent(
 
     // States
     if let Some(dc) = ds.diag_comm() {
-        let header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+        let header = DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
             cells: vec!["Short Name".to_owned()],
             cell_types: vec![CellType::Text],
             indent: 0,
@@ -575,7 +599,9 @@ pub fn build_diag_comm_details_with_parent(
         let mut rows = Vec::new();
         for pc in dc.pre_condition_state_refs().into_iter().flatten() {
             if let Some(val) = pc.value() {
-                rows.push(DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                rows.push(DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
                     cells: vec![val.to_owned()],
                     cell_types: vec![CellType::Text],
                     indent: 0,
@@ -584,7 +610,9 @@ pub fn build_diag_comm_details_with_parent(
         }
         for st in dc.state_transition_refs().into_iter().flatten() {
             if let Some(val) = st.value() {
-                rows.push(DetailRow { row_type: DetailRowType::Normal, metadata: None,
+                rows.push(DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
                     cells: vec![val.to_owned()],
                     cell_types: vec![CellType::Text],
                     indent: 0,
@@ -605,7 +633,9 @@ pub fn build_diag_comm_details_with_parent(
     }
 
     // Related diag comm refs
-    let related_header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+    let related_header = DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
         cells: vec!["Short Name".to_owned()],
         cell_types: vec![CellType::Text],
         indent: 0,
@@ -616,7 +646,9 @@ pub fn build_diag_comm_details_with_parent(
         section_type: DetailSectionType::RelatedRefs,
         content: DetailContent::Table {
             header: related_header,
-            rows: vec![DetailRow { row_type: DetailRowType::Normal, metadata: None,
+            rows: vec![DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
                 cells: vec!["(Related comms not available)".to_owned()],
                 cell_types: vec![CellType::Text],
                 indent: 0,
@@ -634,14 +666,21 @@ fn build_diag_comms_table_section(
     parent_services: &[(DiagService<'_>, String)],
     job_names: &[String],
 ) -> DetailSectionData {
-    let header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+    let header = DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
         cells: vec![
             "ID".to_owned(),
             "Short Name".to_owned(),
             "Type".to_owned(),
             "Inherited".to_owned(),
         ],
-        cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        cell_types: vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
         indent: 0,
     };
 
@@ -668,9 +707,16 @@ fn build_diag_comms_table_section(
                 "-".to_owned()
             };
 
-            rows.push(DetailRow { row_type: DetailRowType::Normal, metadata: None,
+            rows.push(DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
                 cells: vec![id, name, "Service".to_owned(), "false".to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+                cell_types: vec![
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                ],
                 indent: 0,
             });
         }
@@ -697,9 +743,16 @@ fn build_diag_comms_table_section(
                 "-".to_owned()
             };
 
-            rows.push(DetailRow { row_type: DetailRowType::Normal, metadata: None,
+            rows.push(DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
                 cells: vec![id, name, "Service".to_owned(), "true".to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+                cell_types: vec![
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                ],
                 indent: 0,
             });
         }
@@ -707,15 +760,31 @@ fn build_diag_comms_table_section(
 
     // Add job entries to the table
     for job_name in job_names.iter() {
-        rows.push(DetailRow { row_type: DetailRowType::Normal, metadata: None,
-            cells: vec!["-".to_owned(), job_name.clone(), "Job".to_owned(), "false".to_owned()],
-            cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        rows.push(DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
+            cells: vec![
+                "-".to_owned(),
+                job_name.clone(),
+                "Job".to_owned(),
+                "false".to_owned(),
+            ],
+            cell_types: vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
             indent: 0,
         });
     }
 
     DetailSectionData {
-        title: format!("Diag-Comms ({} services, {} jobs)", own_services.len() + parent_services.len(), job_names.len()),
+        title: format!(
+            "Diag-Comms ({} services, {} jobs)",
+            own_services.len() + parent_services.len(),
+            job_names.len()
+        ),
         render_as_header: false,
         section_type: DetailSectionType::Services,
         content: DetailContent::Table {
@@ -733,9 +802,9 @@ fn build_diag_comms_table_section(
 }
 
 /// Build detailed sections for a single ECU job (simplified placeholder)
-fn build_simple_job_details_with_name(job_name: &str) -> Vec<DetailSectionData> {
+pub fn build_simple_job_details_with_name(job_name: &str) -> Vec<DetailSectionData> {
     let mut sections = Vec::new();
-    
+
     // Add header section with job name
     sections.push(DetailSectionData {
         title: format!("Job - {}", job_name),
@@ -743,21 +812,27 @@ fn build_simple_job_details_with_name(job_name: &str) -> Vec<DetailSectionData> 
         content: DetailContent::PlainText(vec![]),
         section_type: DetailSectionType::Header,
     });
-    
+
     // Overview section
-    let header = DetailRow { row_type: DetailRowType::Normal, metadata: None,
+    let header = DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
         cells: vec!["Property".to_owned(), "Value".to_owned()],
         cell_types: vec![CellType::Text, CellType::Text],
         indent: 0,
     };
 
     let rows = vec![
-        DetailRow { row_type: DetailRowType::Normal, metadata: None,
+        DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
             cells: vec!["Job Name".to_owned(), job_name.to_owned()],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
         },
-        DetailRow { row_type: DetailRowType::Normal, metadata: None,
+        DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
             cells: vec!["Status".to_owned(), "Available in database".to_owned()],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,

@@ -3,7 +3,10 @@ use cda_database::datatypes::{DiagLayer, DiagService, Parameter, ParentRef};
 use super::services::{extract_coded_value, extract_dop_name, get_parent_ref_services_recursive};
 use crate::tree::{
     builder::TreeBuilder,
-    types::{CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData, DetailSectionType, NodeType},
+    types::{
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
+        NodeType,
+    },
 };
 
 /// Add requests section to the tree

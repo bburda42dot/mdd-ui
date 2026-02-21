@@ -12,7 +12,10 @@ use cda_database::datatypes::{DiagLayer, EcuDb, Variant as VariantWrap};
 use super::layers::LayerExt;
 use crate::tree::{
     builder::TreeBuilder,
-    types::{NodeType, lines_to_single_section},
+    types::{
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
+        NodeType, lines_to_single_section,
+    },
 };
 
 /// Add all variants to the tree
@@ -41,14 +44,24 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 name.push_str(" [base]");
             }
 
-            let details = get_variant_summary(&vw, &name);
-            let sec = lines_to_single_section("Summary", details.clone());
+            // Build detail sections
+            let mut detail_sections = vec![];
+
+            // Add summary section
+            let summary_lines = get_variant_summary(&vw, &name);
+            detail_sections.push(lines_to_single_section("Summary", summary_lines));
+
+            // Add parent refs table if available
+            if let Some(parent_refs_section) = build_parent_refs_section(&vw) {
+                detail_sections.push(parent_refs_section);
+            }
+
             b.push_details_structured(
                 1,
                 name.clone(),
                 is_base,
                 true,
-                vec![sec],
+                detail_sections,
                 NodeType::Container,
             );
 
@@ -182,6 +195,89 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     }
 }
 
+/// Add all protocols to the tree
+pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
+    // Protocols are accessed through functional groups -> parent refs
+    // Similar to ECU shared data
+
+    // Collect protocols from functional groups
+    let protocol_refs: Vec<_> = ecu
+        .functional_groups()
+        .into_iter()
+        .flatten()
+        .filter_map(|fg| {
+            fg.parent_refs().and_then(|parent_refs| {
+                // Find Protocol parent refs
+                let proto_refs: Vec<_> = parent_refs
+                    .iter()
+                    .filter_map(|parent_ref| {
+                        let parent_ref = cda_database::datatypes::ParentRef(parent_ref);
+                        match parent_ref.ref_type().try_into() {
+                            Ok(cda_database::datatypes::ParentRefType::Protocol) => {
+                                parent_ref.ref__as_protocol()
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect();
+
+                if proto_refs.is_empty() {
+                    None
+                } else {
+                    Some(proto_refs)
+                }
+            })
+        })
+        .flatten()
+        .collect();
+
+    // Deduplicate by layer short name
+    let mut seen_names = std::collections::HashSet::new();
+    let unique_protocols: Vec<_> = protocol_refs
+        .into_iter()
+        .filter(|protocol| {
+            if let Some(dl) = protocol.diag_layer() {
+                let name = dl.short_name().unwrap_or("");
+                if !name.is_empty() && seen_names.contains(name) {
+                    return false;
+                }
+                seen_names.insert(name.to_owned());
+                true
+            } else {
+                false
+            }
+        })
+        .collect();
+
+    if !unique_protocols.is_empty() {
+        b.push(
+            0,
+            "Protocols".to_string(),
+            false,
+            true,
+            NodeType::SectionHeader,
+        );
+
+        for protocol in unique_protocols.iter() {
+            if let Some(dl) = protocol.diag_layer() {
+                let layer = DiagLayer(dl);
+                let name = layer.short_name().unwrap_or("unnamed");
+
+                b.push(1, name.to_string(), false, true, NodeType::Container);
+
+                // Protocols don't have parent refs like variants
+                b.add_diag_layer_structured(
+                    &layer,
+                    2,
+                    name,
+                    false,
+                    None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+                );
+            }
+        }
+    }
+}
+
 /// Get variant summary lines
 fn get_variant_summary(variant: &VariantWrap<'_>, name: &str) -> Vec<String> {
     let mut d = vec![
@@ -198,4 +294,91 @@ fn get_variant_summary(variant: &VariantWrap<'_>, name: &str) -> Vec<String> {
         }
     }
     d
+}
+
+/// Build parent refs table section for a variant
+fn build_parent_refs_section(variant: &VariantWrap<'_>) -> Option<DetailSectionData> {
+    let parent_refs = variant.parent_refs()?;
+    let parent_refs_list: Vec<_> = parent_refs
+        .iter()
+        .map(cda_database::datatypes::ParentRef)
+        .collect();
+
+    if parent_refs_list.is_empty() {
+        return None;
+    }
+
+    // Build table header
+    let header = DetailRow::header(
+        vec!["Short Name".to_owned(), "Type".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+
+    let mut rows = Vec::new();
+
+    // Add each parent ref to the table
+    for parent_ref in parent_refs_list {
+        let (ref_type_str, short_name) = match parent_ref.ref_type().try_into() {
+            Ok(cda_database::datatypes::ParentRefType::Variant) => {
+                let short_name = parent_ref
+                    .ref__as_variant()
+                    .and_then(|v| v.diag_layer())
+                    .and_then(|dl| dl.short_name())
+                    .unwrap_or("?")
+                    .to_owned();
+                ("Variant", short_name)
+            }
+            Ok(cda_database::datatypes::ParentRefType::EcuSharedData) => {
+                let short_name = parent_ref
+                    .ref__as_ecu_shared_data()
+                    .and_then(|esd| esd.diag_layer())
+                    .and_then(|dl| dl.short_name())
+                    .unwrap_or("?")
+                    .to_owned();
+                ("ECU Shared Data", short_name)
+            }
+            Ok(cda_database::datatypes::ParentRefType::Protocol) => {
+                let short_name = parent_ref
+                    .ref__as_protocol()
+                    .and_then(|p| p.diag_layer())
+                    .and_then(|dl| dl.short_name())
+                    .unwrap_or("?")
+                    .to_owned();
+                ("Protocol", short_name)
+            }
+            Ok(cda_database::datatypes::ParentRefType::FunctionalGroup) => {
+                let short_name = parent_ref
+                    .ref__as_functional_group()
+                    .and_then(|fg| fg.diag_layer())
+                    .and_then(|dl| dl.short_name())
+                    .unwrap_or("?")
+                    .to_owned();
+                ("Functional Group", short_name)
+            }
+            _ => ("Unknown", "?".to_owned()),
+        };
+
+        rows.push(DetailRow::normal(
+            vec![short_name, ref_type_str.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    Some(
+        DetailSectionData::new(
+            "Parent References".to_owned(),
+            DetailContent::Table {
+                header,
+                rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(70),
+                    ColumnConstraint::Percentage(30),
+                ],
+                use_row_selection: true,
+            },
+            false,
+        )
+        .with_type(DetailSectionType::RelatedRefs),
+    )
 }

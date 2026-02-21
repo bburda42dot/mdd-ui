@@ -159,12 +159,12 @@ impl App {
                 .borders(Borders::ALL)
                 .border_style(border(self.detail_focused))
                 .title(" Details ");
-            
+
             let inner = block.inner(area);
             frame.render_widget(block, area);
-            
+
             // Add helpful message in the center
-            let help_message = vec![
+            let help_message = [
                 "",
                 "No detailed information available for this item.",
                 "",
@@ -172,12 +172,12 @@ impl App {
                 "",
                 "Press ? for help.",
             ];
-            
+
             let paragraph = Paragraph::new(help_message.join("\n"))
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(ratatui::layout::Alignment::Center)
                 .wrap(ratatui::widgets::Wrap { trim: false });
-            
+
             frame.render_widget(paragraph, inner);
         }
     }
@@ -225,43 +225,41 @@ impl App {
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
         // Get breadcrumb segments with their node indices
         let segments = self.build_breadcrumb_segments();
-        
+
         // Build the display text and track segment positions
         let mut breadcrumb_segments = Vec::new();
         let mut col_position: u16 = area.x;
-        
+
         for (i, (text, node_idx)) in segments.iter().enumerate() {
             let start_col = col_position;
             let text_len = text.len() as u16;
             let end_col = start_col + text_len;
-            
+
             breadcrumb_segments.push((text.clone(), *node_idx, start_col, end_col));
             col_position = end_col;
-            
+
             // Add separator if not the last segment
             if i < segments.len() - 1 {
                 col_position += 3; // " > " is 3 characters
             }
         }
-        
+
         // Store segments for click handling
         self.breadcrumb_segments = breadcrumb_segments;
-        
+
         // Build display string
         let breadcrumb_text: String = segments
             .iter()
             .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>()
             .join(" > ");
-        
+
         let paragraph = Paragraph::new(breadcrumb_text)
             .style(Style::default().fg(Color::Cyan).bg(Color::Black));
         frame.render_widget(paragraph, area);
     }
 
     pub(super) fn draw_status(&self, frame: &mut Frame, area: Rect) {
-        use crate::app::SearchScope;
-
         let (text, st) = if self.searching {
             let current_search_info = if !self.search_stack.is_empty() {
                 let stack_display: Vec<String> = self
@@ -522,7 +520,7 @@ impl App {
         };
 
         let show_tabs = tab_sections.len() > 1;
-        
+
         // Add remaining content area
         constraints.push(Constraint::Min(0)); // Content area
 
@@ -573,14 +571,12 @@ impl App {
         // If tabs are shown, render them inside the content block and split the area
         let inner = if show_tabs {
             let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            let tab_lines_needed = self.calculate_tab_lines(&tab_titles, block_inner.width as usize);
+            let tab_lines_needed =
+                self.calculate_tab_lines(&tab_titles, block_inner.width as usize);
             let tab_height = (tab_lines_needed as u16).max(1);
 
             // Split the block_inner area into tab area and content area
-            let tab_constraints = vec![
-                Constraint::Length(tab_height),
-                Constraint::Min(0),
-            ];
+            let tab_constraints = vec![Constraint::Length(tab_height), Constraint::Min(0)];
             let tab_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints(tab_constraints)

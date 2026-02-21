@@ -236,7 +236,8 @@ impl App {
                         let is_service_list = node.text.starts_with("Diag-Comms (")
                             || node.text.starts_with("Requests (")
                             || node.text.starts_with("Pos-Responses (")
-                            || node.text.starts_with("Neg-Responses (");
+                            || node.text.starts_with("Neg-Responses (")
+                            || node.text.starts_with("Functional Classes (");
 
                         // Check if this is any service-related node type (generic check)
                         let is_service_node = matches!(
@@ -270,10 +271,12 @@ impl App {
                                         0
                                     };
 
-                                    if row_cursor < rows.len() {
-                                        let selected_row = &rows[row_cursor];
-                                        if selected_row.row_type == DetailRowType::InheritedFrom
-                                        {
+                                    // Apply sorting if active for this section
+                                    let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+                                    if row_cursor < sorted_rows.len() {
+                                        let selected_row = &sorted_rows[row_cursor];
+                                        if selected_row.row_type == DetailRowType::InheritedFrom {
                                             should_navigate_to_parent = true;
                                         }
                                     }
@@ -287,8 +290,22 @@ impl App {
                                 self.try_show_detail_popup();
                             }
                         } else {
-                            // Try to show detail popup
-                            self.try_show_detail_popup();
+                            // Check if we're in a Parent References section
+                            let section_idx = self.get_section_index();
+                            if section_idx < node.detail_sections.len() {
+                                let section = &node.detail_sections[section_idx];
+                                if section.section_type == DetailSectionType::RelatedRefs
+                                    && section.title == "Parent References"
+                                {
+                                    self.try_navigate_to_parent_ref();
+                                } else {
+                                    // Try to show detail popup
+                                    self.try_show_detail_popup();
+                                }
+                            } else {
+                                // Try to show detail popup
+                                self.try_show_detail_popup();
+                            }
                         }
                     }
                 } else {

@@ -296,7 +296,7 @@ impl App {
                                 self.try_show_detail_popup();
                             }
                         } else {
-                            // Check if we're in a Parent References section
+                            // Check if we're in a Parent References section or a not-inherited elements tab
                             let section_idx = self.get_section_index();
                             if section_idx < node.detail_sections.len() {
                                 let section = &node.detail_sections[section_idx];
@@ -304,6 +304,9 @@ impl App {
                                     && section.title == "Parent References"
                                 {
                                     self.try_navigate_to_parent_ref();
+                                } else if section.title.starts_with("Not Inherited") {
+                                    // Navigate to the selected not-inherited element
+                                    self.try_navigate_to_not_inherited_element();
                                 } else {
                                     // Try to show detail popup
                                     self.try_show_detail_popup();

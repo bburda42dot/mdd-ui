@@ -1744,6 +1744,122 @@ impl App {
         }
     }
 
+    /// Navigate to a not-inherited element (DiagComm, DiagVariable, Dop, Table)
+    pub(crate) fn try_navigate_to_not_inherited_element(&mut self) {
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Get the actual section index
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // Determine what type of element we're looking for based on the section title
+        let element_type = if section.title.contains("DiagComms") {
+            "service"
+        } else {
+            // For now, only services (DiagComms) are navigable
+            // TODO: Add navigation for DiagVariables, DOPs, and Tables when they're added to the tree
+            self.status = "Navigation not yet supported for this element type".to_owned();
+            return;
+        };
+
+        // Get table rows
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+
+        // Get the selected row cursor
+        let row_cursor = if section_idx < self.section_cursors.len() {
+            self.section_cursors[section_idx]
+        } else {
+            return;
+        };
+
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+        if row_cursor >= sorted_rows.len() {
+            return;
+        }
+
+        let selected_row = &sorted_rows[row_cursor];
+
+        // Extract the element short name from the first column
+        if selected_row.cells.is_empty() {
+            self.status = "Invalid row".to_owned();
+            return;
+        }
+
+        let target_short_name = selected_row.cells[0].clone();
+
+        // Search for the element in the tree based on type
+        if element_type == "service" {
+            // Search for a Service or ParentRefService node with matching name
+            let mut found_service_idx: Option<usize> = None;
+
+            for (ni, n) in self.all_nodes.iter().enumerate() {
+                if matches!(n.node_type, NodeType::Service | NodeType::ParentRefService) {
+                    // Service nodes have format "0xXXXX - ShortName"
+                    let service_name = if let Some(dash_idx) = n.text.find(" - ") {
+                        &n.text[dash_idx + 3..]
+                    } else {
+                        &n.text
+                    };
+
+                    if service_name == target_short_name {
+                        found_service_idx = Some(ni);
+                        break;
+                    }
+                }
+            }
+
+            if let Some(service_node_idx) = found_service_idx {
+                // Expand all parents of the target node to make it visible
+                let service_depth = self.all_nodes[service_node_idx].depth;
+
+                // Expand parent nodes
+                if service_depth > 0 {
+                    for i in 0..service_node_idx {
+                        let node = &mut self.all_nodes[i];
+                        if node.depth < service_depth && node.has_children {
+                            node.expanded = true;
+                        }
+                    }
+                }
+
+                // Rebuild visible list
+                self.rebuild_visible();
+
+                // Navigate to the service
+                if let Some(new_cursor) = self
+                    .visible
+                    .iter()
+                    .position(|&idx| idx == service_node_idx)
+                {
+                    self.push_to_history();
+                    self.detail_focused = false;
+                    self.cursor = new_cursor;
+                    self.reset_detail_state();
+                    self.scroll_offset = self.cursor.saturating_sub(5);
+                    self.status = format!("Navigated to service: {}", target_short_name);
+                }
+            } else {
+                self.status = format!("Service '{}' not found in tree", target_short_name);
+            }
+        }
+    }
+
     pub(crate) fn resize_column(&mut self, delta: i16) {
         // Get the actual section index accounting for header sections
         let section_idx = self.get_section_index();
@@ -2045,6 +2161,10 @@ impl App {
                             && section.title == "Parent References"
                         {
                             self.try_navigate_to_parent_ref();
+                            return;
+                        } else if section.title.starts_with("Not Inherited") {
+                            // Navigate to the selected not-inherited element
+                            self.try_navigate_to_not_inherited_element();
                             return;
                         }
                     }

@@ -15,6 +15,7 @@ pub enum NodeType {
     SectionHeader,
     Service,
     ParentRefService, // Service inherited from parent reference
+    ParentRefs, // Parent References node
     Request,
     PosResponse,
     NegResponse,

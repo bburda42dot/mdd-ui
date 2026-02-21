@@ -23,6 +23,7 @@ fn node_style(node: &TreeNode) -> Style {
         NodeType::Service => Style::default().fg(Color::White),
         // Gray for inherited services
         NodeType::ParentRefService => Style::default().fg(Color::DarkGray),
+        NodeType::ParentRefs => style(Color::Yellow, true),
         NodeType::Request => Style::default().fg(Color::White),
         NodeType::PosResponse => Style::default().fg(Color::White),
         NodeType::NegResponse => Style::default().fg(Color::White),

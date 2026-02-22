@@ -29,26 +29,20 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             .map(|v| VariantWrap(v))
             .collect();
         
-        b.push(
+        // Build variants overview table for the section header
+        let variants_detail = build_variants_overview_table(&all_variants_vec);
+        
+        b.push_details_structured(
             0,
             "Variants".to_string(),
+            false,
             true,
-            true,
+            variants_detail,
             NodeType::SectionHeader,
         );
 
-        // Sort variants alphabetically by name
-        let mut sorted_variants: Vec<_> = variants.iter().enumerate().collect();
-        sorted_variants.sort_by_cached_key(|(_, v)| {
-            let vw = VariantWrap(*v);
-            vw.diag_layer()
-                .and_then(|l| l.short_name())
-                .unwrap_or("")
-                .to_lowercase()
-        });
-
         // Add each variant
-        for (vi, variant) in sorted_variants.into_iter() {
+        for (vi, variant) in variants.iter().enumerate() {
             let vw = VariantWrap(variant);
             let mut name = vw
                 .diag_layer()
@@ -111,16 +105,7 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        // Sort functional groups alphabetically by name
-        let mut sorted_groups: Vec<_> = groups.iter().collect();
-        sorted_groups.sort_by_cached_key(|fg| {
-            fg.diag_layer()
-                .and_then(|dl| DiagLayer(dl).short_name())
-                .unwrap_or("")
-                .to_lowercase()
-        });
-
-        for fg in sorted_groups.into_iter() {
+        for fg in groups.iter() {
             if let Some(dl) = fg.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
@@ -205,16 +190,7 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        // Sort ECU shared data alphabetically by name
-        let mut sorted_esd = unique_esd.clone();
-        sorted_esd.sort_by_cached_key(|esd| {
-            esd.diag_layer()
-                .and_then(|dl| dl.short_name())
-                .unwrap_or("")
-                .to_lowercase()
-        });
-
-        for esd in sorted_esd.iter() {
+        for esd in unique_esd.iter() {
             if let Some(dl) = esd.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
@@ -299,16 +275,7 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             NodeType::SectionHeader,
         );
 
-        // Sort protocols alphabetically by name
-        let mut sorted_protocols = unique_protocols.clone();
-        sorted_protocols.sort_by_cached_key(|protocol| {
-            protocol.diag_layer()
-                .and_then(|dl| dl.short_name())
-                .unwrap_or("")
-                .to_lowercase()
-        });
-
-        for protocol in sorted_protocols.iter() {
+        for protocol in unique_protocols.iter() {
             if let Some(dl) = protocol.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
@@ -432,4 +399,57 @@ fn build_parent_refs_section(variant: &VariantWrap<'_>) -> Option<DetailSectionD
         )
         .with_type(DetailSectionType::RelatedRefs),
     )
+}
+
+/// Build variants overview table for the Variants section header
+fn build_variants_overview_table(variants: &[VariantWrap]) -> Vec<DetailSectionData> {
+    if variants.is_empty() {
+        return vec![];
+    }
+
+    // Build table header
+    let header = DetailRow::header(
+        vec!["Name".to_owned(), "Is Base".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+
+    let mut rows = Vec::new();
+
+    // Add each variant to the table
+    for variant in variants {
+        let name = variant
+            .diag_layer()
+            .and_then(|l| l.short_name())
+            .unwrap_or("unnamed")
+            .to_owned();
+        
+        let is_base = if variant.is_base_variant() {
+            "Yes"
+        } else {
+            "No"
+        };
+
+        rows.push(DetailRow::normal(
+            vec![name, is_base.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    vec![
+        DetailSectionData::new(
+            "Variants Overview".to_owned(),
+            DetailContent::Table {
+                header,
+                rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(70),
+                    ColumnConstraint::Percentage(30),
+                ],
+                use_row_selection: true,
+            },
+            false,
+        )
+        .with_type(DetailSectionType::Overview),
+    ]
 }

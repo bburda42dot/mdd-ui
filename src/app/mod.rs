@@ -2052,6 +2052,99 @@ impl App {
         }
     }
 
+    /// Navigate to a variant from the Variants overview table
+    pub(crate) fn try_navigate_to_variant(&mut self) {
+        if self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+
+        // Get the actual section index
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // Get table rows
+        use crate::tree::DetailContent;
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => rows,
+            _ => return,
+        };
+
+        // Get the selected row cursor
+        let row_cursor = if section_idx < self.section_cursors.len() {
+            self.section_cursors[section_idx]
+        } else {
+            return;
+        };
+
+        // Apply sorting if active for this section
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
+
+        if row_cursor >= sorted_rows.len() {
+            return;
+        }
+
+        let selected_row = &sorted_rows[row_cursor];
+
+        // Extract the variant name from the first column
+        if selected_row.cells.is_empty() {
+            self.status = "Invalid variant row".to_owned();
+            return;
+        }
+
+        let target_variant_name = selected_row.cells[0].clone();
+
+        // Search for a variant node in the tree that matches this name
+        // Variant nodes are at depth 1 under "Variants" section
+        // and have text format: "variant_name" or "variant_name [base]"
+        let mut found_variant_idx: Option<usize> = None;
+
+        for (ni, n) in self.all_nodes.iter().enumerate() {
+            // Check if this is a variant Container node
+            if matches!(n.node_type, NodeType::Container) && n.depth == 1 {
+                // Extract name from text (may include [base] suffix)
+                let name = if let Some(idx) = n.text.find(" [") {
+                    &n.text[..idx]
+                } else {
+                    &n.text
+                };
+
+                if name == target_variant_name {
+                    found_variant_idx = Some(ni);
+                    break;
+                }
+            }
+        }
+
+        if let Some(variant_node_idx) = found_variant_idx {
+            // Ensure the variant node is visible (expand parents if needed)
+            self.ensure_node_visible(variant_node_idx);
+
+            // Find the variant in the visible list and navigate to it
+            if let Some(new_cursor) = self
+                .visible
+                .iter()
+                .position(|&idx| idx == variant_node_idx)
+            {
+                self.push_to_history();
+                self.detail_focused = false;
+                self.cursor = new_cursor;
+                self.reset_detail_state();
+                self.scroll_offset = self.cursor.saturating_sub(5);
+                self.status = format!("Navigated to variant: {}", target_variant_name);
+            }
+        } else {
+            self.status = format!("Variant '{}' not found in tree", target_variant_name);
+        }
+    }
+
     /// Helper function to navigate to a service or job by name
     fn navigate_to_service_or_job(&mut self, target_short_name: &str) {
         // Search for a Service, ParentRefService, or Job node with matching name

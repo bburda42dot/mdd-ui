@@ -791,7 +791,9 @@ impl App {
         section_idx: usize,
         use_row_selection: bool,
     ) {
-        let viewport_height = inner.height as usize;
+        // Account for header height (3 lines) when calculating viewport
+        let header_height = 3u16;
+        let viewport_height = (inner.height.saturating_sub(header_height)).max(1) as usize;
 
         // Apply sorting based on table_sort_state if set
         let sorted_rows: Vec<DetailRow> = if section_idx < self.table_sort_state.len() {

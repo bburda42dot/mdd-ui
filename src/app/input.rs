@@ -238,6 +238,10 @@ impl App {
                         let node_idx = self.visible[self.cursor];
                         let node = &self.all_nodes[node_idx];
 
+                        // Check if this is the Variants section header
+                        let is_variants_section = node.text == "Variants"
+                            && matches!(node.node_type, NodeType::SectionHeader);
+
                         // Check if this is a service list header (generic check)
                         let is_service_list = node.text.starts_with("Diag-Comms (")
                             || node.text.starts_with("Requests (")
@@ -258,7 +262,10 @@ impl App {
                         // Check if this is a functional class node
                         let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
 
-                        if is_service_list {
+                        if is_variants_section {
+                            // Navigate to selected variant from the Variants overview table
+                            self.try_navigate_to_variant();
+                        } else if is_service_list {
                             // Navigate to selected service from service list table
                             self.try_navigate_to_service();
                         } else if is_functional_class {

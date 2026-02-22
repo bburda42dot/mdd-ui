@@ -394,21 +394,6 @@ cargo run -- <path-to-mdd-database>
 - **Tab navigation**: Use `h`/`l` to switch between detail tabs when detail pane is focused
 - **Inherited services**: Services from parent refs shown in gray with source layer name
 
-## Contributing
-
-Contributions are welcome! Areas for improvement:
-- **Additional detail views**: Expand coverage for diagnostic variables, DOPs, and tables
-- **Enhanced search**: Add regex support, case-sensitive options, and more granular filtering
-- **Export functionality**: Export diagnostic data to JSON, CSV, or other formats
-- **Performance optimizations**: Improve rendering for very large databases (1000+ services)
-- **Navigation enhancements**: Implement forward/back navigation history with keyboard shortcuts
-- **Theme support**: Add customizable color schemes and terminal theme integration
-- **Filter improvements**: Add filter by audience, functional class, or parent ref
-- **Code quality**: Add CI/CD from opensovd/cicd-workflows, improve clippy/fmt compliance
-- **Documentation**: Add architecture diagrams, contribution guidelines, and code comments
-- **Testing**: Add unit tests for core logic and integration tests for UI components
-
-Please feel free to open issues or submit pull requests!
 
 ## License
 

@@ -868,9 +868,9 @@ impl App {
         // Build visible rows with column-specific or row-specific highlighting
         let visible_rows: Vec<Row<'static>> = rows_refs
             .iter()
-            .enumerate()
             .skip(self.section_scrolls[section_idx])
             .take(viewport_height)
+            .enumerate()
             .map(|(idx, row_data)| {
                 let indent_str = "  ".repeat(row_data.indent / 2);
                 // Calculate absolute row index (accounting for scroll offset)
@@ -961,12 +961,22 @@ impl App {
         frame.render_widget(table, inner);
 
         if row_count > viewport_height {
+            // Render scrollbar below the header to avoid color overlap
+            let scrollbar_area = Rect {
+                x: inner.x,
+                y: inner.y + header_height,
+                width: inner.width,
+                height: inner.height.saturating_sub(header_height),
+            };
+            // The scrollbar needs to know about total scrollable range
+            // Max scroll position is (row_count - viewport_height)
+            let max_scroll = row_count.saturating_sub(viewport_height);
             render_scrollbar(
                 frame,
-                area,
-                row_count,
+                scrollbar_area,
+                max_scroll + 1,  // Total positions (0 to max_scroll inclusive)
                 self.section_scrolls[section_idx],
-                viewport_height,
+                1,  // Viewport is always "1" position at a time
             );
         }
     }

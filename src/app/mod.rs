@@ -183,7 +183,7 @@ impl App {
             focused_column: 0,
             detail_popup: None,
             help_popup_visible: false,
-            tree_width_percentage: 40,
+            tree_width_percentage: 35,
             diagcomm_sort_by_id: true,    // Default: sort by ID
             table_sort_state: Vec::new(), // No sorting by default
             tree_area: Rect::default(),

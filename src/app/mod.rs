@@ -150,6 +150,7 @@ pub struct App {
     history_position: usize, // Current position in history (for potential forward navigation)
     breadcrumb_area: Rect,   // Cached breadcrumb area for mouse handling
     breadcrumb_segments: Vec<(String, usize, u16, u16)>, // (text, node_idx, start_col, end_col)
+    dragging_divider: bool,  // Whether user is currently dragging the tree/detail divider
 }
 
 #[derive(Clone)]
@@ -198,6 +199,7 @@ impl App {
             history_position: 0,
             breadcrumb_area: Rect::default(),
             breadcrumb_segments: Vec::new(),
+            dragging_divider: false,
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();
@@ -2365,6 +2367,12 @@ impl App {
 
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                // Check if clicking near the divider to start drag
+                if self.is_near_divider(column) {
+                    self.dragging_divider = true;
+                    return Action::Continue;
+                }
+
                 // Check for double-click (within 500ms and same position)
                 let is_double_click = if let Some(last_time) = self.last_click_time {
                     let elapsed = last_time.elapsed();
@@ -2386,6 +2394,16 @@ impl App {
                     // Track this click for double-click detection
                     self.last_click_time = Some(Instant::now());
                     self.last_click_pos = (column, row);
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                // Stop dragging when mouse button is released
+                self.dragging_divider = false;
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                // Handle drag to resize tree pane
+                if self.dragging_divider {
+                    self.handle_divider_drag(column);
                 }
             }
             MouseEventKind::ScrollDown => {
@@ -2570,6 +2588,31 @@ impl App {
         } else {
             false
         }
+    }
+
+    /// Check if the mouse is near the divider between tree and detail panes
+    /// The divider is considered to be within 1-2 columns of the tree pane's right edge
+    fn is_near_divider(&self, column: u16) -> bool {
+        let divider_col = self.tree_area.x + self.tree_area.width;
+        // Allow clicking on the last column of tree or first column of detail
+        column >= divider_col.saturating_sub(1) && column <= divider_col + 1
+    }
+
+    /// Handle dragging the divider to resize tree pane
+    fn handle_divider_drag(&mut self, column: u16) {
+        // Get the total width of main area (tree + detail)
+        let total_width = self.tree_area.width + self.detail_area.width;
+        if total_width == 0 {
+            return;
+        }
+
+        // Calculate the new tree width based on mouse position
+        // The column is relative to the start of tree_area
+        let new_tree_width = column.saturating_sub(self.tree_area.x);
+        
+        // Calculate percentage (clamped between 20% and 80%)
+        let new_percentage = ((new_tree_width as f32 / total_width as f32) * 100.0) as u16;
+        self.tree_width_percentage = new_percentage.clamp(20, 80);
     }
 
     fn handle_tab_click(&mut self, column: u16, row: u16) {

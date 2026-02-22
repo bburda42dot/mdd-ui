@@ -391,6 +391,7 @@ impl App {
             "",
             "WINDOW",
             "  + / -           Increase/decrease tree pane width",
+            "  Mouse drag      Drag the divider between tree and detail to resize",
             "  m               Toggle mouse mode (enable/disable terminal text selection)",
             "  ?               Show this help",
             "  q or Esc        Quit application",

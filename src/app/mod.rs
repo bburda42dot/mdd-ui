@@ -475,7 +475,7 @@ impl App {
                                 crate::tree::ServiceListType::DiagComms,
                             ) || matches!(
                                 self.all_nodes[i].node_type,
-                                NodeType::Service | NodeType::ParentRefService
+                                NodeType::Service | NodeType::ParentRefService | NodeType::Job
                             )
                         }
                         SearchScope::Requests => {
@@ -1371,7 +1371,7 @@ impl App {
                 // For Functional Classes overview, we're looking for FunctionalClass detail nodes
                 child_node.node_type == NodeType::FunctionalClass
             } else {
-                // For other service lists, look for service-related nodes
+                // For other service lists, look for service-related nodes OR jobs
                 matches!(
                     child_node.node_type,
                     NodeType::Service
@@ -1379,6 +1379,7 @@ impl App {
                         | NodeType::Request
                         | NodeType::PosResponse
                         | NodeType::NegResponse
+                        | NodeType::Job
                 )
             };
 
@@ -1390,6 +1391,10 @@ impl App {
             let name_matches = if is_functional_class {
                 // For functional classes, the node text is just the functional class name
                 child_node.text == service_name
+            } else if child_node.node_type == NodeType::Job {
+                // For jobs: text format is "[Job] JobName"
+                let job_name = child_node.text.strip_prefix("[Job] ").unwrap_or(&child_node.text);
+                job_name == service_name
             } else {
                 // For services: text format is "[Service] 0xXXXX - ServiceName"
                 child_node.text.contains(&service_name)
@@ -2161,7 +2166,7 @@ impl App {
                     &n.text
                 };
                 service_name == target_short_name
-            } else if n.node_type == NodeType::Default && n.text.starts_with("[Job]") {
+            } else if n.node_type == NodeType::Job {
                 // Job nodes have format "[Job] ShortName"
                 let job_name = n.text.strip_prefix("[Job] ").unwrap_or(&n.text);
                 job_name == target_short_name

@@ -234,7 +234,7 @@ pub fn add_diag_comms<'a>(
                     false,
                     false,
                     sections,
-                    NodeType::Default,
+                    NodeType::Job,
                 );
             }
         }

@@ -20,6 +20,7 @@ pub enum NodeType {
     PosResponse,
     NegResponse,
     FunctionalClass, // Functional class node
+    Job, // Single ECU Job
     Default,
 }
 

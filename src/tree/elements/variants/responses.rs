@@ -20,6 +20,7 @@ pub fn build_pos_responses_sections(ds: &DiagService<'_>) -> Vec<DetailSectionDa
             sections.push(build_response_param_section(
                 &format!("Pos-Response {}", i + 1),
                 params,
+                DetailSectionType::PosResponses,
             ));
         }
     }
@@ -38,6 +39,7 @@ pub fn build_neg_responses_sections(ds: &DiagService<'_>) -> Vec<DetailSectionDa
             sections.push(build_response_param_section(
                 &format!("Neg-Response {}", i + 1),
                 params,
+                DetailSectionType::NegResponses,
             ));
         }
     }
@@ -53,7 +55,7 @@ pub fn add_pos_responses_section<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services that have positive responses
-    let mut own_services: Vec<DiagService<'_>> = layer
+    let own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| {
             services
@@ -64,16 +66,8 @@ pub fn add_pos_responses_section<'a>(
         })
         .unwrap_or_default();
 
-    // Sort own services alphabetically by name
-    own_services.sort_by_cached_key(|ds| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
-
     // Collect services from parent refs with source layer names (that have positive responses)
-    let mut parent_services: Vec<(DiagService<'_>, String)> =
+    let parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
                 .into_iter()
@@ -82,14 +76,6 @@ pub fn add_pos_responses_section<'a>(
         } else {
             Vec::new()
         };
-
-    // Sort parent services alphabetically by name
-    parent_services.sort_by_cached_key(|(ds, _)| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
 
     let total_count = own_services.len() + parent_services.len();
 
@@ -128,15 +114,73 @@ pub fn add_pos_responses_section<'a>(
                 };
 
                 let sections = build_pos_response_view_sections(ds, None);
+                
+                // Check if there are params to show as children
+                let has_params = ds.pos_responses()
+                    .map(|responses| {
+                        responses.iter().any(|resp| {
+                            resp.params().map(|p| !p.is_empty()).unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
 
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::PosResponse,
                 );
+                
+                // Add params as child nodes
+                if let Some(pos_responses) = ds.pos_responses() {
+                    for (resp_idx, resp) in pos_responses.iter().enumerate() {
+                        if let Some(params) = resp.params() {
+                            if !params.is_empty() {
+                                // Add response container if there are multiple responses
+                                if pos_responses.len() > 1 {
+                                    b.push_details_structured(
+                                        depth + 2,
+                                        format!("Response {}", resp_idx + 1),
+                                        false,
+                                        true,
+                                        vec![],  // No detail sections for container
+                                        NodeType::Default,
+                                    );
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 3,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                } else {
+                                    // Only one response, add params directly
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 2,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -164,14 +208,72 @@ pub fn add_pos_responses_section<'a>(
                 let sections =
                     build_pos_response_view_sections(ds, Some(source_layer_name.clone()));
 
+                // Check if there are params to show as children
+                let has_params = ds.pos_responses()
+                    .map(|responses| {
+                        responses.iter().any(|resp| {
+                            resp.params().map(|p| !p.is_empty()).unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::PosResponse,
                 );
+                
+                // Add params as child nodes
+                if let Some(pos_responses) = ds.pos_responses() {
+                    for (resp_idx, resp) in pos_responses.iter().enumerate() {
+                        if let Some(params) = resp.params() {
+                            if !params.is_empty() {
+                                // Add response container if there are multiple responses
+                                if pos_responses.len() > 1 {
+                                    b.push_details_structured(
+                                        depth + 2,
+                                        format!("Response {}", resp_idx + 1),
+                                        false,
+                                        true,
+                                        vec![],  // No detail sections for container
+                                        NodeType::Default,
+                                    );
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 3,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                } else {
+                                    // Only one response, add params directly
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 2,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -185,7 +287,7 @@ pub fn add_neg_responses_section<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services that have negative responses
-    let mut own_services: Vec<DiagService<'_>> = layer
+    let own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| {
             services
@@ -196,16 +298,8 @@ pub fn add_neg_responses_section<'a>(
         })
         .unwrap_or_default();
 
-    // Sort own services alphabetically by name
-    own_services.sort_by_cached_key(|ds| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
-
     // Collect services from parent refs with source layer names (that have negative responses)
-    let mut parent_services: Vec<(DiagService<'_>, String)> =
+    let parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
                 .into_iter()
@@ -214,14 +308,6 @@ pub fn add_neg_responses_section<'a>(
         } else {
             Vec::new()
         };
-
-    // Sort parent services alphabetically by name
-    parent_services.sort_by_cached_key(|(ds, _)| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
 
     let total_count = own_services.len() + parent_services.len();
 
@@ -261,14 +347,72 @@ pub fn add_neg_responses_section<'a>(
 
                 let sections = build_neg_response_view_sections(ds, None);
 
+                // Check if there are params to show as children
+                let has_params = ds.neg_responses()
+                    .map(|responses| {
+                        responses.iter().any(|resp| {
+                            resp.params().map(|p| !p.is_empty()).unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::NegResponse,
                 );
+                
+                // Add params as child nodes
+                if let Some(neg_responses) = ds.neg_responses() {
+                    for (resp_idx, resp) in neg_responses.iter().enumerate() {
+                        if let Some(params) = resp.params() {
+                            if !params.is_empty() {
+                                // Add response container if there are multiple responses
+                                if neg_responses.len() > 1 {
+                                    b.push_details_structured(
+                                        depth + 2,
+                                        format!("Response {}", resp_idx + 1),
+                                        false,
+                                        true,
+                                        vec![],  // No detail sections for container
+                                        NodeType::Default,
+                                    );
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 3,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                } else {
+                                    // Only one response, add params directly
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 2,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -296,14 +440,72 @@ pub fn add_neg_responses_section<'a>(
                 let sections =
                     build_neg_response_view_sections(ds, Some(source_layer_name.clone()));
 
+                // Check if there are params to show as children
+                let has_params = ds.neg_responses()
+                    .map(|responses| {
+                        responses.iter().any(|resp| {
+                            resp.params().map(|p| !p.is_empty()).unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
+
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::NegResponse,
                 );
+                
+                // Add params as child nodes
+                if let Some(neg_responses) = ds.neg_responses() {
+                    for (resp_idx, resp) in neg_responses.iter().enumerate() {
+                        if let Some(params) = resp.params() {
+                            if !params.is_empty() {
+                                // Add response container if there are multiple responses
+                                if neg_responses.len() > 1 {
+                                    b.push_details_structured(
+                                        depth + 2,
+                                        format!("Response {}", resp_idx + 1),
+                                        false,
+                                        true,
+                                        vec![],  // No detail sections for container
+                                        NodeType::Default,
+                                    );
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 3,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                } else {
+                                    // Only one response, add params directly
+                                    for param in params.iter().map(Parameter) {
+                                        let param_name = param.short_name().unwrap_or("?").to_owned();
+                                        let param_detail = build_param_detail_sections(&param);
+                                        let param_id = param.id();
+                                        
+                                        b.push_param(
+                                            depth + 2,
+                                            param_name,
+                                            param_detail,
+                                            NodeType::Default,
+                                            param_id,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -464,7 +666,11 @@ fn build_overview_section(
 }
 
 /// Helper to build parameter table for responses
-fn build_response_param_section<'a, I>(title: &str, params: I) -> DetailSectionData
+fn build_response_param_section<'a, I>(
+    title: &str,
+    params: I,
+    section_type: DetailSectionType,
+) -> DetailSectionData
 where
     I: IntoIterator<Item = Parameter<'a>>,
 {
@@ -505,6 +711,7 @@ where
         let dop_name = extract_dop_name(&param);
         let semantic = param.semantic().unwrap_or_default().to_owned();
         let has_dop = !dop_name.is_empty();
+        let param_id = param.id();
 
         rows.push(DetailRow {
             cells: vec![
@@ -532,7 +739,8 @@ where
                 CellType::Text,
             ],
             indent: 0,
-            ..Default::default()
+            row_type: crate::tree::DetailRowType::Normal,
+            metadata: Some(crate::tree::RowMetadata::ParameterRow { param_id }),
         });
     }
 
@@ -750,4 +958,116 @@ fn build_neg_responses_table_section(
             use_row_selection: true,
         },
     }
+}
+
+/// Build detail sections for a single parameter
+fn build_param_detail_sections(param: &Parameter<'_>) -> Vec<DetailSectionData> {
+    let mut sections = Vec::new();
+
+    // Header section
+    let param_name = param.short_name().unwrap_or("?");
+    sections.push(DetailSectionData {
+        title: format!("Parameter - {}", param_name),
+        render_as_header: true,
+        section_type: DetailSectionType::Header,
+        content: DetailContent::PlainText(vec![]),
+    });
+
+    // Overview section
+    let mut overview_rows = Vec::new();
+
+    if let Some(short_name) = param.short_name() {
+        overview_rows.push(DetailRow::normal(
+            vec![ "Short Name".to_owned(), short_name.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    if let Ok(param_type) = param.param_type() {
+        use cda_database::datatypes::ParamType;
+        let param_type_str = match param_type {
+            ParamType::CodedConst => "CodedConst",
+            ParamType::PhysConst => "PhysConst",
+            ParamType::Value => "Value",
+            _ => "Other",
+        };
+        overview_rows.push(DetailRow::normal(
+            vec![ "Type".to_owned(), param_type_str.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    if let Some(semantic) = param.semantic() {
+        overview_rows.push(DetailRow::normal(
+            vec![ "Semantic".to_owned(), semantic.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    let byte_pos = param.byte_position();
+    if byte_pos != 0 {
+        overview_rows.push(DetailRow::normal(
+            vec![ "Byte Position".to_owned(), byte_pos.to_string()],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    let bit_pos = param.bit_position();
+    if bit_pos != 255 {  // 255 is the default/unset value
+        overview_rows.push(DetailRow::normal(
+            vec![ "Bit Position".to_owned(), bit_pos.to_string()],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    // Add coded value if it's a CodedConst
+    let coded_value = extract_coded_value(param);
+    if !coded_value.is_empty() {
+        overview_rows.push(DetailRow::normal(
+            vec![ "Coded Value".to_owned(), coded_value],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    // Add DOP name if available
+    let dop_name = extract_dop_name(param);
+    if !dop_name.is_empty() {
+        overview_rows.push(DetailRow::normal(
+            vec![ "DOP".to_owned(), dop_name],
+            vec![CellType::Text, CellType::DopReference],
+            0,
+        ));
+    }
+
+    if !overview_rows.is_empty() {
+        let header = DetailRow::header(
+            vec![ "Property".to_owned(), "Value".to_owned()],
+            vec![CellType::Text, CellType::Text],
+        );
+
+        sections.push(
+            DetailSectionData::new(
+                "Overview".to_owned(),
+                DetailContent::Table {
+                    header,
+                    rows: overview_rows,
+                    constraints: vec![
+                        ColumnConstraint::Percentage(40),
+                        ColumnConstraint::Percentage(60),
+                    ],
+                    use_row_selection: true,
+                },
+                false,
+            )
+            .with_type(DetailSectionType::Overview),
+        );
+    }
+
+    sections
 }

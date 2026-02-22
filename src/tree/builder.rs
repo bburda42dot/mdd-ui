@@ -1,4 +1,4 @@
-use super::types::{DetailSectionData, NodeType, ServiceListType, TreeNode};
+use super::types::{DetailSectionData, NodeType, SectionType, ServiceListType, TreeNode};
 
 /// Accumulates `TreeNode`s while walking the database model.
 ///
@@ -29,7 +29,9 @@ impl TreeBuilder {
             has_children,
             detail_sections: Vec::new(),
             node_type,
+            section_type: None,
             service_list_type: None,
+            param_id: None,
         });
     }
 
@@ -50,7 +52,31 @@ impl TreeBuilder {
             has_children,
             detail_sections: sections,
             node_type,
+            section_type: None,
             service_list_type: None,
+            param_id: None,
+        });
+    }
+
+    /// Push a parameter node with its ID for lookup
+    pub(crate) fn push_param(
+        &mut self,
+        depth: usize,
+        text: String,
+        sections: Vec<DetailSectionData>,
+        node_type: NodeType,
+        param_id: u32,
+    ) {
+        self.nodes.push(TreeNode {
+            depth,
+            text,
+            expanded: false,
+            has_children: false,
+            detail_sections: sections,
+            node_type,
+            section_type: None,
+            service_list_type: None,
+            param_id: Some(param_id),
         });
     }
 
@@ -71,7 +97,31 @@ impl TreeBuilder {
             has_children,
             detail_sections: sections,
             node_type: NodeType::SectionHeader,
+            section_type: None,
             service_list_type: Some(service_list_type),
+            param_id: None,
+        });
+    }
+
+    /// Push a top-level section header with type information
+    pub(crate) fn push_section_header(
+        &mut self,
+        text: String,
+        expanded: bool,
+        has_children: bool,
+        sections: Vec<DetailSectionData>,
+        section_type: SectionType,
+    ) {
+        self.nodes.push(TreeNode {
+            depth: 0,
+            text,
+            expanded,
+            has_children,
+            detail_sections: sections,
+            node_type: NodeType::SectionHeader,
+            section_type: Some(section_type),
+            service_list_type: None,
+            param_id: None,
         });
     }
 

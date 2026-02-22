@@ -10,7 +10,7 @@ pub struct DatabaseData<'a> {
 pub fn extract_data(db: &DiagnosticDatabase) -> DatabaseData<'_> {
     let ecu_name = db.ecu_name().unwrap_or_else(|_| "Unknown ECU".into());
     let ecu = db.ecu_data().ok().map(|ecu_data| EcuDb(*ecu_data));
-
+    
     DatabaseData { ecu_name, ecu }
 }
 
@@ -37,9 +37,17 @@ pub fn get_ecu_summary(db: &DiagnosticDatabase, ecu_name: &str) -> Vec<String> {
         d.push(format!("DTCs: {}", dtcs.len()));
     }
 
+    // Add metadata
     for kv in ecu_data.metadata().into_iter().flatten() {
         if let (Some(k), Some(v)) = (kv.key(), kv.value()) {
-            d.push(format!("{k}: {v}"));
+            d.push(format!("Metadata - {k}: {v}"));
+        }
+    }
+
+    // Add feature flags
+    if let Some(flags) = ecu_data.feature_flags() {
+        if !flags.is_empty() {
+            d.push(format!("Feature Flags: {} defined", flags.len()));
         }
     }
 

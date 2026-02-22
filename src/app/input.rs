@@ -1,7 +1,6 @@
 use crossterm::event::KeyCode;
 
 use super::App;
-use crate::tree::{DetailRowType, DetailSectionType, NodeType};
 
 /// Result of processing a key press.
 pub enum Action {
@@ -92,18 +91,16 @@ impl App {
 
     /// Handle a key press in normal (non-search) mode.
     pub(super) fn handle_normal_key(&mut self, code: KeyCode, ctrl: bool, shift: bool) -> Action {
-        // Check if help popup is open
+        // Early return for help popup
         if self.help_popup_visible {
-            // Help popup is open - ? or Escape closes it
             if matches!(code, KeyCode::Esc | KeyCode::Char('?')) {
                 self.help_popup_visible = false;
             }
             return Action::Continue;
         }
 
-        // Check if detail popup is open
+        // Early return for detail popup
         if self.detail_popup.is_some() {
-            // Popup is open - only Escape closes it
             if matches!(code, KeyCode::Esc) {
                 self.detail_popup = None;
             }
@@ -216,7 +213,8 @@ impl App {
             KeyCode::Left | KeyCode::Char('h') => {
                 if self.detail_focused {
                     // Navigate to previous tab
-                    self.selected_tab = self.selected_tab.saturating_sub(1);
+                    let new_tab = self.selected_tab.saturating_sub(1);
+                    self.set_selected_tab(new_tab);
                     self.focused_column = 0; // Reset column focus when switching tabs
                 } else {
                     self.try_collapse_or_parent();
@@ -225,119 +223,18 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => {
                 if self.detail_focused {
                     // Navigate to next tab (will be clamped during render)
-                    self.selected_tab = self.selected_tab.saturating_add(1);
+                    let new_tab = self.selected_tab.saturating_add(1);
+                    self.set_selected_tab(new_tab);
                     self.focused_column = 0; // Reset column focus when switching tabs
                 } else {
                     self.try_expand();
                 }
             }
             KeyCode::Enter => {
-                if self.detail_focused {
-                    // Check what type of node we're on and what action to take
-                    if self.cursor < self.visible.len() {
-                        let node_idx = self.visible[self.cursor];
-                        let node = &self.all_nodes[node_idx];
-
-                        // Check if this is the Variants section header
-                        let is_variants_section = node.text == "Variants"
-                            && matches!(node.node_type, NodeType::SectionHeader);
-
-                        // Check if this is a service list header (generic check)
-                        let is_service_list = node.text.starts_with("Diag-Comms (")
-                            || node.text.starts_with("Requests (")
-                            || node.text.starts_with("Pos-Responses (")
-                            || node.text.starts_with("Neg-Responses (")
-                            || node.text.starts_with("Functional Classes (");
-
-                        // Check if this is any service-related node type (generic check)
-                        let is_service_node = matches!(
-                            node.node_type,
-                            NodeType::Service
-                                | NodeType::ParentRefService
-                                | NodeType::Request
-                                | NodeType::PosResponse
-                                | NodeType::NegResponse
-                        );
-
-                        // Check if this is a functional class node
-                        let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
-
-                        if is_variants_section {
-                            // Navigate to selected variant from the Variants overview table
-                            self.try_navigate_to_variant();
-                        } else if is_service_list {
-                            // Navigate to selected service from service list table
-                            self.try_navigate_to_service();
-                        } else if is_functional_class {
-                            // For functional class nodes, check which column is focused
-                            // Column 0 (ShortName): navigate to service/job
-                            // Column 5 (Layer): navigate to variant/layer
-                            if self.focused_column == 0 {
-                                self.try_navigate_to_service_from_functional_class();
-                            } else if self.focused_column == 5 {
-                                self.try_navigate_to_layer_from_functional_class();
-                            }
-                        } else if is_service_node {
-                            // Check if we're on the "Inherited From" row in Overview
-                            let mut should_navigate_to_parent = false;
-
-                            // Get the actual section index accounting for header section offset
-                            let section_idx = self.get_section_index();
-
-                            if section_idx < node.detail_sections.len() {
-                                let section = &node.detail_sections[section_idx];
-                                if section.section_type == DetailSectionType::Overview
-                                    && let crate::tree::DetailContent::Table { rows, .. } =
-                                        &section.content
-                                {
-                                    let row_cursor = if section_idx < self.section_cursors.len() {
-                                        self.section_cursors[section_idx]
-                                    } else {
-                                        0
-                                    };
-
-                                    // Apply sorting if active for this section
-                                    let sorted_rows = self.apply_table_sort(rows, section_idx);
-
-                                    if row_cursor < sorted_rows.len() {
-                                        let selected_row = &sorted_rows[row_cursor];
-                                        if selected_row.row_type == DetailRowType::InheritedFrom {
-                                            should_navigate_to_parent = true;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if should_navigate_to_parent {
-                                self.try_navigate_to_inherited_parent();
-                            } else {
-                                // Default: try to show detail popup
-                                self.try_show_detail_popup();
-                            }
-                        } else {
-                            // Check if we're in a Parent References section or a not-inherited elements tab
-                            let section_idx = self.get_section_index();
-                            if section_idx < node.detail_sections.len() {
-                                let section = &node.detail_sections[section_idx];
-                                if section.section_type == DetailSectionType::RelatedRefs
-                                    && section.title == "Parent References"
-                                {
-                                    self.try_navigate_to_parent_ref();
-                                } else if section.title.starts_with("Not Inherited") {
-                                    // Navigate to the selected not-inherited element
-                                    self.try_navigate_to_not_inherited_element();
-                                } else {
-                                    // Try to show detail popup
-                                    self.try_show_detail_popup();
-                                }
-                            } else {
-                                // Try to show detail popup
-                                self.try_show_detail_popup();
-                            }
-                        }
-                    }
-                } else {
+                if !self.detail_focused {
                     self.try_expand();
+                } else {
+                    self.handle_enter_in_detail_pane();
                 }
             }
             KeyCode::Char(' ') if !self.detail_focused => {

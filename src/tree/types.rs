@@ -1,3 +1,14 @@
+/// Type of top-level section
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SectionType {
+    General,
+    DTCs,
+    Variants,
+    FunctionalGroups,
+    EcuSharedData,
+    Protocols,
+}
+
 /// Type of service list section
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServiceListType {
@@ -21,6 +32,8 @@ pub enum NodeType {
     NegResponse,
     FunctionalClass, // Functional class node
     Job, // Single ECU Job
+    DOP, // Data Object Property
+    SDG, // Special Data Group
     Default,
 }
 
@@ -34,12 +47,16 @@ pub struct TreeNode {
     pub has_children: bool,
     pub detail_sections: Vec<DetailSectionData>,
     pub node_type: NodeType,
+    /// If this is a SectionHeader at depth 0, specifies which top-level section it represents
+    pub section_type: Option<SectionType>,
     /// If this is a SectionHeader, specifies which kind of service list it represents
     pub service_list_type: Option<ServiceListType>,
+    /// If this is a parameter node, stores the parameter ID for lookup
+    pub param_id: Option<u32>,
 }
 
 /// Type of detail section for logic purposes
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DetailSectionType {
     Header,          // Just a title/header section
     Overview,        // Overview table with key-value pairs
@@ -60,8 +77,58 @@ pub enum DetailRowType {
     Normal,        // Regular data row
     Header,        // Table header row
     InheritedFrom, // "Inherited From" navigation row
+    ChildElement,  // Child element summary row (clickable)
     #[allow(dead_code)]
     ServiceRef, // Reference to a service (clickable)
+}
+
+/// Type of child element in variant summary
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChildElementType {
+    ComParamRefs,
+    DiagComms,
+    FunctionalClasses,
+    NegResponses,
+    PosResponses,
+    Requests,
+    SDGs,
+    StateCharts,
+}
+
+impl ChildElementType {
+    /// Get the display name for the child element type
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ChildElementType::ComParamRefs => "ComParam Refs",
+            ChildElementType::DiagComms => "Diag-Comms",
+            ChildElementType::FunctionalClasses => "Functional Classes",
+            ChildElementType::NegResponses => "Neg-Responses",
+            ChildElementType::PosResponses => "Pos-Responses",
+            ChildElementType::Requests => "Requests",
+            ChildElementType::SDGs => "SDGs",
+            ChildElementType::StateCharts => "State-Charts",
+        }
+    }
+
+    /// Try to parse from display name
+    pub fn from_display_name(name: &str) -> Option<Self> {
+        match name {
+            "ComParam Refs" => Some(ChildElementType::ComParamRefs),
+            "Diag-Comms" => Some(ChildElementType::DiagComms),
+            "Functional Classes" => Some(ChildElementType::FunctionalClasses),
+            "Neg-Responses" => Some(ChildElementType::NegResponses),
+            "Pos-Responses" => Some(ChildElementType::PosResponses),
+            "Requests" => Some(ChildElementType::Requests),
+            "SDGs" => Some(ChildElementType::SDGs),
+            "State-Charts" => Some(ChildElementType::StateCharts),
+            _ => None,
+        }
+    }
+
+    /// Check if a node text starts with this child element type's display name
+    pub fn matches_node_text(&self, text: &str) -> bool {
+        text.starts_with(self.display_name())
+    }
 }
 
 /// Metadata for special rows
@@ -70,9 +137,15 @@ pub enum RowMetadata {
     InheritedFrom {
         layer_name: String,
     },
+    ChildElement {
+        element_type: ChildElementType,
+    },
     #[allow(dead_code)]
     ServiceReference {
         service_name: String,
+    },
+    ParameterRow {
+        param_id: u32,
     },
 }
 

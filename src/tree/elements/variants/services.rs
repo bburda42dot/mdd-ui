@@ -226,7 +226,104 @@ pub fn add_diag_comms<'a>(
                     .diag_comm()
                     .and_then(|dc| dc.short_name())
                     .unwrap_or("Unnamed");
-                let sections = build_simple_job_details_with_name(job_name);
+                
+                // Build job details inline
+                let mut sections = Vec::new();
+
+                // Add header section with job name
+                sections.push(DetailSectionData {
+                    title: format!("Job - {}", job_name),
+                    render_as_header: true,
+                    content: DetailContent::PlainText(vec![]),
+                    section_type: DetailSectionType::Header,
+                });
+
+                // Overview section
+                let header = DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
+                    cells: vec!["Property".to_owned(), "Value".to_owned()],
+                    cell_types: vec![CellType::Text, CellType::Text],
+                    indent: 0,
+                };
+
+                let rows = vec![
+                    DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
+                        cells: vec!["Job Name".to_owned(), job_name.to_owned()],
+                        cell_types: vec![CellType::Text, CellType::Text],
+                        indent: 0,
+                    },
+                    DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
+                        cells: vec!["Status".to_owned(), "Available in database".to_owned()],
+                        cell_types: vec![CellType::Text, CellType::Text],
+                        indent: 0,
+                    },
+                ];
+
+                sections.push(DetailSectionData {
+                    title: "Overview".to_owned(),
+                    render_as_header: false,
+                    section_type: DetailSectionType::Overview,
+                    content: DetailContent::Table {
+                        header,
+                        rows,
+                        constraints: vec![
+                            ColumnConstraint::Percentage(30),
+                            ColumnConstraint::Percentage(70),
+                        ],
+                        use_row_selection: true,
+                    },
+                });
+
+                // Precondition State Refs
+                if let Some(dc) = job.diag_comm() {
+                    let header = DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
+                        cells: vec!["Short Name".to_owned()],
+                        cell_types: vec![CellType::Text],
+                        indent: 0,
+                    };
+
+                    let mut rows = Vec::new();
+                    for pc in dc.pre_condition_state_refs().into_iter().flatten() {
+                        if let Some(val) = pc.value() {
+                            rows.push(DetailRow {
+                                row_type: DetailRowType::Normal,
+                                metadata: None,
+                                cells: vec![val.to_owned()],
+                                cell_types: vec![CellType::Text],
+                                indent: 0,
+                            });
+                        }
+                    }
+
+                    if rows.is_empty() {
+                        rows.push(DetailRow {
+                            row_type: DetailRowType::Normal,
+                            metadata: None,
+                            cells: vec!["(No precondition state refs)".to_owned()],
+                            cell_types: vec![CellType::Text],
+                            indent: 0,
+                        });
+                    }
+
+                    sections.push(DetailSectionData {
+                        title: "Precondition-State-Refs".to_owned(),
+                        render_as_header: false,
+                        section_type: DetailSectionType::Custom,
+                        content: DetailContent::Table {
+                            header,
+                            rows,
+                            constraints: vec![ColumnConstraint::Percentage(100)],
+                            use_row_selection: true,
+                        },
+                    });
+                }
 
                 b.push_details_structured(
                     depth + 1,
@@ -573,48 +670,82 @@ pub fn build_diag_comm_details_with_parent(
         }
     }
 
-    // SDGs
-    let sdg_header = DetailRow {
-        row_type: DetailRowType::Normal,
-        metadata: None,
-        cells: vec![
-            "Short Name".to_owned(),
-            "SD".to_owned(),
-            "SI".to_owned(),
-            "TI".to_owned(),
-        ],
-        cell_types: vec![
-            CellType::Text,
-            CellType::Text,
-            CellType::Text,
-            CellType::Text,
-        ],
-        indent: 0,
-    };
-    sections.push(DetailSectionData {
-        title: "SDGs".to_owned(),
-        render_as_header: false,
-        section_type: DetailSectionType::Custom,
-        content: DetailContent::Table {
-            header: sdg_header,
-            rows: vec![DetailRow {
-                row_type: DetailRowType::Normal,
-                metadata: None,
-                cells: vec!["(SDGs not available at comm level)".to_owned()],
-                cell_types: vec![CellType::Text],
-                indent: 0,
-            }],
-            constraints: vec![
-                ColumnConstraint::Percentage(40),
-                ColumnConstraint::Percentage(20),
-                ColumnConstraint::Percentage(20),
-                ColumnConstraint::Percentage(20),
-            ],
-            use_row_selection: false,
-        },
-    });
+    // SDGs - Get from DiagComm
+    if let Some(dc) = ds.diag_comm() {
+        let mut sdg_rows = Vec::new();
+        if let Some(sdgs) = dc.sdgs() {
+            if let Some(sdg_list) = sdgs.sdgs() {
+                for sdg in sdg_list.iter() {
+                    // Add SDG header row
+                    if let Some(caption) = sdg.caption_sn() {
+                        let si = sdg.si().unwrap_or("-");
+                        sdg_rows.push(DetailRow::normal(
+                            vec![
+                                format!("SDG: {}", caption),
+                                si.to_owned(),
+                                String::new(),
+                                String::new(),
+                            ],
+                            vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+                            0,
+                        ));
+                        
+                        // Add nested SD items
+                        if let Some(sds) = sdg.sds() {
+                            for sd_or_sdg in sds.iter() {
+                                if let Some(sd) = sd_or_sdg.sd_or_sdg_as_sd() {
+                                    let value = sd.value().unwrap_or("-");
+                                    let si = sd.si().unwrap_or("-");
+                                    let ti = sd.ti().unwrap_or("-");
+                                    sdg_rows.push(DetailRow::normal(
+                                        vec![
+                                            format!("  SD: {}", value),
+                                            si.to_owned(),
+                                            ti.to_owned(),
+                                            String::new(),
+                                        ],
+                                        vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+                                        1,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-    // States
+        if sdg_rows.is_empty() {
+            sdg_rows.push(DetailRow::normal(
+                vec!["(No SDGs available)".to_owned()],
+                vec![CellType::Text],
+                0,
+            ));
+        }
+
+        let sdg_header = DetailRow::header(
+            vec!["Caption/Value".to_owned(), "SI".to_owned(), "TI".to_owned(), "".to_owned()],
+            vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        );
+        sections.push(DetailSectionData {
+            title: "SDGs".to_owned(),
+            render_as_header: false,
+            section_type: DetailSectionType::Custom,
+            content: DetailContent::Table {
+                header: sdg_header,
+                rows: sdg_rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(50),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(20),
+                    ColumnConstraint::Percentage(10),
+                ],
+                use_row_selection: true,
+            },
+        });
+    }
+
+    // Precondition State Refs
     if let Some(dc) = ds.diag_comm() {
         let header = DetailRow {
             row_type: DetailRowType::Normal,
@@ -636,6 +767,41 @@ pub fn build_diag_comm_details_with_parent(
                 });
             }
         }
+
+        if rows.is_empty() {
+            rows.push(DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
+                cells: vec!["(No precondition state refs)".to_owned()],
+                cell_types: vec![CellType::Text],
+                indent: 0,
+            });
+        }
+
+        sections.push(DetailSectionData {
+            title: "Precondition-State-Refs".to_owned(),
+            render_as_header: false,
+            section_type: DetailSectionType::Custom,
+            content: DetailContent::Table {
+                header: header.clone(),
+                rows,
+                constraints: vec![ColumnConstraint::Percentage(100)],
+                use_row_selection: true,
+            },
+        });
+    }
+
+    // State Transition Refs
+    if let Some(dc) = ds.diag_comm() {
+        let header = DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
+            cells: vec!["Short Name".to_owned()],
+            cell_types: vec![CellType::Text],
+            indent: 0,
+        };
+
+        let mut rows = Vec::new();
         for st in dc.state_transition_refs().into_iter().flatten() {
             if let Some(val) = st.value() {
                 rows.push(DetailRow {
@@ -647,15 +813,26 @@ pub fn build_diag_comm_details_with_parent(
                 });
             }
         }
+
+        if rows.is_empty() {
+            rows.push(DetailRow {
+                row_type: DetailRowType::Normal,
+                metadata: None,
+                cells: vec!["(No state transition refs)".to_owned()],
+                cell_types: vec![CellType::Text],
+                indent: 0,
+            });
+        }
+
         sections.push(DetailSectionData {
-            title: "States".to_owned(),
+            title: "State-Transition-Refs".to_owned(),
             render_as_header: false,
             section_type: DetailSectionType::States,
             content: DetailContent::Table {
                 header,
                 rows,
                 constraints: vec![ColumnConstraint::Percentage(100)],
-                use_row_selection: false,
+                use_row_selection: true,
             },
         });
     }
@@ -700,10 +877,12 @@ fn build_diag_comms_table_section(
         cells: vec![
             "ID".to_owned(),
             "Short Name".to_owned(),
+            "Funct Class".to_owned(),
             "Type".to_owned(),
             "Inherited".to_owned(),
         ],
         cell_types: vec![
+            CellType::Text,
             CellType::Text,
             CellType::Text,
             CellType::Text,
@@ -735,11 +914,19 @@ fn build_diag_comms_table_section(
                 "-".to_owned()
             };
 
+            // Extract functional class short name if available
+            let funct_class = dc.funct_class()
+                .map(|fc_list| fc_list.get(0))
+                .and_then(|fc| fc.short_name())
+                .unwrap_or("-")
+                .to_owned();
+
             rows.push(DetailRow {
                 row_type: DetailRowType::Normal,
                 metadata: None,
-                cells: vec![id, name, "Service".to_owned(), "false".to_owned()],
+                cells: vec![id, name, funct_class, "Service".to_owned(), "false".to_owned()],
                 cell_types: vec![
+                    CellType::Text,
                     CellType::Text,
                     CellType::Text,
                     CellType::Text,
@@ -771,11 +958,19 @@ fn build_diag_comms_table_section(
                 "-".to_owned()
             };
 
+            // Extract functional class short name if available
+            let funct_class = dc.funct_class()
+                .map(|fc_list| fc_list.get(0))
+                .and_then(|fc| fc.short_name())
+                .unwrap_or("-")
+                .to_owned();
+
             rows.push(DetailRow {
                 row_type: DetailRowType::Normal,
                 metadata: None,
-                cells: vec![id, name, "Service".to_owned(), "true".to_owned()],
+                cells: vec![id, name, funct_class, "Service".to_owned(), "true".to_owned()],
                 cell_types: vec![
+                    CellType::Text,
                     CellType::Text,
                     CellType::Text,
                     CellType::Text,
@@ -794,10 +989,12 @@ fn build_diag_comms_table_section(
             cells: vec![
                 "-".to_owned(),
                 job_name.clone(),
+                "-".to_owned(),
                 "Job".to_owned(),
                 "false".to_owned(),
             ],
             cell_types: vec![
+                CellType::Text,
                 CellType::Text,
                 CellType::Text,
                 CellType::Text,
@@ -819,68 +1016,178 @@ fn build_diag_comms_table_section(
             header,
             rows,
             constraints: vec![
-                ColumnConstraint::Percentage(15),
-                ColumnConstraint::Percentage(45),
-                ColumnConstraint::Percentage(15),
-                ColumnConstraint::Percentage(25),
+                ColumnConstraint::Percentage(12),
+                ColumnConstraint::Percentage(35),
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(13),
+                ColumnConstraint::Percentage(20),
             ],
             use_row_selection: true,
         },
     }
 }
 
-/// Build detailed sections for a single ECU job (simplified placeholder)
-pub fn build_simple_job_details_with_name(job_name: &str) -> Vec<DetailSectionData> {
-    let mut sections = Vec::new();
+/// Add child elements for a service (functional classes, precondition state refs, request)
+fn add_service_child_elements(b: &mut TreeBuilder, ds: &DiagService<'_>, depth: usize) {
+    if let Some(dc) = ds.diag_comm() {
+        // Add Functional Classes
+        if let Some(funct_classes) = dc.funct_class() {
+            let funct_class_list: Vec<String> = funct_classes
+                .iter()
+                .filter_map(|fc| fc.short_name().map(|s| s.to_owned()))
+                .collect();
 
-    // Add header section with job name
-    sections.push(DetailSectionData {
-        title: format!("Job - {}", job_name),
-        render_as_header: true,
-        content: DetailContent::PlainText(vec![]),
-        section_type: DetailSectionType::Header,
-    });
+            if !funct_class_list.is_empty() {
+                let header = DetailRow::header(
+                    vec!["Functional Class".to_owned()],
+                    vec![CellType::Text],
+                );
 
-    // Overview section
-    let header = DetailRow {
-        row_type: DetailRowType::Normal,
-        metadata: None,
-        cells: vec!["Property".to_owned(), "Value".to_owned()],
-        cell_types: vec![CellType::Text, CellType::Text],
-        indent: 0,
-    };
+                let rows: Vec<DetailRow> = funct_class_list
+                    .iter()
+                    .map(|fc_name| {
+                        DetailRow::normal(vec![fc_name.clone()], vec![CellType::Text], 0)
+                    })
+                    .collect();
 
-    let rows = vec![
-        DetailRow {
-            row_type: DetailRowType::Normal,
-            metadata: None,
-            cells: vec!["Job Name".to_owned(), job_name.to_owned()],
-            cell_types: vec![CellType::Text, CellType::Text],
-            indent: 0,
-        },
-        DetailRow {
-            row_type: DetailRowType::Normal,
-            metadata: None,
-            cells: vec!["Status".to_owned(), "Available in database".to_owned()],
-            cell_types: vec![CellType::Text, CellType::Text],
-            indent: 0,
-        },
-    ];
+                let section = DetailSectionData::new(
+                    format!("Functional Classes ({})", funct_class_list.len()),
+                    DetailContent::Table {
+                        header,
+                        rows,
+                        constraints: vec![ColumnConstraint::Percentage(100)],
+                        use_row_selection: true,
+                    },
+                    false,
+                )
+                .with_type(DetailSectionType::Custom);
 
-    sections.push(DetailSectionData {
-        title: "Job Information".to_owned(),
-        render_as_header: false,
-        section_type: DetailSectionType::Custom,
-        content: DetailContent::Table {
-            header,
-            rows,
-            constraints: vec![
-                ColumnConstraint::Percentage(30),
-                ColumnConstraint::Percentage(70),
-            ],
-            use_row_selection: false,
-        },
-    });
+                b.push_details_structured(
+                    depth,
+                    format!("Functional Classes ({})", funct_class_list.len()),
+                    false,
+                    false,
+                    vec![section],
+                    NodeType::Default,
+                );
+            }
+        }
 
-    sections
+        // Add Precondition State Refs
+        if let Some(pre_cond_refs) = dc.pre_condition_state_refs() {
+            let pre_cond_list: Vec<String> = pre_cond_refs
+                .iter()
+                .filter_map(|pr| pr.value().map(|s| s.to_owned()))
+                .collect();
+
+            if !pre_cond_list.is_empty() {
+                let header = DetailRow::header(
+                    vec!["Precondition State".to_owned()],
+                    vec![CellType::Text],
+                );
+
+                let rows: Vec<DetailRow> = pre_cond_list
+                    .iter()
+                    .map(|pc_name| {
+                        DetailRow::normal(vec![pc_name.clone()], vec![CellType::Text], 0)
+                    })
+                    .collect();
+
+                let section = DetailSectionData::new(
+                    format!("Precondition State Refs ({})", pre_cond_list.len()),
+                    DetailContent::Table {
+                        header,
+                        rows,
+                        constraints: vec![ColumnConstraint::Percentage(100)],
+                        use_row_selection: true,
+                    },
+                    false,
+                )
+                .with_type(DetailSectionType::Custom);
+
+                b.push_details_structured(
+                    depth,
+                    format!("Precondition State Refs ({})", pre_cond_list.len()),
+                    false,
+                    false,
+                    vec![section],
+                    NodeType::Default,
+                );
+            }
+        }
+    }
+
+    // Add Request
+    if let Some(request) = ds.request() {
+        if let Some(params) = request.params() {
+            let param_count = params.len();
+
+            let header = DetailRow::header(
+                vec!["Parameter".to_owned(), "Type".to_owned()],
+                vec![CellType::Text, CellType::Text],
+            );
+
+            let rows: Vec<DetailRow> = params
+                .iter()
+                .map(|p| {
+                    let param_name = p.short_name().unwrap_or("?");
+                    // Get param type as integer value since flatbuf ParamType is different from datatypes ParamType
+                    let param_type_value = p.param_type().0;
+                    let param_type_str = match param_type_value {
+                        0 => "Coded Const",
+                        1 => "Phys Const",
+                        2 => "Value",
+                        _ => "Other",
+                    };
+                    DetailRow::normal(
+                        vec![param_name.to_owned(), param_type_str.to_owned()],
+                        vec![CellType::Text, CellType::Text],
+                        0,
+                    )
+                })
+                .collect();
+
+            let section = DetailSectionData::new(
+                format!("Request Parameters ({})", param_count),
+                DetailContent::Table {
+                    header,
+                    rows,
+                    constraints: vec![
+                        ColumnConstraint::Percentage(60),
+                        ColumnConstraint::Percentage(40),
+                    ],
+                    use_row_selection: true,
+                },
+                false,
+            )
+            .with_type(DetailSectionType::Custom);
+
+            b.push_details_structured(
+                depth,
+                format!("Request ({})", param_count),
+                false,
+                false,
+                vec![section],
+                NodeType::Default,
+            );
+        } else {
+            // Request with no parameters
+            let section = DetailSectionData::new(
+                "Request".to_owned(),
+                DetailContent::PlainText(vec!["(No parameters)".to_owned()]),
+                false,
+            )
+            .with_type(DetailSectionType::Custom);
+
+            b.push_details_structured(
+                depth,
+                "Request".to_owned(),
+                false,
+                false,
+                vec![section],
+                NodeType::Default,
+            );
+        }
+    }
 }
+

@@ -19,7 +19,7 @@ pub fn add_requests_section<'a>(
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
     // Collect own services that have requests
-    let mut own_services: Vec<DiagService<'_>> = layer
+    let own_services: Vec<DiagService<'_>> = layer
         .diag_services()
         .map(|services| {
             services
@@ -30,16 +30,8 @@ pub fn add_requests_section<'a>(
         })
         .unwrap_or_default();
 
-    // Sort own services alphabetically by name
-    own_services.sort_by_cached_key(|ds| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
-
     // Collect services from parent refs with source layer names (that have requests)
-    let mut parent_services: Vec<(DiagService<'_>, String)> =
+    let parent_services: Vec<(DiagService<'_>, String)> =
         if let Some(parent_refs) = variant_parent_refs {
             get_parent_ref_services_recursive(parent_refs)
                 .into_iter()
@@ -48,14 +40,6 @@ pub fn add_requests_section<'a>(
         } else {
             Vec::new()
         };
-
-    // Sort parent services alphabetically by name
-    parent_services.sort_by_cached_key(|(ds, _)| {
-        ds.diag_comm()
-            .and_then(|dc| dc.short_name())
-            .unwrap_or("")
-            .to_lowercase()
-    });
 
     let total_count = own_services.len() + parent_services.len();
 
@@ -97,14 +81,39 @@ pub fn add_requests_section<'a>(
                 // Build full service details, but with Request tab rendered by this module
                 let sections = build_request_view_sections(ds, None);
 
+                // Check if there are params to show as children
+                let has_params = ds.request()
+                    .and_then(|req| req.params())
+                    .map(|p| !p.is_empty())
+                    .unwrap_or(false);
+
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::Request, // Use Request node type for navigation
                 );
+                
+                // Add params as child nodes
+                if let Some(req) = ds.request() {
+                    if let Some(params) = req.params() {
+                        for param in params.iter().map(Parameter) {
+                            let param_name = param.short_name().unwrap_or("?").to_owned();
+                            let param_detail = build_param_detail_sections(&param);
+                            let param_id = param.id();
+                            
+                            b.push_param(
+                                depth + 2,
+                                param_name,
+                                param_detail,
+                                NodeType::Default,
+                                param_id,
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -132,14 +141,39 @@ pub fn add_requests_section<'a>(
                 // Build full service details, but with Request tab rendered by this module
                 let sections = build_request_view_sections(ds, Some(source_layer_name.clone()));
 
+                // Check if there are params to show as children
+                let has_params = ds.request()
+                    .and_then(|req| req.params())
+                    .map(|p| !p.is_empty())
+                    .unwrap_or(false);
+
                 b.push_details_structured(
                     depth + 1,
-                    display_name,
+                    display_name.clone(),
                     false,
-                    false,
+                    has_params,
                     sections,
                     NodeType::Request, // Use Request node type for navigation (inherited)
                 );
+                
+                // Add params as child nodes
+                if let Some(req) = ds.request() {
+                    if let Some(params) = req.params() {
+                        for param in params.iter().map(Parameter) {
+                            let param_name = param.short_name().unwrap_or("?").to_owned();
+                            let param_detail = build_param_detail_sections(&param);
+                            let param_id = param.id();
+                            
+                            b.push_param(
+                                depth + 2,
+                                param_name,
+                                param_detail,
+                                NodeType::Default,
+                                param_id,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -309,6 +343,7 @@ where
         let dop_name = extract_dop_name(&param);
         let semantic = param.semantic().unwrap_or_default().to_owned();
         let has_dop = !dop_name.is_empty();
+        let param_id = param.id();
 
         rows.push(DetailRow {
             cells: vec![
@@ -336,7 +371,8 @@ where
                 CellType::Text,
             ],
             indent: 0,
-            ..Default::default()
+            row_type: crate::tree::DetailRowType::Normal,
+            metadata: Some(crate::tree::RowMetadata::ParameterRow { param_id }),
         });
     }
 
@@ -362,6 +398,117 @@ where
     }
 }
 
+/// Build detail sections for a single parameter
+fn build_param_detail_sections(param: &Parameter<'_>) -> Vec<DetailSectionData> {
+    let mut sections = Vec::new();
+
+    // Header section
+    let param_name = param.short_name().unwrap_or("?");
+    sections.push(DetailSectionData {
+        title: format!("Parameter - {}", param_name),
+        render_as_header: true,
+        section_type: DetailSectionType::Header,
+        content: DetailContent::PlainText(vec![]),
+    });
+
+    // Overview section
+    let mut overview_rows = Vec::new();
+
+    if let Some(short_name) = param.short_name() {
+        overview_rows.push(DetailRow::normal(
+            vec!["Short Name".to_owned(), short_name.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    if let Ok(param_type) = param.param_type() {
+        use cda_database::datatypes::ParamType;
+        let param_type_str = match param_type {
+            ParamType::CodedConst => "CodedConst",
+            ParamType::PhysConst => "PhysConst",
+            ParamType::Value => "Value",
+            _ => "Other",
+        };
+        overview_rows.push(DetailRow::normal(
+            vec!["Type".to_owned(), param_type_str.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    if let Some(semantic) = param.semantic() {
+        overview_rows.push(DetailRow::normal(
+            vec!["Semantic".to_owned(), semantic.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    let byte_pos = param.byte_position();
+    if byte_pos != 0 {
+        overview_rows.push(DetailRow::normal(
+            vec!["Byte Position".to_owned(), byte_pos.to_string()],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    let bit_pos = param.bit_position();
+    if bit_pos != 255 {  // 255 is the default/unset value
+        overview_rows.push(DetailRow::normal(
+            vec!["Bit Position".to_owned(), bit_pos.to_string()],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    // Add coded value if it's a CodedConst
+    let coded_value = extract_coded_value(param);
+    if !coded_value.is_empty() {
+        overview_rows.push(DetailRow::normal(
+            vec!["Coded Value".to_owned(), coded_value],
+            vec![CellType::Text, CellType::NumericValue],
+            0,
+        ));
+    }
+
+    // Add DOP name if available
+    let dop_name = extract_dop_name(param);
+    if !dop_name.is_empty() {
+        overview_rows.push(DetailRow::normal(
+            vec!["DOP".to_owned(), dop_name],
+            vec![CellType::Text, CellType::DopReference],
+            0,
+        ));
+    }
+
+    if !overview_rows.is_empty() {
+        let header = DetailRow::header(
+            vec!["Property".to_owned(), "Value".to_owned()],
+            vec![CellType::Text, CellType::Text],
+        );
+
+        sections.push(
+            DetailSectionData::new(
+                "Overview".to_owned(),
+                DetailContent::Table {
+                    header,
+                    rows: overview_rows,
+                    constraints: vec![
+                        ColumnConstraint::Percentage(40),
+                        ColumnConstraint::Percentage(60),
+                    ],
+                    use_row_selection: true,
+                },
+                false,
+            )
+            .with_type(DetailSectionType::Overview),
+        );
+    }
+
+    sections
+}
 /// Build a table section for the Requests header showing all services
 fn build_requests_table_section(
     own_services: &[DiagService<'_>],

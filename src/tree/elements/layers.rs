@@ -2,6 +2,7 @@ use cda_database::datatypes::{DiagLayer, ParentRef, Variant};
 
 use super::variants::{
     com_params::add_com_params,
+    dops::add_dops_section,
     functional_classes::add_functional_classes,
     parent_refs::add_parent_refs_with_details,
     placeholders::{
@@ -56,6 +57,14 @@ impl LayerExt for TreeBuilder {
             layer,
             depth,
             layer_name,
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
+        );
+
+        // DOPs (Data Object Properties)
+        add_dops_section(
+            self,
+            layer,
+            depth,
             parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
 

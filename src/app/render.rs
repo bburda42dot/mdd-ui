@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use super::{App, SortDirection};
-use crate::tree::{DetailRow, DetailSectionData, NodeType, TreeNode};
+use crate::tree::{CellType, DetailContent, DetailRow, DetailSectionData, NodeType, TreeNode};
 
 // -----------------------------------------------------------------------
 // Colour theme
@@ -29,6 +29,8 @@ fn node_style(node: &TreeNode) -> Style {
         NodeType::NegResponse => Style::default().fg(Color::White),
         NodeType::FunctionalClass => Style::default().fg(Color::White),
         NodeType::Job => Style::default().fg(Color::White),
+        NodeType::DOP => style(Color::Yellow, true),
+        NodeType::SDG => style(Color::Yellow, true),
         NodeType::Default => Style::default().fg(Color::White),
     }
 }
@@ -130,7 +132,7 @@ impl App {
             .collect();
 
         frame.render_widget(Paragraph::new(lines), tree_inner);
-        render_scrollbar(
+        self.tree_scrollbar_area = render_scrollbar(
             frame,
             area,
             self.visible.len(),
@@ -386,7 +388,7 @@ impl App {
             "DETAIL PANE (when focused)",
             "  ↑/↓             Navigate rows in table",
             "  ←/→             Switch between tabs",
-            "  Enter           Show DOP popup (if row has DOP reference)",
+            "  Enter           Navigate to DOP/DTC/element (or show details popup)",
             "  [ / ]           Decrease/increase column width",
             "  , / .           Select previous/next column",
             "",
@@ -460,7 +462,7 @@ impl App {
         frame: &mut Frame,
         area: Rect,
         sections: &[DetailSectionData],
-        _node_name: &str,
+        node_name: &str,
     ) {
         use ratatui::layout::{Constraint, Direction, Layout};
 
@@ -468,32 +470,87 @@ impl App {
             return;
         }
 
-        // Check if first section is a header section (PlainText with render_as_header)
-        let (header_section, tab_sections) = if sections.len() > 1
+        // Separate header and tab sections
+        let (header_section, tab_sections) = Self::split_header_and_tabs(sections);
+
+        // Setup outer block and detail title
+        let detail_title = format!(" {} ", node_name);
+        let outer_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border(self.detail_focused))
+            .title(detail_title);
+        let outer_inner = outer_block.inner(area);
+        frame.render_widget(outer_block, area);
+
+        // Clamp selected tab to valid range
+        self.selected_tab = self.selected_tab.min(tab_sections.len().saturating_sub(1));
+
+        // Initialize state vectors
+        self.ensure_section_state_initialized(sections);
+
+        // Build layout constraints
+        let header_height = header_section.and_then(|h| self.calculate_header_height(h, outer_inner));
+        let chunks = self.build_detail_layout(outer_inner, header_height);
+
+        // Render header section if present
+        if let (Some(hdr), Some(area)) = (header_section, header_height.map(|_| chunks[0])) {
+            self.render_header_section(frame, area, hdr);
+        }
+
+        // Render content area
+        let content_area = if header_height.is_some() {
+            chunks[1]
+        } else {
+            chunks[0]
+        };
+
+        self.render_content_area(frame, content_area, tab_sections, sections, node_name);
+    }
+
+    /// Split sections into header and tabs
+    fn split_header_and_tabs(
+        sections: &[DetailSectionData],
+    ) -> (Option<&DetailSectionData>, &[DetailSectionData]) {
+        if sections.len() > 1
             && sections[0].render_as_header
             && matches!(&sections[0].content, DetailContent::PlainText(_))
         {
             (Some(&sections[0]), &sections[1..])
         } else {
             (None, sections)
-        };
-
-        // Determine title based on whether there's a header section or a single section
-        // If there's a header section, use its title
-        // If there's only one section (common for tables), use that section's title
-        // Otherwise fall back to "Details"
-        let detail_title = if header_section.is_some() || sections.len() == 1 {
-            format!(" {} ", sections[0].title)
-        } else {
-            " Details ".to_string()
-        };
-
-        // Clamp selected_tab to valid range (relative to tab_sections)
-        if self.selected_tab >= tab_sections.len() {
-            self.selected_tab = tab_sections.len().saturating_sub(1);
         }
+    }
 
-        // Ensure section_scrolls and section_cursors have enough entries
+    /// Calculate header height for a section
+    fn calculate_header_height(&self, header: &DetailSectionData, outer_inner: Rect) -> Option<u16> {
+        match &header.content {
+            DetailContent::PlainText(lines) => {
+                let height = (lines.len() as u16).max(1).min(outer_inner.height / 4);
+                Some(height)
+            }
+            _ => None,
+        }
+    }
+
+    /// Build layout for detail pane (header + content)
+    fn build_detail_layout(&self, outer_inner: Rect, header_height: Option<u16>) -> Vec<Rect> {
+        use ratatui::layout::{Constraint, Direction, Layout};
+
+        let mut constraints = vec![];
+        if let Some(h) = header_height {
+            constraints.push(Constraint::Length(h));
+        }
+        constraints.push(Constraint::Min(0));
+
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(outer_inner)
+            .to_vec()
+    }
+
+    /// Ensure section state vectors are properly sized
+    fn ensure_section_state_initialized(&mut self, sections: &[DetailSectionData]) {
         while self.section_scrolls.len() < sections.len() {
             self.section_scrolls.push(0);
         }
@@ -501,90 +558,48 @@ impl App {
             self.section_cursors.push(0);
         }
         
-        // Initialize table_sort_state and column_widths for new table sections
+        // Initialize table_sort_state and column_widths
         while self.table_sort_state.len() < sections.len() {
-            // Check if this section is a table
             let section_idx = self.table_sort_state.len();
-            if let Some(section) = sections.get(section_idx) {
-                match &section.content {
-                    DetailContent::Table { .. } => {
-                        // Initialize with sort by first column, ascending
-                        self.table_sort_state.push(Some(super::TableSortState {
-                            column: 0,
-                            direction: super::SortDirection::Ascending,
-                        }));
-                    }
-                    _ => {
-                        // Not a table, no sort state
-                        self.table_sort_state.push(None);
-                    }
-                }
-            } else {
-                self.table_sort_state.push(None);
-            }
+            self.table_sort_state.push(self.initialize_table_sort(sections.get(section_idx)));
         }
         
-        // Initialize column_widths for new table sections
         while self.column_widths.len() < sections.len() {
             self.column_widths.push(Vec::new());
         }
+    }
 
-        // Create a single outer block that encloses everything
-        let outer_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(border(self.detail_focused))
-            .title(detail_title.clone());
-        let outer_inner = outer_block.inner(area);
-        frame.render_widget(outer_block, area);
+    /// Initialize table sort state for a section
+    fn initialize_table_sort(&self, section: Option<&DetailSectionData>) -> Option<super::TableSortState> {
+        section
+            .filter(|s| matches!(&s.content, DetailContent::Table { .. }))
+            .map(|_| super::TableSortState {
+                column: 0,
+                direction: super::SortDirection::Ascending,
+            })
+    }
 
-        // Calculate layout inside the outer block: header (if exists) + tabs + content
-        let mut constraints = vec![];
-        let header_height = if let Some(hdr) = header_section {
-            if let DetailContent::PlainText(lines) = &hdr.content {
-                // Height: 1 line per text line (no extra borders since it's inside outer block)
-                let height = (lines.len() as u16).max(1).min(outer_inner.height / 4);
-                constraints.push(Constraint::Length(height));
-                Some(height)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let show_tabs = tab_sections.len() > 1;
-
-        // Add remaining content area
-        constraints.push(Constraint::Min(0)); // Content area
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(outer_inner);
-
-        let mut chunk_idx = 0;
-
-        // Render header section if it exists (without borders, just text)
-        let header_area = if header_height.is_some() {
-            let area = chunks[chunk_idx];
-            chunk_idx += 1;
-            Some(area)
-        } else {
-            None
-        };
-
-        if let (Some(area), Some(hdr)) = (header_area, header_section)
-            && let DetailContent::PlainText(lines) = &hdr.content
-        {
+    /// Render header section
+    fn render_header_section(&self, frame: &mut Frame, area: Rect, header: &DetailSectionData) {
+        if let DetailContent::PlainText(lines) = &header.content {
             let text = lines.join("\n");
             let para = Paragraph::new(text).style(Style::default().fg(Color::White));
             frame.render_widget(para, area);
         }
+    }
 
-        let content_area = chunks[chunk_idx];
-
-        // Render the selected tab's content (accounting for header offset)
-        let section_offset = if header_section.is_some() { 1 } else { 0 };
+    /// Render the main content area (tabs + content)
+    fn render_content_area(
+        &mut self,
+        frame: &mut Frame,
+        content_area: Rect,
+        tab_sections: &[DetailSectionData],
+        all_sections: &[DetailSectionData],
+        _node_name: &str,
+    ) {
+        let show_tabs = tab_sections.len() > 1;
+        let section_offset = if all_sections.len() > tab_sections.len() { 1 } else { 0 };
+        
         let section = &tab_sections[self.selected_tab];
         let help_text = if self.detail_focused {
             " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:Select  s:sort"
@@ -592,7 +607,7 @@ impl App {
             ""
         };
 
-        // Content block with borders for the tab content
+        // Content block with borders
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(border(self.detail_focused))
@@ -601,48 +616,68 @@ impl App {
         let block_inner = block.inner(content_area);
         frame.render_widget(block, content_area);
 
-        // If tabs are shown, render them inside the content block and split the area
+        // Render tabs if needed, then content
         let inner = if show_tabs {
-            let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-            let tab_lines_needed =
-                self.calculate_tab_lines(&tab_titles, block_inner.width as usize);
-            let tab_height = (tab_lines_needed as u16).max(1);
-
-            // Split the block_inner area into tab area and content area
-            let tab_constraints = vec![Constraint::Length(tab_height), Constraint::Min(0)];
-            let tab_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(tab_constraints)
-                .split(block_inner);
-
-            let tab_area = tab_chunks[0];
-            let content_inner = tab_chunks[1];
-
-            // Cache tab area for mouse handling
-            self.tab_area = Some(tab_area);
-            self.tab_titles = tab_titles.clone();
-
-            // Render tabs
-            self.render_wrapped_tabs(
-                frame,
-                tab_area,
-                &tab_titles,
-                self.selected_tab,
-                self.detail_focused,
-            );
-
-            content_inner
+            self.render_tabs_and_get_content_area(frame, block_inner, tab_sections)
         } else {
             self.tab_area = None;
             self.tab_titles.clear();
             block_inner
         };
 
-        // Cache the inner area for table content clicking
+        // Cache table content area
         self.table_content_area = Some(inner);
 
-        // Handle different content types
-        use crate::tree::DetailContent;
+        // Render section content
+        self.render_section_content(frame, inner, content_area, section, self.selected_tab + section_offset);
+    }
+
+    /// Render tabs and return content area
+    fn render_tabs_and_get_content_area(
+        &mut self,
+        frame: &mut Frame,
+        block_inner: Rect,
+        tab_sections: &[DetailSectionData],
+    ) -> Rect {
+        use ratatui::layout::{Constraint, Direction, Layout};
+
+        let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
+        let tab_lines_needed = self.calculate_tab_lines(&tab_titles, block_inner.width as usize);
+        let tab_height = (tab_lines_needed as u16).max(1);
+
+        let tab_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(tab_height), Constraint::Min(0)])
+            .split(block_inner);
+
+        let tab_area = tab_chunks[0];
+        let content_inner = tab_chunks[1];
+
+        // Cache tab data
+        self.tab_area = Some(tab_area);
+        self.tab_titles = tab_titles.clone();
+
+        // Render tabs
+        self.render_wrapped_tabs(
+            frame,
+            tab_area,
+            &tab_titles,
+            self.selected_tab,
+            self.detail_focused,
+        );
+
+        content_inner
+    }
+
+    /// Render section content based on type
+    fn render_section_content(
+        &mut self,
+        frame: &mut Frame,
+        inner: Rect,
+        area: Rect,
+        section: &DetailSectionData,
+        section_idx: usize,
+    ) {
         match &section.content {
             DetailContent::PlainText(lines) => {
                 let text = lines.join("\n");
@@ -658,11 +693,11 @@ impl App {
                 self.render_table_content(
                     frame,
                     inner,
-                    content_area,
+                    area,
                     header,
                     rows,
                     constraints,
-                    self.selected_tab + section_offset,
+                    section_idx,
                     *use_row_selection,
                 );
             }
@@ -814,7 +849,7 @@ impl App {
         &mut self,
         frame: &mut Frame,
         inner: Rect,
-        area: Rect,
+        _area: Rect,
         header: &DetailRow,
         rows: &[DetailRow],
         constraints: &[crate::tree::ColumnConstraint],
@@ -918,6 +953,13 @@ impl App {
                             cell_text.clone()
                         };
 
+                        // Get the cell type for this column
+                        let cell_type = row_data
+                            .cell_types
+                            .get(col_idx)
+                            .cloned()
+                            .unwrap_or(CellType::Text);
+
                         // Apply highlighting based on selection mode
                         let style = if is_selected_row {
                             if use_row_selection {
@@ -933,10 +975,23 @@ impl App {
                                     .bg(Color::DarkGray)
                                     .add_modifier(Modifier::BOLD)
                             } else {
-                                Style::default().fg(Color::White)
+                                // Check if this is a jump target cell type (not selected)
+                                match cell_type {
+                                    CellType::DopReference
+                                    | CellType::ParameterName => {
+                                        Style::default().fg(Color::Blue)
+                                    }
+                                    _ => Style::default().fg(Color::White),
+                                }
                             }
                         } else {
-                            Style::default().fg(Color::White)
+                            // Not selected row - check cell type for jump targets
+                            match cell_type {
+                                CellType::DopReference | CellType::ParameterName => {
+                                    Style::default().fg(Color::Blue)
+                                }
+                                _ => Style::default().fg(Color::White),
+                            }
                         };
 
                         Cell::from(text).style(style)
@@ -1032,13 +1087,15 @@ impl App {
             // The scrollbar needs to know about total scrollable range
             // Max scroll position is (row_count - viewport_height)
             let max_scroll = row_count.saturating_sub(viewport_height);
-            render_scrollbar(
+            self.detail_scrollbar_area = render_scrollbar(
                 frame,
                 scrollbar_area,
                 max_scroll + 1,  // Total positions (0 to max_scroll inclusive)
                 self.section_scrolls[section_idx],
                 1,  // Viewport is always "1" position at a time
             );
+        } else {
+            self.detail_scrollbar_area = None;
         }
     }
 
@@ -1242,9 +1299,9 @@ fn render_scrollbar(
     total: usize,
     position: usize,
     viewport_height: usize,
-) {
+) -> Option<Rect> {
     if total <= viewport_height {
-        return;
+        return None;
     }
     let mut state = ScrollbarState::new(total)
         .position(position)
@@ -1254,4 +1311,11 @@ fn render_scrollbar(
         area,
         &mut state,
     );
+    // The scrollbar is rendered in the rightmost column of the area
+    Some(Rect {
+        x: area.x + area.width.saturating_sub(1),
+        y: area.y,
+        width: 1,
+        height: area.height,
+    })
 }

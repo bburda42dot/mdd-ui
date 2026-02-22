@@ -1,10 +1,12 @@
 // Submodules that represent the tree hierarchy under variants
 pub mod com_params;
+pub mod dops;
 pub mod functional_classes;
 pub mod parent_refs;
 pub mod placeholders;
 pub mod requests;
 pub mod responses;
+pub mod sdgs;
 pub mod services;
 pub mod state_charts;
 
@@ -14,8 +16,8 @@ use super::layers::LayerExt;
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType, lines_to_single_section,
+        CellType, ChildElementType, ColumnConstraint, DetailContent, DetailRow, DetailRowType,
+        DetailSectionData, DetailSectionType, NodeType, RowMetadata, SectionType,
     },
 };
 
@@ -32,13 +34,12 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
         // Build variants overview table for the section header
         let variants_detail = build_variants_overview_table(&all_variants_vec);
         
-        b.push_details_structured(
-            0,
+        b.push_section_header(
             "Variants".to_string(),
             false,
             true,
             variants_detail,
-            NodeType::SectionHeader,
+            SectionType::Variants,
         );
 
         // Add each variant
@@ -58,14 +59,10 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             // Build detail sections
             let mut detail_sections = vec![];
 
-            // Add summary section
-            let summary_lines = get_variant_summary(&vw, &name);
-            detail_sections.push(lines_to_single_section("Summary", summary_lines));
+            // Add summary sections (overview and children)
+            detail_sections.extend(build_variant_summary_section(&vw, &name));
 
-            // Add parent refs table if available
-            if let Some(parent_refs_section) = build_parent_refs_section(&vw) {
-                detail_sections.push(parent_refs_section);
-            }
+            // Note: Parent refs are not shown in variant detail view per user request
 
             b.push_details_structured(
                 1,
@@ -97,12 +94,12 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     if let Some(groups) = ecu.functional_groups()
         && !groups.is_empty()
     {
-        b.push(
-            0,
+        b.push_section_header(
             "Functional Groups".to_string(),
             false,
             true,
-            NodeType::SectionHeader,
+            Vec::new(),
+            SectionType::FunctionalGroups,
         );
 
         for fg in groups.iter() {
@@ -112,14 +109,16 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
 
                 b.push(1, name.to_string(), false, true, NodeType::Container);
 
-                // Functional groups don't have parent refs like variants
-                // add_diag_layer_structured will handle adding functional classes
+                // Pass parent refs from functional group for inherited elements
+                let parent_refs_iter = fg
+                    .parent_refs()
+                    .map(|pr| pr.iter().map(cda_database::datatypes::ParentRef));
                 b.add_diag_layer_structured(
                     &layer,
                     2,
                     name,
                     false,
-                    None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+                    parent_refs_iter,
                     None::<std::iter::Empty<cda_database::datatypes::Variant>>,
                 );
             }
@@ -182,12 +181,12 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
         .collect();
 
     if !unique_esd.is_empty() {
-        b.push(
-            0,
+        b.push_section_header(
             "ECU Shared Data".to_string(),
             false,
             true,
-            NodeType::SectionHeader,
+            Vec::new(),
+            SectionType::EcuSharedData,
         );
 
         for esd in unique_esd.iter() {
@@ -267,22 +266,23 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
         .collect();
 
     if !unique_protocols.is_empty() {
-        b.push(
-            0,
+        b.push_section_header(
             "Protocols".to_string(),
             false,
             true,
-            NodeType::SectionHeader,
+            Vec::new(),
+            SectionType::Protocols,
         );
 
-        for protocol in unique_protocols.iter() {
-            if let Some(dl) = protocol.diag_layer() {
+        for protocol_wrap in unique_protocols.iter() {
+            if let Some(dl) = protocol_wrap.diag_layer() {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
 
                 b.push(1, name.to_string(), false, true, NodeType::Container);
 
-                // Protocols don't have parent refs like variants
+                // For protocols, pass None for parent_refs since DOPs come from the protocol's own ComParamSpec
+                // The add_dops_section function already handles collecting DOPs from protocols
                 b.add_diag_layer_structured(
                     &layer,
                     2,
@@ -296,22 +296,252 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     }
 }
 
-/// Get variant summary lines
-fn get_variant_summary(variant: &VariantWrap<'_>, name: &str) -> Vec<String> {
-    let mut d = vec![
-        format!("Variant: {name}"),
-        format!("Base Variant: {}", variant.is_base_variant()),
+/// Build variant summary section with info and children table
+fn build_variant_summary_section(vw: &VariantWrap<'_>, name: &str) -> Vec<DetailSectionData> {
+    let mut sections = vec![];
+    
+    // Create info table section
+    let header = DetailRow::header(
+        vec!["Property".to_owned(), "Value".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+    
+    let mut info_rows = vec![
+        DetailRow::normal(
+            vec!["Variant".to_owned(), name.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ),
+        DetailRow::normal(
+            vec!["Base Variant".to_owned(), vw.is_base_variant().to_string()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ),
     ];
-    if let Some(dl) = variant.diag_layer() {
+    
+    if let Some(dl) = vw.diag_layer() {
         let layer = DiagLayer(dl);
         if let Some(sn) = layer.short_name() {
-            d.push(format!("Short Name: {sn}"));
+            info_rows.push(DetailRow::normal(
+                vec!["Short Name".to_owned(), sn.to_owned()],
+                vec![CellType::Text, CellType::Text],
+                0,
+            ));
         }
         if let Some(ln) = layer.long_name() {
-            d.push(format!("Long Name: {:?}", ln));
+            info_rows.push(DetailRow::normal(
+                vec!["Long Name".to_owned(), format!("{:?}", ln)],
+                vec![CellType::Text, CellType::Text],
+                0,
+            ));
+        }
+        
+        // Add children inline in the overview
+        if let Some(children_rows) = build_children_rows(&layer) {
+            // Add separator row
+            info_rows.push(DetailRow::normal(
+                vec!["".to_owned(), "".to_owned()],
+                vec![CellType::Text, CellType::Text],
+                0,
+            ));
+            // Add children header
+            info_rows.push(DetailRow::normal(
+                vec!["Children".to_owned(), "".to_owned()],
+                vec![CellType::Text, CellType::Text],
+                0,
+            ));
+            // Add all children rows
+            for child_row in children_rows {
+                info_rows.push(child_row);
+            }
         }
     }
-    d
+    
+    sections.push(
+        DetailSectionData::new(
+            "Overview".to_owned(),
+            DetailContent::Table {
+                header,
+                rows: info_rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(30),
+                    ColumnConstraint::Percentage(70),
+                ],
+                use_row_selection: true,
+            },
+            false,
+        )
+        .with_type(DetailSectionType::Overview),
+    );
+    
+    sections
+}
+
+/// Build rows listing all child elements with counts
+fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
+    let mut rows = Vec::new();
+    
+    // Check each child element type and add to table if present
+    
+    // ComParam Refs
+    if let Some(cp_refs) = layer.com_param_refs() {
+        if !cp_refs.is_empty() {
+            rows.push(DetailRow {
+                cells: vec!["  ComParam Refs".to_owned(), cp_refs.len().to_string()],
+                cell_types: vec![CellType::Text, CellType::Text],
+                indent: 1,
+                row_type: DetailRowType::ChildElement,
+                metadata: Some(RowMetadata::ChildElement {
+                    element_type: ChildElementType::ComParamRefs,
+                }),
+            });
+        }
+    }
+    
+    // Diag-Comms (Services + Jobs)
+    let service_count = layer.diag_services().map(|s| s.len()).unwrap_or(0);
+    let job_count = layer.single_ecu_jobs().map(|j| j.len()).unwrap_or(0);
+    if service_count + job_count > 0 {
+        rows.push(DetailRow {
+            cells: vec![
+                "  Diag-Comms".to_owned(),
+                format!("{} services, {} jobs", service_count, job_count),
+            ],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 1,
+            row_type: DetailRowType::ChildElement,
+            metadata: Some(RowMetadata::ChildElement {
+                element_type: ChildElementType::DiagComms,
+            }),
+        });
+    }
+    
+    // Functional Classes
+    if let Some(fcs) = layer.funct_classes() {
+        if !fcs.is_empty() {
+            rows.push(DetailRow {
+                cells: vec!["  Functional Classes".to_owned(), fcs.len().to_string()],
+                cell_types: vec![CellType::Text, CellType::Text],
+                indent: 1,
+                row_type: DetailRowType::ChildElement,
+                metadata: Some(RowMetadata::ChildElement {
+                    element_type: ChildElementType::FunctionalClasses,
+                }),
+            });
+        }
+    }
+    
+    // Neg-Responses
+    let neg_count: usize = layer
+        .diag_services()
+        .map(|services| {
+            services
+                .iter()
+                .filter_map(|s| {
+                    cda_database::datatypes::DiagService(s)
+                        .neg_responses()
+                        .map(|r| r.len())
+                })
+                .sum()
+        })
+        .unwrap_or(0);
+    if neg_count > 0 {
+        rows.push(DetailRow {
+            cells: vec!["  Neg-Responses".to_owned(), neg_count.to_string()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 1,
+            row_type: DetailRowType::ChildElement,
+            metadata: Some(RowMetadata::ChildElement {
+                element_type: ChildElementType::NegResponses,
+            }),
+        });
+    }
+    
+    // Pos-Responses
+    let pos_count: usize = layer
+        .diag_services()
+        .map(|services| {
+            services
+                .iter()
+                .filter_map(|s| {
+                    cda_database::datatypes::DiagService(s)
+                        .pos_responses()
+                        .map(|r| r.len())
+                })
+                .sum()
+        })
+        .unwrap_or(0);
+    if pos_count > 0 {
+        rows.push(DetailRow {
+            cells: vec!["  Pos-Responses".to_owned(), pos_count.to_string()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 1,
+            row_type: DetailRowType::ChildElement,
+            metadata: Some(RowMetadata::ChildElement {
+                element_type: ChildElementType::PosResponses,
+            }),
+        });
+    }
+    
+    // Requests
+    let request_count = layer
+        .diag_services()
+        .map(|services| {
+            services
+                .iter()
+                .filter(|&s| cda_database::datatypes::DiagService(s).request().is_some())
+                .count()
+        })
+        .unwrap_or(0);
+    if request_count > 0 {
+        rows.push(DetailRow {
+            cells: vec!["  Requests".to_owned(), request_count.to_string()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 1,
+            row_type: DetailRowType::ChildElement,
+            metadata: Some(RowMetadata::ChildElement {
+                element_type: ChildElementType::Requests,
+            }),
+        });
+    }
+    
+    // SDGs
+    if let Some(sdgs) = layer.sdgs() {
+        if let Some(sdg_list) = sdgs.sdgs() {
+            if !sdg_list.is_empty() {
+                rows.push(DetailRow {
+                    cells: vec!["  SDGs".to_owned(), sdg_list.len().to_string()],
+                    cell_types: vec![CellType::Text, CellType::Text],
+                    indent: 1,
+                    row_type: DetailRowType::ChildElement,
+                    metadata: Some(RowMetadata::ChildElement {
+                        element_type: ChildElementType::SDGs,
+                    }),
+                });
+            }
+        }
+    }
+    
+    // State-Charts
+    if let Some(charts) = layer.state_charts() {
+        if !charts.is_empty() {
+            rows.push(DetailRow {
+                cells: vec!["  State-Charts".to_owned(), charts.len().to_string()],
+                cell_types: vec![CellType::Text, CellType::Text],
+                indent: 1,
+                row_type: DetailRowType::ChildElement,
+                metadata: Some(RowMetadata::ChildElement {
+                    element_type: ChildElementType::StateCharts,
+                }),
+            });
+        }
+    }
+    
+    if rows.is_empty() {
+        return None;
+    }
+    
+    Some(rows)
 }
 
 /// Build parent refs table section for a variant
@@ -401,7 +631,6 @@ fn build_parent_refs_section(variant: &VariantWrap<'_>) -> Option<DetailSectionD
     )
 }
 
-/// Build variants overview table for the Variants section header
 fn build_variants_overview_table(variants: &[VariantWrap]) -> Vec<DetailSectionData> {
     if variants.is_empty() {
         return vec![];

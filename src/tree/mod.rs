@@ -4,11 +4,12 @@ mod types;
 
 use builder::TreeBuilder;
 use cda_database::datatypes::DiagnosticDatabase;
-use elements::{add_ecu_shared_data, add_functional_groups, add_protocols, add_variants};
+use elements::{add_dtcs, add_ecu_shared_data, add_functional_groups, add_protocols, add_variants};
 // Re-export public types
 pub use types::{
     CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
-    DetailSectionType, NodeType, RowMetadata, ServiceListType, TreeNode, lines_to_single_section,
+    DetailSectionType, NodeType, RowMetadata, SectionType, ServiceListType, TreeNode,
+    lines_to_single_section,
 };
 
 use crate::database::{extract_data, get_ecu_summary};
@@ -26,15 +27,15 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
     if let Some(ref ecu) = data.ecu {
         let ecu_details = get_ecu_summary(db, ecu_name);
         let ecu_section = lines_to_single_section("Summary", ecu_details.clone());
-        b.push_details_structured(
-            0,
+        b.push_section_header(
             "General".to_string(),
             false,
             false,
             vec![ecu_section],
-            NodeType::SectionHeader,
+            SectionType::General,
         );
 
+        add_dtcs(&mut b, ecu);
         add_variants(&mut b, ecu);
         add_functional_groups(&mut b, ecu);
         add_ecu_shared_data(&mut b, ecu);

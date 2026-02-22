@@ -9,7 +9,7 @@ use ratatui::{
     },
 };
 
-use super::App;
+use super::{App, SortDirection};
 use crate::tree::{DetailRow, DetailSectionData, NodeType, TreeNode};
 
 // -----------------------------------------------------------------------
@@ -499,6 +499,34 @@ impl App {
         while self.section_cursors.len() < sections.len() {
             self.section_cursors.push(0);
         }
+        
+        // Initialize table_sort_state and column_widths for new table sections
+        while self.table_sort_state.len() < sections.len() {
+            // Check if this section is a table
+            let section_idx = self.table_sort_state.len();
+            if let Some(section) = sections.get(section_idx) {
+                match &section.content {
+                    DetailContent::Table { .. } => {
+                        // Initialize with sort by first column, ascending
+                        self.table_sort_state.push(Some(super::TableSortState {
+                            column: 0,
+                            direction: super::SortDirection::Ascending,
+                        }));
+                    }
+                    _ => {
+                        // Not a table, no sort state
+                        self.table_sort_state.push(None);
+                    }
+                }
+            } else {
+                self.table_sort_state.push(None);
+            }
+        }
+        
+        // Initialize column_widths for new table sections
+        while self.column_widths.len() < sections.len() {
+            self.column_widths.push(Vec::new());
+        }
 
         // Create a single outer block that encloses everything
         let outer_block = Block::default()
@@ -933,21 +961,53 @@ impl App {
         // Cache the exact constraints for accurate click detection
         self.cached_ratatui_constraints = ratatui_constraints.clone();
 
-        // Create header cells with arrow indicator for focused column
+        // Check if there's a sort state for this section
+        let sort_state = if section_idx < self.table_sort_state.len() {
+            self.table_sort_state[section_idx]
+        } else {
+            None
+        };
+
+        // Create header cells with arrow indicator for sorted column and underscore for focused column
         let header_cells: Vec<Cell> = header
             .cells
             .iter()
             .enumerate()
             .map(|(idx, c)| {
                 use ratatui::text::Text;
-                let text = if self.detail_focused && idx == focused_col {
-                    // Prepend arrow to the existing header text
-                    format!("▼\n{}", c)
+                
+                // Add sort arrow if this column is sorted
+                let sort_indicator = if let Some(state) = sort_state {
+                    if state.column == idx {
+                        match state.direction {
+                            SortDirection::Ascending => "▲",
+                            SortDirection::Descending => "▼",
+                        }
+                    } else {
+                        ""
+                    }
                 } else {
+                    ""
+                };
+                
+                // Add underscore if this is the focused column (only in non-row-selection mode)
+                let underscore = if !use_row_selection && self.detail_focused && idx == focused_col {
+                    "_"
+                } else {
+                    ""
+                };
+                
+                let text = if sort_indicator.is_empty() && underscore.is_empty() {
                     c.to_string()
+                } else if sort_indicator.is_empty() {
+                    format!("{}\n{}", underscore, c)
+                } else if underscore.is_empty() {
+                    format!("{}\n{}", sort_indicator, c)
+                } else {
+                    format!("{} {}\n{}", sort_indicator, underscore, c)
                 };
 
-                // Keep yellow color for all headers, focused column only gets the arrow
+                // Keep yellow color for all headers
                 let style = Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD);

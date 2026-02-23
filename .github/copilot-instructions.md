@@ -6,6 +6,7 @@
 ## Coding Style
 
 * The project structure in src/tree should reflect how the tree is shown. All elements that have children should be reflected in the tree as such by using modules.
+* If a cell is used as jump source, the color of this cell should be blue
 
 ### Control Flow: Use Iterator Chains, Not for Loops
 

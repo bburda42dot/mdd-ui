@@ -828,6 +828,7 @@ impl App {
         self.rebuild_visible();
         self.cursor = 0;
         self.scroll_offset = 0;
+        self.reset_detail_state();
     }
 
     pub(crate) fn toggle_diagcomm_sort(&mut self) {

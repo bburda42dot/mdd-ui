@@ -261,8 +261,8 @@ impl App {
                 self.toggle_expand();
             }
 
-            KeyCode::Char('e') => self.expand_all(),
-            KeyCode::Char('c') => self.collapse_all(),
+            KeyCode::Char('e') if !self.detail_focused => self.expand_all(),
+            KeyCode::Char('c') if !self.detail_focused => self.collapse_all(),
 
             // Clear search stack ('x')
             KeyCode::Char('x') if !self.detail_focused => {

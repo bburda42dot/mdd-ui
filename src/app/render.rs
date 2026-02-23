@@ -965,7 +965,7 @@ impl App {
                         // Apply highlighting based on selection mode
                         let style = if is_selected_row {
                             if use_row_selection {
-                                // Row selection mode: highlight entire row
+                                // Row selection mode: highlight entire row uniformly
                                 Style::default()
                                     .fg(Color::White)
                                     .bg(Color::DarkGray)
@@ -973,8 +973,8 @@ impl App {
                             } else if col_idx == focused_col {
                                 // Cell selection mode: highlight only the focused cell
                                 Style::default()
-                                    .fg(Color::White)
-                                    .bg(Color::DarkGray)
+                                    .fg(Color::Black)
+                                    .bg(Color::Cyan)
                                     .add_modifier(Modifier::BOLD)
                             } else {
                                 // Check if this is a jump target cell type (not selected)
@@ -1048,8 +1048,8 @@ impl App {
                     ""
                 };
                 
-                // Add underscore if this is the focused column (only in non-row-selection mode)
-                let underscore = if !use_row_selection && self.detail_focused && idx == focused_col {
+                // Add underscore if this is the focused column
+                let underscore = if self.detail_focused && idx == focused_col {
                     "_"
                 } else {
                     ""

@@ -158,6 +158,8 @@ pub struct App {
     dragging_tree_scrollbar: bool, // true = dragging tree scrollbar, false = dragging detail scrollbar
     last_diagcomm_tab: usize, // Last selected tab when viewing service/job nodes (for persistence)
     last_section_tabs: HashMap<DetailSectionType, usize>, // Last selected tab per section type
+    jump_buffer: String,                    // Characters typed for type-to-jump in table views
+    jump_buffer_time: Option<Instant>,      // Timestamp of last type-to-jump character for auto-reset
 }
 
 #[derive(Clone)]
@@ -213,6 +215,8 @@ impl App {
             dragging_tree_scrollbar: false,
             last_diagcomm_tab: 0,
             last_section_tabs: HashMap::new(),
+            jump_buffer: String::new(),
+            jump_buffer_time: None,
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();
@@ -294,7 +298,9 @@ impl App {
     /// Update the selected tab and persist it generically for the current section type
     fn set_selected_tab(&mut self, new_tab: usize) {
         self.selected_tab = new_tab;
-        
+        self.jump_buffer.clear();
+        self.jump_buffer_time = None;
+
         // Save tab selection for the current section type
         if self.cursor < self.visible.len() {
             if let Some(&node_idx) = self.visible.get(self.cursor) {
@@ -322,6 +328,46 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Jump to the first table row whose first cell starts with the jump_buffer text
+    fn jump_to_matching_row(&mut self) {
+        if self.jump_buffer.is_empty() || self.cursor >= self.visible.len() {
+            return;
+        }
+
+        let node_idx = self.visible[self.cursor];
+        let node = &self.all_nodes[node_idx];
+        let section_idx = self.get_section_index();
+
+        if section_idx >= node.detail_sections.len() {
+            return;
+        }
+
+        let section = &node.detail_sections[section_idx];
+
+        // Get table rows (apply sorting if active)
+        let rows = match &section.content {
+            DetailContent::Table { rows, .. } => self.apply_table_sort(rows, section_idx),
+            _ => return,
+        };
+
+        let buffer_lower = self.jump_buffer.to_lowercase();
+
+        // Find first row where first cell starts with the buffer (case-insensitive)
+        for (i, row) in rows.iter().enumerate() {
+            if let Some(first_cell) = row.cells.first() {
+                if first_cell.to_lowercase().starts_with(&buffer_lower) {
+                    if section_idx < self.section_cursors.len() {
+                        self.section_cursors[section_idx] = i;
+                    }
+                    self.status = format!("Jump: \"{}\"", self.jump_buffer);
+                    return;
+                }
+            }
+        }
+
+        self.status = format!("Jump: \"{}\" (no match)", self.jump_buffer);
     }
 
     /// Apply sorting to rows if a sort state exists for the given section
@@ -1017,6 +1063,8 @@ impl App {
     /// Reset detail pane state when changing nodes
     fn reset_detail_state(&mut self) {
         self.detail_scroll = 0;
+        self.jump_buffer.clear();
+        self.jump_buffer_time = None;
 
         // Determine if current node is a diagcomm node
         let is_diagcomm = self

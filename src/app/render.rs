@@ -386,11 +386,13 @@ impl App {
             "  Esc             Cancel current search input",
             "",
             "DETAIL PANE (when focused)",
-            "  ↑/↓             Navigate rows in table",
-            "  ←/→             Switch between tabs",
-            "  Enter           Navigate to DOP/DTC/element (or show details popup)",
-            "  [ / ]           Decrease/increase column width",
-            "  , / .           Select previous/next column",
+            "  ↑/↓ or Shift+K/J  Navigate rows in table",
+            "  ←/→ or Shift+H/L  Switch between tabs",
+            "  Enter              Navigate to element (or show details popup)",
+            "  Shift+S            Toggle sort on focused column",
+            "  [ / ]              Decrease/increase column width",
+            "  , / .              Select previous/next column",
+            "  a-z, 0-9           Type-to-jump to matching row (resets after 1s)",
             "",
             "WINDOW",
             "  + / -           Increase/decrease tree pane width",
@@ -602,7 +604,7 @@ impl App {
         
         let section = &tab_sections[self.selected_tab];
         let help_text = if self.detail_focused {
-            " h/l:tabs  j/k:row  ,/.:column  [/]:resize  Enter:Select  s:sort"
+            " H/L:tabs  J/K:row  ,/.:column  [/]:resize  Enter:Select  S:sort  a-z:jump"
         } else {
             ""
         };

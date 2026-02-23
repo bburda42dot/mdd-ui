@@ -107,6 +107,14 @@ impl App {
             return Action::Continue;
         }
 
+        // Clear jump buffer if timed out (>1 second since last character)
+        if let Some(last_time) = self.jump_buffer_time {
+            if last_time.elapsed() > std::time::Duration::from_secs(1) {
+                self.jump_buffer.clear();
+                self.jump_buffer_time = None;
+            }
+        }
+
         match code {
             KeyCode::Char('q') | KeyCode::Esc => return Action::Quit,
             KeyCode::Char('c') if ctrl => return Action::Quit,
@@ -139,7 +147,7 @@ impl App {
                 self.tree_width_percentage = (self.tree_width_percentage.saturating_sub(5)).max(20);
             }
 
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up | KeyCode::Char('K') => {
                 if self.detail_focused {
                     // Move cursor up in the selected tab
                     let section_idx = self.get_section_index();
@@ -151,7 +159,10 @@ impl App {
                     self.move_up();
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Char('k') if !self.detail_focused => {
+                self.move_up();
+            }
+            KeyCode::Down | KeyCode::Char('J') => {
                 if self.detail_focused {
                     // Move cursor down in the selected tab (will be clamped during render)
                     let section_idx = self.get_section_index();
@@ -162,6 +173,9 @@ impl App {
                 } else {
                     self.move_down();
                 }
+            }
+            KeyCode::Char('j') if !self.detail_focused => {
+                self.move_down();
             }
             KeyCode::PageUp => {
                 if self.detail_focused {
@@ -210,7 +224,7 @@ impl App {
                 }
             }
 
-            KeyCode::Left | KeyCode::Char('h') => {
+            KeyCode::Left | KeyCode::Char('H') => {
                 if self.detail_focused {
                     // Navigate to previous tab
                     let new_tab = self.selected_tab.saturating_sub(1);
@@ -220,7 +234,10 @@ impl App {
                     self.try_collapse_or_parent();
                 }
             }
-            KeyCode::Right | KeyCode::Char('l') => {
+            KeyCode::Char('h') if !self.detail_focused => {
+                self.try_collapse_or_parent();
+            }
+            KeyCode::Right | KeyCode::Char('L') => {
                 if self.detail_focused {
                     // Navigate to next tab (will be clamped during render)
                     let new_tab = self.selected_tab.saturating_add(1);
@@ -229,6 +246,9 @@ impl App {
                 } else {
                     self.try_expand();
                 }
+            }
+            KeyCode::Char('l') if !self.detail_focused => {
+                self.try_expand();
             }
             KeyCode::Enter => {
                 if !self.detail_focused {
@@ -259,8 +279,8 @@ impl App {
                 self.toggle_diagcomm_sort();
             }
 
-            // Toggle table column sorting (only when detail pane is focused)
-            KeyCode::Char('s') if self.detail_focused => {
+            // Toggle table column sorting (Shift+S when detail pane is focused)
+            KeyCode::Char('S') if self.detail_focused => {
                 self.toggle_table_column_sort();
             }
 
@@ -299,6 +319,13 @@ impl App {
             // Show help popup
             KeyCode::Char('?') => {
                 self.help_popup_visible = true;
+            }
+
+            // Type-to-jump: alphanumeric keys jump to matching row when detail pane is focused
+            KeyCode::Char(c) if self.detail_focused && c.is_alphanumeric() => {
+                self.jump_buffer.push(c.to_ascii_lowercase());
+                self.jump_buffer_time = Some(std::time::Instant::now());
+                self.jump_to_matching_row();
             }
 
             _ => {}

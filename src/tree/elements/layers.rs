@@ -65,7 +65,6 @@ impl LayerExt for TreeBuilder {
             self,
             layer,
             depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
         );
 
         // Functional Classes - pass all variants so it can search across them

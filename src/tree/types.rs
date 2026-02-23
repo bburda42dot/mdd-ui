@@ -2,7 +2,6 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SectionType {
     General,
-    DTCs,
     Variants,
     FunctionalGroups,
     EcuSharedData,

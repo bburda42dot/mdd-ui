@@ -1,4 +1,6 @@
-use cda_database::datatypes::EcuDb;
+use std::collections::HashMap;
+
+use cda_database::datatypes::{Dtc, EcuDb};
 
 use crate::tree::{
     builder::TreeBuilder,
@@ -8,247 +10,220 @@ use crate::tree::{
     },
 };
 
-/// Add all DTCs to the tree
-pub fn add_dtcs(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
-    if let Some(dtcs) = ecu.dtcs() {
-        if dtcs.is_empty() {
-            return;
-        }
+/// Format a trouble code for display, preferring the display code over hex.
+fn format_trouble_code(dtc: &Dtc<'_>) -> String {
+    dtc.display_trouble_code()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("0x{:06X}", dtc.trouble_code()))
+}
 
-        // Deduplicate DTCs by trouble_code
-        use std::collections::HashMap;
-        let mut unique_dtcs = HashMap::new();
-        
-        for dtc in dtcs.iter() {
-            let trouble_code = dtc.trouble_code();
-            // Keep the first occurrence of each unique trouble code
-            unique_dtcs.entry(trouble_code).or_insert(dtc);
-        }
-        
-        // Convert back to a vector and sort by trouble code
-        let mut unique_dtcs_vec: Vec<_> = unique_dtcs.into_values().collect();
-        unique_dtcs_vec.sort_by_key(|dtc| dtc.trouble_code());
-
-        // Build overview table for DTCs section header
-        let mut overview_rows = Vec::new();
-        
-        for dtc in unique_dtcs_vec.iter() {
+/// Build the overview table shown on the DTCs section header.
+fn build_overview_section(dtcs: &[&Dtc<'_>]) -> DetailSectionData {
+    let rows: Vec<DetailRow> = dtcs
+        .iter()
+        .map(|dtc| {
             let short_name = dtc.short_name().unwrap_or("?").to_owned();
-            let display_code = dtc.display_trouble_code().unwrap_or("");
-            let code_str = if !display_code.is_empty() {
-                display_code.to_owned()
-            } else {
-                format!("0x{:06X}", dtc.trouble_code())
-            };
-
+            let code = format_trouble_code(dtc);
             let description = dtc
                 .text()
                 .and_then(|t| t.value())
                 .unwrap_or("")
                 .to_owned();
-
-            overview_rows.push(DetailRow::normal(
-                vec![short_name, code_str, description],
+            DetailRow::normal(
+                vec![short_name, code, description],
                 vec![CellType::Text, CellType::Text, CellType::Text],
                 0,
-            ));
-        }
+            )
+        })
+        .collect();
 
-        let header = DetailRow::header(
-            vec![
-                "Short Name".to_owned(),
-                "Code".to_owned(),
-                "Description".to_owned(),
+    let header = DetailRow::header(
+        vec![
+            "Short Name".to_owned(),
+            "Code".to_owned(),
+            "Description".to_owned(),
+        ],
+        vec![CellType::Text, CellType::Text, CellType::Text],
+    );
+
+    DetailSectionData::new(
+        "DTCs Overview".to_owned(),
+        DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(30),
+                ColumnConstraint::Percentage(20),
+                ColumnConstraint::Percentage(50),
             ],
-            vec![CellType::Text, CellType::Text, CellType::Text],
-        );
+            use_row_selection: true,
+        },
+        false,
+    )
+    .with_type(DetailSectionType::Overview)
+}
 
-        let overview_section = DetailSectionData::new(
-            "DTCs Overview".to_owned(),
-            DetailContent::Table {
-                header,
-                rows: overview_rows,
-                constraints: vec![
-                    ColumnConstraint::Percentage(30),
-                    ColumnConstraint::Percentage(20),
-                    ColumnConstraint::Percentage(50),
-                ],
-                use_row_selection: true,
-            },
-            false,
+/// Build the detail sections shown when a single DTC node is selected.
+fn build_dtc_detail_sections(dtc: &Dtc<'_>) -> Vec<DetailSectionData> {
+    let short_name = dtc.short_name().unwrap_or("?");
+    let code = format_trouble_code(dtc);
+
+    let header_section = DetailSectionData {
+        title: format!("DTC - {} - {}", code, short_name),
+        render_as_header: true,
+        content: DetailContent::PlainText(vec![]),
+        section_type: DetailSectionType::Header,
+    };
+
+    let overview_section = build_dtc_overview(dtc, short_name);
+    let sdg_section = build_sdg_section(dtc);
+
+    vec![header_section, overview_section, sdg_section]
+}
+
+/// Build the key/value overview table for a single DTC.
+fn build_dtc_overview(dtc: &Dtc<'_>, short_name: &str) -> DetailSectionData {
+    let kv = |key: &str, val: String| {
+        DetailRow::normal(
+            vec![key.to_owned(), val],
+            vec![CellType::Text, CellType::Text],
+            0,
         )
-        .with_type(DetailSectionType::Overview);
+    };
 
-        b.push_section_header(
-            format!("DTCs ({})", unique_dtcs_vec.len()),
+    let trouble_code = dtc.trouble_code();
+    let display_code = dtc.display_trouble_code().unwrap_or("");
+
+    let rows: Vec<DetailRow> = [
+        Some(kv("Short Name", short_name.to_owned())),
+        Some(kv("Trouble Code", format!("0x{:06X}", trouble_code))),
+        (!display_code.is_empty())
+            .then(|| kv("Display Code", display_code.to_owned())),
+        dtc.text()
+            .and_then(|t| t.value())
+            .map(|v| kv("Description", v.to_owned())),
+        dtc.level().map(|l| kv("Level", l.to_string())),
+        Some(kv(
+            "Temporary",
+            if dtc.is_temporary() { "Yes" } else { "No" }.to_owned(),
+        )),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let header = DetailRow::header(
+        vec!["Property".to_owned(), "Value".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+
+    DetailSectionData::new(
+        "Overview".to_owned(),
+        DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(30),
+                ColumnConstraint::Percentage(70),
+            ],
+            use_row_selection: true,
+        },
+        false,
+    )
+    .with_type(DetailSectionType::Overview)
+}
+
+/// Build the SDGs section for a single DTC.
+fn build_sdg_section(dtc: &Dtc<'_>) -> DetailSectionData {
+    let rows: Vec<DetailRow> = dtc
+        .sdgs()
+        .and_then(|sdgs| sdgs.sdgs())
+        .into_iter()
+        .flat_map(|list| list.iter())
+        .filter_map(|sdg| {
+            sdg.caption_sn().map(|caption| {
+                let si = sdg.si().unwrap_or("-").to_owned();
+                DetailRow::normal(
+                    vec![caption.to_owned(), si],
+                    vec![CellType::Text, CellType::Text],
+                    0,
+                )
+            })
+        })
+        .collect();
+
+    let rows = if rows.is_empty() {
+        vec![DetailRow::normal(
+            vec!["(No SDGs available)".to_owned()],
+            vec![CellType::Text],
+            0,
+        )]
+    } else {
+        rows
+    };
+
+    let header = DetailRow::header(
+        vec!["Caption".to_owned(), "SI".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+
+    DetailSectionData::new(
+        "SDGs".to_owned(),
+        DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(70),
+                ColumnConstraint::Percentage(30),
+            ],
+            use_row_selection: true,
+        },
+        false,
+    )
+    .with_type(DetailSectionType::Custom)
+}
+
+/// Deduplicate and sort DTCs, keeping the first occurrence of each trouble code.
+fn unique_sorted_dtcs<'a>(dtcs: impl Iterator<Item = Dtc<'a>>) -> Vec<Dtc<'a>> {
+    let mut seen = HashMap::new();
+    for dtc in dtcs {
+        seen.entry(dtc.trouble_code()).or_insert(dtc);
+    }
+    let mut out: Vec<_> = seen.into_values().collect();
+    out.sort_by_key(|d| d.trouble_code());
+    out
+}
+
+/// Add all DTCs to the tree.
+pub fn add_dtcs(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
+    let dtcs = match ecu.dtcs() {
+        Some(d) if !d.is_empty() => d,
+        _ => return,
+    };
+
+    let unique = unique_sorted_dtcs(dtcs.iter());
+    let refs: Vec<&Dtc<'_>> = unique.iter().collect();
+
+    b.push_section_header(
+        format!("DTCs ({})", unique.len()),
+        false,
+        true,
+        vec![build_overview_section(&refs)],
+        SectionType::DTCs,
+    );
+
+    for dtc in &unique {
+        let short_name = dtc.short_name().unwrap_or("?");
+        let display_name = format!("{} - {}", format_trouble_code(dtc), short_name);
+
+        b.push_details_structured(
+            1,
+            display_name,
             false,
-            true,
-            vec![overview_section],
-            SectionType::DTCs,
+            false,
+            build_dtc_detail_sections(dtc),
+            NodeType::Default,
         );
-
-        // Add each unique DTC
-        for dtc in unique_dtcs_vec.iter() {
-            let short_name = dtc.short_name().unwrap_or("?");
-            let trouble_code = dtc.trouble_code();
-            let display_trouble_code = dtc.display_trouble_code().unwrap_or("");
-
-            let display_name = if !display_trouble_code.is_empty() {
-                format!("{} - {}", display_trouble_code, short_name)
-            } else {
-                format!("0x{:06X} - {}", trouble_code, short_name)
-            };
-
-            // Build detail sections inline
-            let mut sections = Vec::new();
-
-            // Header section
-            let header_title = if !display_trouble_code.is_empty() {
-                format!("DTC - {} - {}", display_trouble_code, short_name)
-            } else {
-                format!("DTC - 0x{:06X} - {}", trouble_code, short_name)
-            };
-
-            sections.push(DetailSectionData {
-                title: header_title,
-                render_as_header: true,
-                content: DetailContent::PlainText(vec![]),
-                section_type: DetailSectionType::Header,
-            });
-
-            // Overview section
-            let mut detail_rows = Vec::new();
-
-            detail_rows.push(DetailRow::normal(
-                vec!["Short Name".to_owned(), short_name.to_owned()],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-
-            detail_rows.push(DetailRow::normal(
-                vec![
-                    "Trouble Code".to_owned(),
-                    format!("0x{:06X}", trouble_code),
-                ],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-
-            if !display_trouble_code.is_empty() {
-                detail_rows.push(DetailRow::normal(
-                    vec!["Display Code".to_owned(), display_trouble_code.to_owned()],
-                    vec![CellType::Text, CellType::Text],
-                    0,
-                ));
-            }
-
-            if let Some(text) = dtc.text() {
-                if let Some(value) = text.value() {
-                    detail_rows.push(DetailRow::normal(
-                        vec!["Description".to_owned(), value.to_owned()],
-                        vec![CellType::Text, CellType::Text],
-                        0,
-                    ));
-                }
-            }
-
-            if let Some(level) = dtc.level() {
-                detail_rows.push(DetailRow::normal(
-                    vec!["Level".to_owned(), level.to_string()],
-                    vec![CellType::Text, CellType::Text],
-                    0,
-                ));
-            }
-
-            detail_rows.push(DetailRow::normal(
-                vec![
-                    "Temporary".to_owned(),
-                    if dtc.is_temporary() {
-                        "Yes".to_owned()
-                    } else {
-                        "No".to_owned()
-                    },
-                ],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-
-            let detail_header = DetailRow::header(
-                vec!["Property".to_owned(), "Value".to_owned()],
-                vec![CellType::Text, CellType::Text],
-            );
-
-            sections.push(
-                DetailSectionData::new(
-                    "Overview".to_owned(),
-                    DetailContent::Table {
-                        header: detail_header,
-                        rows: detail_rows,
-                        constraints: vec![
-                            ColumnConstraint::Percentage(30),
-                            ColumnConstraint::Percentage(70),
-                        ],
-                        use_row_selection: true,
-                    },
-                    false,
-                )
-                .with_type(DetailSectionType::Overview),
-            );
-
-            // SDGs section - extract actual SDG data
-            let mut sdg_rows = Vec::new();
-            if let Some(sdgs) = dtc.sdgs() {
-                if let Some(sdg_list) = sdgs.sdgs() {
-                    for sdg in sdg_list.iter() {
-                        if let Some(caption) = sdg.caption_sn() {
-                            let si = sdg.si().unwrap_or("-");
-                            sdg_rows.push(DetailRow::normal(
-                                vec![caption.to_owned(), si.to_owned()],
-                                vec![CellType::Text, CellType::Text],
-                                0,
-                            ));
-                        }
-                    }
-                }
-            }
-
-            if sdg_rows.is_empty() {
-                sdg_rows.push(DetailRow::normal(
-                    vec!["(No SDGs available)".to_owned()],
-                    vec![CellType::Text],
-                    0,
-                ));
-            }
-
-            let sdg_header = DetailRow::header(
-                vec!["Caption".to_owned(), "SI".to_owned()],
-                vec![CellType::Text, CellType::Text],
-            );
-            sections.push(
-                DetailSectionData::new(
-                    "SDGs".to_owned(),
-                    DetailContent::Table {
-                        header: sdg_header,
-                        rows: sdg_rows,
-                        constraints: vec![
-                            ColumnConstraint::Percentage(70),
-                            ColumnConstraint::Percentage(30),
-                        ],
-                        use_row_selection: true,
-                    },
-                    false,
-                )
-                .with_type(DetailSectionType::Custom),
-            );
-
-            b.push_details_structured(
-                1,
-                display_name,
-                false,
-                false,
-                sections,
-                NodeType::Default,
-            );
-        }
     }
 }

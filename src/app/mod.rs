@@ -254,6 +254,23 @@ impl App {
         false
     }
 
+    /// Check if a node is an individual DOP with children (e.g. a DTC-DOP under DTC-DOPS).
+    /// These nodes should navigate to their children instead of showing a popup.
+    fn is_individual_dop_node(&self, node_idx: usize) -> bool {
+        let node = &self.all_nodes[node_idx];
+        if !node.has_children || node.depth < 2 {
+            return false;
+        }
+        // Walk backwards to find the parent
+        for i in (0..node_idx).rev() {
+            let candidate = &self.all_nodes[i];
+            if candidate.depth < node.depth {
+                return self.is_dop_category_node(i);
+            }
+        }
+        false
+    }
+
     /// Get the actual section index accounting for header section offset
     fn get_section_index(&self) -> usize {
         // Check if current node has a header section (rendered above tabs)
@@ -1416,8 +1433,9 @@ impl App {
             return;
         }
 
-        // DIAG-DATA-DICTIONARY-SPEC and DOP category nodes: navigate to child instead of popup
-        if matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx) {
+        // DIAG-DATA-DICTIONARY-SPEC, DOP category, and individual DOP nodes with children:
+        // navigate to child instead of popup
+        if matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx) || self.is_individual_dop_node(node_idx) {
             self.try_navigate_to_dop_child();
             return;
         }
@@ -3164,8 +3182,8 @@ impl App {
                 // Check if this is a functional class node
                 let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
 
-                // Check if this is a DOP node (DIAG-DATA-DICTIONARY-SPEC or DOP category)
-                let is_dop_node = matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx);
+                // Check if this is a DOP node (DIAG-DATA-DICTIONARY-SPEC, DOP category, or individual DOP with children)
+                let is_dop_node = matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx) || self.is_individual_dop_node(node_idx);
 
                 if is_variants_section {
                     // Navigate to selected variant from the Variants overview table

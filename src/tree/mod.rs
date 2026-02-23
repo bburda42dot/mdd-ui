@@ -4,7 +4,7 @@ mod types;
 
 use builder::TreeBuilder;
 use cda_database::datatypes::DiagnosticDatabase;
-use elements::{add_dtcs, add_ecu_shared_data, add_functional_groups, add_protocols, add_variants};
+use elements::{add_ecu_shared_data, add_functional_groups, add_protocols, add_variants};
 // Re-export public types
 pub use types::{
     CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
@@ -35,7 +35,6 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
             SectionType::General,
         );
 
-        add_dtcs(&mut b, ecu);
         add_variants(&mut b, ecu);
         add_functional_groups(&mut b, ecu);
         add_ecu_shared_data(&mut b, ecu);

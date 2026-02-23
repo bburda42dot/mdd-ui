@@ -8,6 +8,9 @@ use crate::tree::{
     },
 };
 
+/// Collected services (with source layer name) and jobs (name + layer name) for a functional class.
+type FcServicesAndJobs<'a> = (Vec<(DiagService<'a>, String)>, Vec<(String, String)>);
+
 /// Add functional classes section from the diagnostic layer
 /// This displays the FUNCT-CLASS definitions themselves and the services that belong to them
 /// We collect services/jobs from ALL variants that have the same functional class
@@ -19,7 +22,7 @@ pub fn add_functional_classes<'a>(
 ) {
     // Collect all unique functional class names from this layer (base variant)
     let mut all_funct_class_names = std::collections::HashSet::new();
-    
+
     // Get functional class definitions from the base layer
     if let Some(funct_classes) = layer.funct_classes() {
         for fc in funct_classes.iter() {
@@ -53,10 +56,9 @@ pub fn add_functional_classes<'a>(
 
     // Collect all services and jobs from ALL variants for each functional class
     // We'll do this per functional class below, searching across all variants
-    let variants_vec: Vec<Variant<'_>> = all_variants
-        .map(|iter| iter.collect())
-        .unwrap_or_default();
-    
+    let variants_vec: Vec<Variant<'_>> =
+        all_variants.map(|iter| iter.collect()).unwrap_or_default();
+
     // Add each functional class as a child node with its services/jobs from ALL variants
     for name in funct_class_data.iter() {
         // Collect services and jobs for this functional class
@@ -67,7 +69,7 @@ pub fn add_functional_classes<'a>(
             // Variants provided, search across all of them
             collect_services_and_jobs_for_functional_class(name, &variants_vec)
         };
-        
+
         // Sort services alphabetically by name
         all_services.sort_by_cached_key(|(ds, _)| {
             ds.diag_comm()
@@ -75,18 +77,12 @@ pub fn add_functional_classes<'a>(
                 .unwrap_or("")
                 .to_lowercase()
         });
-        
+
         // Sort jobs alphabetically by name
-        all_job_info.sort_by_cached_key(|(job_name, _)| {
-            job_name.to_lowercase()
-        });
-        
+        all_job_info.sort_by_cached_key(|(job_name, _)| job_name.to_lowercase());
+
         // Build detailed view for this functional class
-        let details = build_functional_class_detail(
-            name,
-            &all_services,
-            &all_job_info,
-        );
+        let details = build_functional_class_detail(name, &all_services, &all_job_info);
 
         b.push_details_structured(
             depth + 1,
@@ -100,29 +96,16 @@ pub fn add_functional_classes<'a>(
 }
 
 /// Build a table section for the Functional Classes header showing all class definitions
-fn build_functional_classes_table_section(
-    items: &[String],
-) -> DetailSectionData {
-    let header = DetailRow::header(
-        vec![
-            "Short Name".to_owned(),
-        ],
-        vec![
-            CellType::Text,
-        ],
-    );
+fn build_functional_classes_table_section(items: &[String]) -> DetailSectionData {
+    let header = DetailRow::header(vec!["Short Name".to_owned()], vec![CellType::Text]);
 
     let mut rows = Vec::new();
 
     // Add each functional class definition to the table
     for name in items.iter() {
         rows.push(DetailRow::normal(
-            vec![
-                name.to_string(),
-            ],
-            vec![
-                CellType::Text,
-            ],
+            vec![name.to_string()],
+            vec![CellType::Text],
             0,
         ));
     }
@@ -132,9 +115,7 @@ fn build_functional_classes_table_section(
         DetailContent::Table {
             header,
             rows,
-            constraints: vec![
-                ColumnConstraint::Percentage(100),
-            ],
+            constraints: vec![ColumnConstraint::Percentage(100)],
             use_row_selection: true,
         },
         false,
@@ -147,7 +128,7 @@ fn build_functional_classes_table_section(
 fn collect_services_and_jobs_from_layer<'a>(
     fc_name: &str,
     layer: &DiagLayer<'a>,
-) -> (Vec<(DiagService<'a>, String)>, Vec<(String, String)>) {
+) -> FcServicesAndJobs<'a> {
     let mut services = Vec::new();
     let mut job_info = Vec::new();
 
@@ -218,7 +199,7 @@ fn collect_services_and_jobs_from_layer<'a>(
 fn collect_services_and_jobs_for_functional_class<'a>(
     fc_name: &str,
     all_variants: &[Variant<'a>],
-) -> (Vec<(DiagService<'a>, String)>, Vec<(String, String)>) {
+) -> FcServicesAndJobs<'a> {
     let mut services = Vec::new();
     let mut job_info = Vec::new();
 
@@ -294,12 +275,11 @@ fn collect_services_and_jobs_for_functional_class<'a>(
 
 /// Build detailed view for a single functional class
 /// Shows the services/jobs that belong to this functional class across all variants
-fn build_functional_class_detail<'a>(
+fn build_functional_class_detail(
     fc_name: &str,
     services: &[(DiagService<'_>, String)],
     all_job_info: &[(String, String)], // (job_name, layer_name)
-) -> Vec<DetailSectionData> 
-{
+) -> Vec<DetailSectionData> {
     let mut sections = Vec::new();
 
     // Add header section with functional class name
@@ -411,7 +391,7 @@ fn build_functional_class_detail<'a>(
     }
 
     let total_count = rows.len();
-    
+
     // If no services or jobs, show a message
     if total_count == 0 {
         rows.push(DetailRow::normal(

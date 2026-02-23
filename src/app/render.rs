@@ -466,8 +466,6 @@ impl App {
         sections: &[DetailSectionData],
         node_name: &str,
     ) {
-        use ratatui::layout::{Constraint, Direction, Layout};
-
         if sections.is_empty() {
             return;
         }
@@ -491,7 +489,8 @@ impl App {
         self.ensure_section_state_initialized(sections);
 
         // Build layout constraints
-        let header_height = header_section.and_then(|h| self.calculate_header_height(h, outer_inner));
+        let header_height =
+            header_section.and_then(|h| self.calculate_header_height(h, outer_inner));
         let chunks = self.build_detail_layout(outer_inner, header_height);
 
         // Render header section if present
@@ -524,7 +523,11 @@ impl App {
     }
 
     /// Calculate header height for a section
-    fn calculate_header_height(&self, header: &DetailSectionData, outer_inner: Rect) -> Option<u16> {
+    fn calculate_header_height(
+        &self,
+        header: &DetailSectionData,
+        outer_inner: Rect,
+    ) -> Option<u16> {
         match &header.content {
             DetailContent::PlainText(lines) => {
                 let height = (lines.len() as u16).max(1).min(outer_inner.height / 4);
@@ -559,20 +562,24 @@ impl App {
         while self.section_cursors.len() < sections.len() {
             self.section_cursors.push(0);
         }
-        
+
         // Initialize table_sort_state and column_widths
         while self.table_sort_state.len() < sections.len() {
             let section_idx = self.table_sort_state.len();
-            self.table_sort_state.push(self.initialize_table_sort(sections.get(section_idx)));
+            self.table_sort_state
+                .push(self.initialize_table_sort(sections.get(section_idx)));
         }
-        
+
         while self.column_widths.len() < sections.len() {
             self.column_widths.push(Vec::new());
         }
     }
 
     /// Initialize table sort state for a section
-    fn initialize_table_sort(&self, section: Option<&DetailSectionData>) -> Option<super::TableSortState> {
+    fn initialize_table_sort(
+        &self,
+        section: Option<&DetailSectionData>,
+    ) -> Option<super::TableSortState> {
         section
             .filter(|s| matches!(&s.content, DetailContent::Table { .. }))
             .map(|_| super::TableSortState {
@@ -600,8 +607,12 @@ impl App {
         _node_name: &str,
     ) {
         let show_tabs = tab_sections.len() > 1;
-        let section_offset = if all_sections.len() > tab_sections.len() { 1 } else { 0 };
-        
+        let section_offset = if all_sections.len() > tab_sections.len() {
+            1
+        } else {
+            0
+        };
+
         let section = &tab_sections[self.selected_tab];
         let help_text = if self.detail_focused {
             " H/L:tabs  J/K:row  ,/.:column  [/]:resize  Enter:Select  S:sort  a-z:jump"
@@ -631,7 +642,13 @@ impl App {
         self.table_content_area = Some(inner);
 
         // Render section content
-        self.render_section_content(frame, inner, content_area, section, self.selected_tab + section_offset);
+        self.render_section_content(
+            frame,
+            inner,
+            content_area,
+            section,
+            self.selected_tab + section_offset,
+        );
     }
 
     /// Render tabs and return content area
@@ -979,8 +996,7 @@ impl App {
                             } else {
                                 // Check if this is a jump target cell type (not selected)
                                 match cell_type {
-                                    CellType::DopReference
-                                    | CellType::ParameterName => {
+                                    CellType::DopReference | CellType::ParameterName => {
                                         Style::default().fg(Color::Blue)
                                     }
                                     _ => Style::default().fg(Color::White),
@@ -1026,14 +1042,15 @@ impl App {
             None
         };
 
-        // Create header cells with arrow indicator for sorted column and underscore for focused column
+        // Create header cells with arrow indicator for sorted
+        // column and underscore for focused column
         let header_cells: Vec<Cell> = header
             .cells
             .iter()
             .enumerate()
             .map(|(idx, c)| {
                 use ratatui::text::Text;
-                
+
                 // Add sort arrow if this column is sorted
                 let sort_indicator = if let Some(state) = sort_state {
                     if state.column == idx {
@@ -1047,14 +1064,14 @@ impl App {
                 } else {
                     ""
                 };
-                
+
                 // Add underscore if this is the focused column
                 let underscore = if self.detail_focused && idx == focused_col {
                     "_"
                 } else {
                     ""
                 };
-                
+
                 let text = if sort_indicator.is_empty() && underscore.is_empty() {
                     c.to_string()
                 } else if sort_indicator.is_empty() {
@@ -1092,9 +1109,9 @@ impl App {
             self.detail_scrollbar_area = render_scrollbar(
                 frame,
                 scrollbar_area,
-                max_scroll + 1,  // Total positions (0 to max_scroll inclusive)
+                max_scroll + 1, // Total positions (0 to max_scroll inclusive)
                 self.section_scrolls[section_idx],
-                1,  // Viewport is always "1" position at a time
+                1, // Viewport is always "1" position at a time
             );
         } else {
             self.detail_scrollbar_area = None;

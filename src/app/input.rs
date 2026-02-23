@@ -108,11 +108,11 @@ impl App {
         }
 
         // Clear jump buffer if timed out (>1 second since last character)
-        if let Some(last_time) = self.jump_buffer_time {
-            if last_time.elapsed() > std::time::Duration::from_secs(1) {
-                self.jump_buffer.clear();
-                self.jump_buffer_time = None;
-            }
+        if let Some(last_time) = self.jump_buffer_time
+            && last_time.elapsed() > std::time::Duration::from_secs(1)
+        {
+            self.jump_buffer.clear();
+            self.jump_buffer_time = None;
         }
 
         match code {

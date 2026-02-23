@@ -1,9 +1,10 @@
 use cda_database::datatypes::{DiagLayer, DiagService, Parameter};
+
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType,
-        DetailSectionData, DetailSectionType, NodeType,
+        CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
+        DetailSectionType, NodeType,
     },
 };
 
@@ -12,6 +13,7 @@ use crate::tree::{
 enum DopCategory {
     DtcDops,
     EnvDataDescs,
+    EnvDatas,
     DataObjectProps,
     Structures,
     StaticFields,
@@ -25,6 +27,7 @@ impl DopCategory {
         match self {
             Self::DtcDops => "DTC-DOPS",
             Self::EnvDataDescs => "ENV-DATA-DESCS",
+            Self::EnvDatas => "ENV-DATAS",
             Self::DataObjectProps => "DATA-OBJECT-PROPS",
             Self::Structures => "STRUCTURES",
             Self::StaticFields => "STATIC-FIELDS",
@@ -49,9 +52,8 @@ impl DopCategory {
 
     /// Add child tree nodes for an individual DOP in this category
     fn add_dop_children(&self, b: &mut TreeBuilder, dop_info: &DopInfo<'_>, depth: usize) {
-        match self {
-            Self::DtcDops => add_dtc_dop_children(b, dop_info, depth),
-            _ => {}
+        if self == &Self::DtcDops {
+            add_dtc_dop_children(b, dop_info, depth);
         }
     }
 }
@@ -92,8 +94,19 @@ fn parse_dop_name(name: &str) -> ParsedDopName {
     }
 
     // First part might be compu category (IDENTICAL, LINEAR, TEXT_TABLE, etc.)
-    let compu_categories = ["IDENTICAL", "LINEAR", "TEXTTABLE", "SCALE", "COMPUCODE", "TABINTP", "RATFUNC"];
-    if compu_categories.iter().any(|&cat| parts[0].starts_with(cat)) {
+    let compu_categories = [
+        "IDENTICAL",
+        "LINEAR",
+        "TEXTTABLE",
+        "SCALE",
+        "COMPUCODE",
+        "TABINTP",
+        "RATFUNC",
+    ];
+    if compu_categories
+        .iter()
+        .any(|&cat| parts[0].starts_with(cat))
+    {
         parsed.compu_category = Some(parts[0].to_owned());
     }
 
@@ -110,7 +123,11 @@ fn parse_dop_name(name: &str) -> ParsedDopName {
     }
 
     // Look for hex ranges (0x patterns)
-    let hex_parts: Vec<&str> = parts.iter().filter(|p| p.starts_with("0x") || p.starts_with("0X")).copied().collect();
+    let hex_parts: Vec<&str> = parts
+        .iter()
+        .filter(|p| p.starts_with("0x") || p.starts_with("0X"))
+        .copied()
+        .collect();
     if hex_parts.len() >= 2 {
         parsed.range_min = Some(hex_parts[0].to_owned());
         parsed.range_max = Some(hex_parts[1].to_owned());
@@ -119,13 +136,25 @@ fn parse_dop_name(name: &str) -> ParsedDopName {
     }
 
     // Last part might be unit (if not a hex value or data type)
-    if let Some(last) = parts.last() {
-        if !last.starts_with("0x") && !last.starts_with("0X") && !last.starts_with("A_") {
-            // Common unit patterns
-            let units = ["Second", "MicroSecond", "MilliSecond", "Meter", "KiloMeter", "Volt", "Ampere", "Celsius", "Pascal"];
-            if units.iter().any(|&u| last.contains(u)) {
-                parsed.unit = Some(last.to_string());
-            }
+    if let Some(last) = parts.last()
+        && !last.starts_with("0x")
+        && !last.starts_with("0X")
+        && !last.starts_with("A_")
+    {
+        // Common unit patterns
+        let units = [
+            "Second",
+            "MicroSecond",
+            "MilliSecond",
+            "Meter",
+            "KiloMeter",
+            "Volt",
+            "Ampere",
+            "Celsius",
+            "Pascal",
+        ];
+        if units.iter().any(|&u| last.contains(u)) {
+            parsed.unit = Some(last.to_string());
         }
     }
 
@@ -133,51 +162,12 @@ fn parse_dop_name(name: &str) -> ParsedDopName {
 }
 
 /// Add DOPs section to the tree by collecting from service/job request/response params
-pub fn add_dops_section<'a>(
-    b: &mut TreeBuilder,
-    layer: &DiagLayer<'a>,
-    depth: usize,
-) {
+pub fn add_dops_section<'a>(b: &mut TreeBuilder, layer: &DiagLayer<'a>, depth: usize) {
     let mut all_dops: Vec<DopInfo<'a>> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    // Collect DOPs from own services (requests + responses)
-    if let Some(services) = layer.diag_services() {
-        for svc in services.iter() {
-            let ds = DiagService(svc);
-            collect_dops_from_service(&ds, &mut all_dops, &mut seen);
-        }
-    }
-
-    // Collect DOPs from single ECU jobs (input/output/neg_output params)
-    if let Some(jobs) = layer.single_ecu_jobs() {
-        for job in jobs.iter() {
-            // Collect from input params
-            if let Some(input_params) = job.input_params() {
-                for jp in input_params.iter() {
-                    if let Some(dop) = jp.dop_base() {
-                        collect_single_dop(cda_database::datatypes::DataOperation(dop), &mut all_dops, &mut seen);
-                    }
-                }
-            }
-            // Collect from output params
-            if let Some(output_params) = job.output_params() {
-                for jp in output_params.iter() {
-                    if let Some(dop) = jp.dop_base() {
-                        collect_single_dop(cda_database::datatypes::DataOperation(dop), &mut all_dops, &mut seen);
-                    }
-                }
-            }
-            // Collect from negative output params
-            if let Some(neg_output_params) = job.neg_output_params() {
-                for jp in neg_output_params.iter() {
-                    if let Some(dop) = jp.dop_base() {
-                        collect_single_dop(cda_database::datatypes::DataOperation(dop), &mut all_dops, &mut seen);
-                    }
-                }
-            }
-        }
-    }
+    // Collect DOPs from own layer's services and jobs only
+    collect_dops_from_layer(layer, &mut all_dops, &mut seen);
 
     // DOPs are already deduplicated via the seen set
     let unique_dops = all_dops;
@@ -190,6 +180,7 @@ pub fn add_dops_section<'a>(
     use cda_database::datatypes::DataOperationVariant;
     let mut dtc_dops: Vec<DopInfo> = Vec::new();
     let mut env_data_descs: Vec<DopInfo> = Vec::new();
+    let mut env_datas: Vec<DopInfo> = Vec::new();
     let mut data_object_props: Vec<DopInfo> = Vec::new();
     let mut structures: Vec<DopInfo> = Vec::new();
     let mut static_fields: Vec<DopInfo> = Vec::new();
@@ -201,14 +192,11 @@ pub fn add_dops_section<'a>(
         if let Ok(variant) = dop_info.dop.variant() {
             match variant {
                 DataOperationVariant::Dtc(_) => dtc_dops.push(dop_info),
-                DataOperationVariant::EnvDataDesc(_) | DataOperationVariant::EnvData(_) => {
-                    env_data_descs.push(dop_info)
-                }
+                DataOperationVariant::EnvDataDesc(_) => env_data_descs.push(dop_info),
+                DataOperationVariant::EnvData(_) => env_datas.push(dop_info),
                 DataOperationVariant::Structure(_) => structures.push(dop_info),
                 DataOperationVariant::StaticField(_) => static_fields.push(dop_info),
-                DataOperationVariant::DynamicLengthField(_) => {
-                    dynamic_length_fields.push(dop_info)
-                }
+                DataOperationVariant::DynamicLengthField(_) => dynamic_length_fields.push(dop_info),
                 DataOperationVariant::EndOfPdu(_) => end_of_pdu_fields.push(dop_info),
                 DataOperationVariant::Mux(_) => mux_dops.push(dop_info),
                 DataOperationVariant::Normal(_) => data_object_props.push(dop_info),
@@ -222,6 +210,7 @@ pub fn add_dops_section<'a>(
     let categories: Vec<(DopCategory, &Vec<DopInfo>)> = [
         (DopCategory::DtcDops, &dtc_dops),
         (DopCategory::EnvDataDescs, &env_data_descs),
+        (DopCategory::EnvDatas, &env_datas),
         (DopCategory::DataObjectProps, &data_object_props),
         (DopCategory::Structures, &structures),
         (DopCategory::StaticFields, &static_fields),
@@ -287,8 +276,12 @@ fn collect_single_dop<'a>(
     all_dops: &mut Vec<DopInfo<'a>>,
     seen: &mut std::collections::HashSet<String>,
 ) {
-    let Some(name) = dop_wrap.short_name() else { return };
-    if !seen.insert(name.to_owned()) { return; }
+    let Some(name) = dop_wrap.short_name() else {
+        return;
+    };
+    if !seen.insert(name.to_owned()) {
+        return;
+    }
 
     let specific_type_raw = format!("{:?}", dop_wrap.specific_data_type());
     let dop_type = specific_type_raw.trim_matches('"').to_owned();
@@ -312,30 +305,37 @@ fn collect_single_dop<'a>(
 /// Extract metadata (category, units, desc_id) from a DataOperation
 fn extract_dop_metadata(
     dop_wrap: &cda_database::datatypes::DataOperation<'_>,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     use cda_database::datatypes::DataOperationVariant;
-    if let Ok(variant) = dop_wrap.variant() {
-        match variant {
-            DataOperationVariant::Normal(normal_dop) => {
-                let cat = normal_dop.compu_method()
-                    .map(|cm| format!("{:?}", cm.category()));
-                let int_unit = normal_dop.unit_ref()
-                    .and_then(|u| u.short_name())
-                    .map(|s| s.to_owned());
-                let phys = normal_dop.unit_ref()
-                    .and_then(|u| u.display_name())
-                    .or_else(|| normal_dop.unit_ref().and_then(|u| u.short_name()))
-                    .map(|s| s.to_owned());
-                (cat, int_unit, phys, None)
-            }
-            DataOperationVariant::EnvDataDesc(env_desc) => {
-                let did = env_desc.param_short_name().map(|s| s.to_owned());
-                (None, None, None, did)
-            }
-            _ => (None, None, None, None),
+    let Ok(variant) = dop_wrap.variant() else {
+        return (None, None, None, None);
+    };
+    match variant {
+        DataOperationVariant::Normal(normal_dop) => {
+            let cat = normal_dop
+                .compu_method()
+                .map(|cm| format!("{:?}", cm.category()));
+            let int_unit = normal_dop
+                .unit_ref()
+                .and_then(|u| u.short_name())
+                .map(|s| s.to_owned());
+            let phys = normal_dop
+                .unit_ref()
+                .and_then(|u| u.display_name())
+                .or_else(|| normal_dop.unit_ref().and_then(|u| u.short_name()))
+                .map(|s| s.to_owned());
+            (cat, int_unit, phys, None)
         }
-    } else {
-        (None, None, None, None)
+        DataOperationVariant::EnvDataDesc(env_desc) => {
+            let did = env_desc.param_short_name().map(|s| s.to_owned());
+            (None, None, None, did)
+        }
+        _ => (None, None, None, None),
     }
 }
 
@@ -350,140 +350,88 @@ fn collect_nested_dops<'a>(
     // (the wrapper's variant() method has restrictive lifetime bounds)
     let raw = dop_wrap.0;
 
-    // Structure: collect DOPs from structure params
-    if let Some(structure) = raw.specific_data_as_structure() {
-        if let Some(params) = structure.params() {
-            for param in params.iter() {
-                let pw = Parameter(param);
-                collect_dop_from_param(&pw, all_dops, seen);
-            }
-        }
+    // Helper macro: collect DOPs from a field's basic_structure + env_data_desc
+    macro_rules! collect_field_dops {
+        ($field:expr) => {
+            $field
+                .basic_structure()
+                .into_iter()
+                .chain($field.env_data_desc())
+                .for_each(|d| {
+                    collect_single_dop(cda_database::datatypes::DataOperation(d), all_dops, seen)
+                })
+        };
     }
+
+    // Structure: collect DOPs from structure params
+    raw.specific_data_as_structure()
+        .and_then(|s| s.params())
+        .into_iter()
+        .flat_map(|p| p.iter())
+        .for_each(|param| collect_dop_from_param(&Parameter(param), all_dops, seen));
 
     // EnvDataDesc: collect nested env_data DOPs
-    if let Some(env_desc) = raw.specific_data_as_env_data_desc() {
-        if let Some(env_datas) = env_desc.env_datas() {
-            for env_dop in env_datas.iter() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(env_dop),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-    }
+    raw.specific_data_as_env_data_desc()
+        .and_then(|ed| ed.env_datas())
+        .into_iter()
+        .flat_map(|v| v.iter())
+        .for_each(|env_dop| {
+            collect_single_dop(
+                cda_database::datatypes::DataOperation(env_dop),
+                all_dops,
+                seen,
+            )
+        });
 
     // EnvData: collect DOPs from env data params
-    if let Some(env_data) = raw.specific_data_as_env_data() {
-        if let Some(params) = env_data.params() {
-            for param in params.iter() {
-                let pw = Parameter(param);
-                collect_dop_from_param(&pw, all_dops, seen);
-            }
-        }
-    }
+    raw.specific_data_as_env_data()
+        .and_then(|ed| ed.params())
+        .into_iter()
+        .flat_map(|p| p.iter())
+        .for_each(|param| collect_dop_from_param(&Parameter(param), all_dops, seen));
 
     // Mux: switch key DOP, default case structure, case structures
     if let Some(mux_dop) = raw.specific_data_as_muxdop() {
-        if let Some(switch_key) = mux_dop.switch_key() {
-            if let Some(sk_dop) = switch_key.dop() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(sk_dop),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-        if let Some(default_case) = mux_dop.default_case() {
-            if let Some(dc_dop) = default_case.structure() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(dc_dop),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-        if let Some(cases) = mux_dop.cases() {
-            for case in cases.iter() {
-                if let Some(c_dop) = case.structure() {
-                    collect_single_dop(
-                        cda_database::datatypes::DataOperation(c_dop),
-                        all_dops,
-                        seen,
-                    );
-                }
-            }
-        }
+        mux_dop
+            .switch_key()
+            .and_then(|sk| sk.dop())
+            .into_iter()
+            .chain(mux_dop.default_case().and_then(|dc| dc.structure()))
+            .for_each(|d| {
+                collect_single_dop(cda_database::datatypes::DataOperation(d), all_dops, seen)
+            });
+
+        mux_dop
+            .cases()
+            .into_iter()
+            .flat_map(|c| c.iter())
+            .filter_map(|case| case.structure())
+            .for_each(|d| {
+                collect_single_dop(cda_database::datatypes::DataOperation(d), all_dops, seen)
+            });
     }
 
-    // StaticField: field -> basic_structure + env_data_desc
-    if let Some(static_field) = raw.specific_data_as_static_field() {
-        if let Some(field) = static_field.field() {
-            if let Some(bs) = field.basic_structure() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(bs),
-                    all_dops,
-                    seen,
-                );
-            }
-            if let Some(ed) = field.env_data_desc() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(ed),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-    }
+    // StaticField / EndOfPdu / DynamicLengthField: field -> basic_structure + env_data_desc
+    [
+        raw.specific_data_as_static_field()
+            .and_then(|sf| sf.field()),
+        raw.specific_data_as_end_of_pdu_field()
+            .and_then(|ep| ep.field()),
+        raw.specific_data_as_dynamic_length_field()
+            .and_then(|df| df.field()),
+    ]
+    .into_iter()
+    .flatten()
+    .for_each(|field| collect_field_dops!(field));
 
-    // EndOfPdu: field -> basic_structure + env_data_desc
-    if let Some(end_of_pdu) = raw.specific_data_as_end_of_pdu_field() {
-        if let Some(field) = end_of_pdu.field() {
-            if let Some(bs) = field.basic_structure() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(bs),
-                    all_dops,
-                    seen,
-                );
-            }
-            if let Some(ed) = field.env_data_desc() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(ed),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-    }
-
-    // DynamicLengthField: field + determine_number_of_items
-    if let Some(dyn_field) = raw.specific_data_as_dynamic_length_field() {
-        if let Some(field) = dyn_field.field() {
-            if let Some(bs) = field.basic_structure() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(bs),
-                    all_dops,
-                    seen,
-                );
-            }
-            if let Some(ed) = field.env_data_desc() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(ed),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-        if let Some(det) = dyn_field.determine_number_of_items() {
-            if let Some(det_dop) = det.dop() {
-                collect_single_dop(
-                    cda_database::datatypes::DataOperation(det_dop),
-                    all_dops,
-                    seen,
-                );
-            }
-        }
-    }
+    // DynamicLengthField: also has determine_number_of_items -> dop
+    raw.specific_data_as_dynamic_length_field()
+        .and_then(|df| df.determine_number_of_items())
+        .and_then(|det| det.dop())
+        .into_iter()
+        .for_each(|d| {
+            collect_single_dop(cda_database::datatypes::DataOperation(d), all_dops, seen)
+        });
 }
 
 /// Extract a DOP from a Parameter wrapper and add it to the collection
@@ -498,18 +446,110 @@ fn collect_dop_from_param<'a>(
         return;
     };
 
+    // Helper macro: collect dop + structure from a table row
+    macro_rules! collect_table_row {
+        ($row:expr) => {
+            $row.dop()
+                .into_iter()
+                .chain($row.structure())
+                .for_each(|d| {
+                    collect_single_dop(cda_database::datatypes::DataOperation(d), all_dops, seen)
+                })
+        };
+    }
+
     // Get the raw DOP from param's specific data depending on type
-    let raw_dop = match param_type {
+    match param_type {
         ParamType::Value => param.specific_data_as_value().and_then(|v| v.dop()),
         ParamType::PhysConst => param.specific_data_as_phys_const().and_then(|v| v.dop()),
-        ParamType::LengthKey => param.specific_data_as_length_key_ref().and_then(|v| v.dop()),
+        ParamType::LengthKey => param
+            .specific_data_as_length_key_ref()
+            .and_then(|v| v.dop()),
         ParamType::System => param.specific_data_as_system().and_then(|v| v.dop()),
         _ => None,
-    };
-
-    if let Some(dop) = raw_dop {
-        collect_single_dop(cda_database::datatypes::DataOperation(dop), all_dops, seen);
     }
+    .into_iter()
+    .for_each(|dop| {
+        collect_single_dop(cda_database::datatypes::DataOperation(dop), all_dops, seen)
+    });
+
+    // TableKey: collect DOPs from referenced TableDop (key_dop + row dops/structures)
+    // or from a direct TableRow reference
+    if matches!(param_type, ParamType::TableKey) {
+        let tk = param.0.specific_data_as_table_key();
+
+        tk.and_then(|tk| tk.table_key_reference_as_table_dop())
+            .into_iter()
+            .for_each(|table_dop| {
+                table_dop.key_dop().into_iter().for_each(|kd| {
+                    collect_single_dop(cda_database::datatypes::DataOperation(kd), all_dops, seen)
+                });
+
+                table_dop
+                    .rows()
+                    .into_iter()
+                    .flat_map(|rows| rows.iter())
+                    .for_each(|row| collect_table_row!(row));
+            });
+
+        tk.and_then(|tk| tk.table_key_reference_as_table_row())
+            .into_iter()
+            .for_each(|row| collect_table_row!(row));
+    }
+
+    // TableEntry: collect DOPs from the referenced TableRow
+    if matches!(param_type, ParamType::TableEntry) {
+        param
+            .0
+            .specific_data_as_table_entry()
+            .and_then(|te| te.table_row())
+            .into_iter()
+            .for_each(|row| collect_table_row!(row));
+    }
+
+    // TableStruct: recurse into the table_key param
+    if matches!(param_type, ParamType::TableStruct) {
+        param
+            .0
+            .specific_data_as_table_struct()
+            .and_then(|ts| ts.table_key())
+            .into_iter()
+            .for_each(|tk_param| collect_dop_from_param(&Parameter(tk_param), all_dops, seen));
+    }
+}
+
+/// Collect all DOPs from a single DiagLayer (own services + single ECU jobs)
+fn collect_dops_from_layer<'a>(
+    layer: &DiagLayer<'a>,
+    all_dops: &mut Vec<DopInfo<'a>>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    // Collect from diag services (requests + responses)
+    layer
+        .diag_services()
+        .into_iter()
+        .flat_map(|s| s.iter())
+        .for_each(|svc| collect_dops_from_service(&DiagService(svc), all_dops, seen));
+
+    // Collect from single ECU jobs (input/output/neg_output params)
+    layer
+        .single_ecu_jobs()
+        .into_iter()
+        .flat_map(|j| j.iter())
+        .for_each(|job| {
+            [
+                job.input_params(),
+                job.output_params(),
+                job.neg_output_params(),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|params| params.iter())
+            .filter_map(|jp| jp.dop_base())
+            .for_each(|dop| {
+                collect_single_dop(cda_database::datatypes::DataOperation(dop), all_dops, seen)
+            });
+        });
 }
 
 /// Collect DOPs from a service's request and response params
@@ -518,49 +558,41 @@ fn collect_dops_from_service<'a>(
     all_dops: &mut Vec<DopInfo<'a>>,
     seen: &mut std::collections::HashSet<String>,
 ) {
-    // Collect from request params
-    if let Some(request) = ds.request() {
-        if let Some(params) = request.params() {
-            for param in params.iter() {
-                let pw = Parameter(param);
-                collect_dop_from_param(&pw, all_dops, seen);
-            }
-        }
+    macro_rules! collect_params {
+        ($params:expr) => {
+            $params
+                .iter()
+                .for_each(|param| collect_dop_from_param(&Parameter(param), all_dops, seen))
+        };
     }
+
+    // Collect from request params
+    ds.request()
+        .and_then(|r| r.params())
+        .into_iter()
+        .for_each(|params| collect_params!(params));
 
     // Collect from positive response params
-    if let Some(pos_responses) = ds.pos_responses() {
-        for response in pos_responses.iter() {
-            if let Some(params) = response.params() {
-                for param in params.iter() {
-                    let pw = Parameter(param);
-                    collect_dop_from_param(&pw, all_dops, seen);
-                }
-            }
-        }
-    }
+    ds.pos_responses()
+        .into_iter()
+        .flat_map(|r| r.iter())
+        .filter_map(|resp| resp.params())
+        .for_each(|params| collect_params!(params));
 
     // Collect from negative response params
-    if let Some(neg_responses) = ds.neg_responses() {
-        for response in neg_responses.iter() {
-            if let Some(params) = response.params() {
-                for param in params.iter() {
-                    let pw = Parameter(param);
-                    collect_dop_from_param(&pw, all_dops, seen);
-                }
-            }
-        }
-    }
+    ds.neg_responses()
+        .into_iter()
+        .flat_map(|r| r.iter())
+        .filter_map(|resp| resp.params())
+        .for_each(|params| collect_params!(params));
 }
 
-
 /// Build overview table showing semantic categories and their counts
-fn build_dops_overview_table(categories: &[(DopCategory, &Vec<DopInfo<'_>>)]) -> Vec<DetailSectionData> {
+fn build_dops_overview_table(
+    categories: &[(DopCategory, &Vec<DopInfo<'_>>)],
+) -> Vec<DetailSectionData> {
     let header = DetailRow {
-        cells: vec![
-            "Category".to_owned(),
-            "Count".to_owned(),
-        ],
+        cells: vec!["Category".to_owned(), "Count".to_owned()],
         cell_types: vec![CellType::Text, CellType::NumericValue],
         indent: 0,
         ..Default::default()
@@ -570,10 +602,7 @@ fn build_dops_overview_table(categories: &[(DopCategory, &Vec<DopInfo<'_>>)]) ->
 
     for (cat, dops) in categories {
         rows.push(DetailRow {
-            cells: vec![
-                cat.label().to_string(),
-                dops.len().to_string(),
-            ],
+            cells: vec![cat.label().to_string(), dops.len().to_string()],
             cell_types: vec![CellType::Text, CellType::NumericValue],
             indent: 0,
             row_type: DetailRowType::Normal,
@@ -643,7 +672,13 @@ fn kv_row(key: &str, value: String, value_type: CellType, indent: usize) -> Deta
 }
 
 /// Pick a label for a raw SD entry: prefer si, then ti, then a numbered fallback.
-fn sd_entry_label(si: &str, ti: &str, caption: &str, unnamed_idx: &mut usize, unnamed_count: usize) -> String {
+fn sd_entry_label(
+    si: &str,
+    ti: &str,
+    caption: &str,
+    unnamed_idx: &mut usize,
+    unnamed_count: usize,
+) -> String {
     if !si.is_empty() {
         si.to_owned()
     } else if !ti.is_empty() {
@@ -667,11 +702,14 @@ macro_rules! sdg_entry_stats {
                 .map(|sd| !sd.si().unwrap_or("").is_empty() || !sd.ti().unwrap_or("").is_empty())
                 .unwrap_or(true) // nested SDG ⇒ treat as named
         });
-        let unnamed_count = $sds.iter().filter(|e| {
-            e.sd_or_sdg_as_sd()
-                .map(|sd| sd.si().unwrap_or("").is_empty() && sd.ti().unwrap_or("").is_empty())
-                .unwrap_or(false)
-        }).count();
+        let unnamed_count = $sds
+            .iter()
+            .filter(|e| {
+                e.sd_or_sdg_as_sd()
+                    .map(|sd| sd.si().unwrap_or("").is_empty() && sd.ti().unwrap_or("").is_empty())
+                    .unwrap_or(false)
+            })
+            .count();
         (has_named_or_nested, unnamed_count)
     }};
 }
@@ -689,7 +727,12 @@ macro_rules! emit_sdg_header {
                 metadata: None,
             });
             if let Some(si) = $sdg.si() {
-                $rows.push(kv_row("SI", si.to_owned(), CellType::Text, $base_indent + 1));
+                $rows.push(kv_row(
+                    "SI",
+                    si.to_owned(),
+                    CellType::Text,
+                    $base_indent + 1,
+                ));
             }
             $base_indent + 1
         } else {
@@ -742,7 +785,8 @@ macro_rules! append_sdg_rows {
                         let n_caption = nested.caption_sn().unwrap_or("SDG").to_owned();
                         if let Some(n_sds) = nested.sds() {
                             let (n_has_named, n_unnamed_count) = sdg_entry_stats!(n_sds);
-                            let n_indent = emit_sdg_header!($rows, nested, n_caption, n_has_named, indent);
+                            let n_indent =
+                                emit_sdg_header!($rows, nested, n_caption, n_has_named, indent);
                             emit_sd_rows!($rows, n_sds, n_caption, n_unnamed_count, n_indent);
                         }
                     }
@@ -753,11 +797,7 @@ macro_rules! append_sdg_rows {
 }
 
 /// Add DTC child nodes under an individual DTC-DOP tree node
-fn add_dtc_dop_children(
-    b: &mut TreeBuilder,
-    dop_info: &DopInfo<'_>,
-    depth: usize,
-) {
+fn add_dtc_dop_children(b: &mut TreeBuilder, dop_info: &DopInfo<'_>, depth: usize) {
     use cda_database::datatypes::DataOperationVariant;
 
     let Ok(DataOperationVariant::Dtc(dtc_dop)) = dop_info.dop.variant() else {
@@ -774,11 +814,7 @@ fn add_dtc_dop_children(
             .filter(|s| !s.is_empty())
             .map(str::to_owned)
             .unwrap_or_else(|| format!("0x{:06X}", dtc.trouble_code()));
-        let text = dtc
-            .text()
-            .and_then(|t| t.value())
-            .unwrap_or("")
-            .to_owned();
+        let text = dtc.text().and_then(|t| t.value()).unwrap_or("").to_owned();
 
         let display_name = format!("{} - {}", short_name, code_str);
 
@@ -801,9 +837,8 @@ fn add_dtc_dop_children(
 
         // Collect optional property rows via flatten
         let optional_rows: Vec<DetailRow> = [
-            dtc.display_trouble_code().map(|dc| {
-                kv_row("Display Trouble Code", dc.to_owned(), CellType::Text, 0)
-            }),
+            dtc.display_trouble_code()
+                .map(|dc| kv_row("Display Trouble Code", dc.to_owned(), CellType::Text, 0)),
             (!text.is_empty()).then(|| kv_row("Text", text, CellType::Text, 0)),
             dtc.text()
                 .and_then(|t| t.ti())
@@ -858,7 +893,13 @@ fn build_category_overview_table(dops: &[DopInfo<'_>]) -> Vec<DetailSectionData>
             "Physical".to_owned(),
             "DESC ID".to_owned(),
         ],
-        cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+        cell_types: vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
         indent: 0,
         ..Default::default()
     };
@@ -874,7 +915,13 @@ fn build_category_overview_table(dops: &[DopInfo<'_>]) -> Vec<DetailSectionData>
                 dop_info.phys_unit.as_deref().unwrap_or("").to_owned(),
                 dop_info.desc_id.as_deref().unwrap_or("").to_owned(),
             ],
-            cell_types: vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+            cell_types: vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
             indent: 0,
             row_type: DetailRowType::Normal,
             metadata: None,
@@ -909,20 +956,23 @@ fn push_types_section(types_rows: Vec<DetailRow>, sections: &mut Vec<DetailSecti
             indent: 0,
             ..Default::default()
         };
-        sections.insert(0, DetailSectionData {
-            title: "Types".to_owned(),
-            render_as_header: false,
-            section_type: DetailSectionType::Custom,
-            content: DetailContent::Table {
-                header,
-                rows: types_rows,
-                constraints: vec![
-                    ColumnConstraint::Percentage(40),
-                    ColumnConstraint::Percentage(60),
-                ],
-                use_row_selection: true,
+        sections.insert(
+            0,
+            DetailSectionData {
+                title: "Types".to_owned(),
+                render_as_header: false,
+                section_type: DetailSectionType::Custom,
+                content: DetailContent::Table {
+                    header,
+                    rows: types_rows,
+                    constraints: vec![
+                        ColumnConstraint::Percentage(40),
+                        ColumnConstraint::Percentage(60),
+                    ],
+                    use_row_selection: true,
+                },
             },
-        });
+        );
     }
 }
 
@@ -1020,7 +1070,10 @@ fn build_normal_dop_tabs(
     // Append type-specific rows to the shared types_rows (merges with Overview data)
     if let Ok(coded_type) = normal_dop.diag_coded_type() {
         types_rows.push(DetailRow {
-            cells: vec!["Diag Coded Type".to_owned(), format!("{:?}", coded_type.base_datatype())],
+            cells: vec![
+                "Diag Coded Type".to_owned(),
+                format!("{:?}", coded_type.base_datatype()),
+            ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
             row_type: DetailRowType::Normal,
@@ -1101,23 +1154,26 @@ fn build_normal_dop_tabs(
 
     if let Some(compu_method) = normal_dop.compu_method() {
         compu_i2p_rows.push(DetailRow {
-            cells: vec!["Category".to_owned(), format!("{:?}", compu_method.category())],
+            cells: vec![
+                "Category".to_owned(),
+                format!("{:?}", compu_method.category()),
+            ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
             row_type: DetailRowType::Normal,
             metadata: None,
         });
 
-        if let Some(internal_to_phys) = compu_method.internal_to_phys() {
-            if let Some(scales) = internal_to_phys.compu_scales() {
-                compu_i2p_rows.push(DetailRow {
-                    cells: vec!["Scales Count".to_owned(), scales.len().to_string()],
-                    cell_types: vec![CellType::Text, CellType::NumericValue],
-                    indent: 0,
-                    row_type: DetailRowType::Normal,
-                    metadata: None,
-                });
-            }
+        if let Some(internal_to_phys) = compu_method.internal_to_phys()
+            && let Some(scales) = internal_to_phys.compu_scales()
+        {
+            compu_i2p_rows.push(DetailRow {
+                cells: vec!["Scales Count".to_owned(), scales.len().to_string()],
+                cell_types: vec![CellType::Text, CellType::NumericValue],
+                indent: 0,
+                row_type: DetailRowType::Normal,
+                metadata: None,
+            });
         }
     }
 
@@ -1146,18 +1202,17 @@ fn build_normal_dop_tabs(
     // Tab 4: Compu-Phys-To-Internal (always shown)
     let mut compu_p2i_rows = Vec::new();
 
-    if let Some(compu_method) = normal_dop.compu_method() {
-        if let Some(phys_to_internal) = compu_method.phys_to_internal() {
-            if let Some(scales) = phys_to_internal.compu_scales() {
-                compu_p2i_rows.push(DetailRow {
-                    cells: vec!["Scales Count".to_owned(), scales.len().to_string()],
-                    cell_types: vec![CellType::Text, CellType::NumericValue],
-                    indent: 0,
-                    row_type: DetailRowType::Normal,
-                    metadata: None,
-                });
-            }
-        }
+    if let Some(compu_method) = normal_dop.compu_method()
+        && let Some(phys_to_internal) = compu_method.phys_to_internal()
+        && let Some(scales) = phys_to_internal.compu_scales()
+    {
+        compu_p2i_rows.push(DetailRow {
+            cells: vec!["Scales Count".to_owned(), scales.len().to_string()],
+            cell_types: vec![CellType::Text, CellType::NumericValue],
+            indent: 0,
+            row_type: DetailRowType::Normal,
+            metadata: None,
+        });
     }
 
     let compu_p2i_header = DetailRow {
@@ -1406,7 +1461,10 @@ fn build_dtc_dop_tabs(
 ) {
     if let Ok(coded_type) = dtc_dop.diag_coded_type() {
         types_rows.push(DetailRow {
-            cells: vec!["Diag Coded Type".to_owned(), format!("{:?}", coded_type.base_datatype())],
+            cells: vec![
+                "Diag Coded Type".to_owned(),
+                format!("{:?}", coded_type.base_datatype()),
+            ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
             row_type: DetailRowType::Normal,
@@ -1416,7 +1474,10 @@ fn build_dtc_dop_tabs(
 
     if let Some(compu_method) = dtc_dop.compu_method() {
         types_rows.push(DetailRow {
-            cells: vec!["Compu Category".to_owned(), format!("{:?}", compu_method.category())],
+            cells: vec![
+                "Compu Category".to_owned(),
+                format!("{:?}", compu_method.category()),
+            ],
             cell_types: vec![CellType::Text, CellType::Text],
             indent: 0,
             row_type: DetailRowType::Normal,
@@ -1458,11 +1519,7 @@ fn build_dtc_dop_tabs(
             } else {
                 format!("0x{:06X}", dtc.trouble_code())
             };
-            let text = dtc
-                .text()
-                .and_then(|t| t.value())
-                .unwrap_or("")
-                .to_owned();
+            let text = dtc.text().and_then(|t| t.value()).unwrap_or("").to_owned();
 
             dtcs_rows.push(DetailRow {
                 cells: vec![short_name, code_str, text],

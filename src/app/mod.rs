@@ -21,7 +21,8 @@ use ratatui::{
 };
 
 use crate::tree::{
-    CellType, DetailContent, DetailRow, DetailRowType, DetailSectionType, NodeType, RowMetadata, SectionType, TreeNode,
+    CellType, DetailContent, DetailRow, DetailRowType, DetailSectionType, NodeType, RowMetadata,
+    SectionType, TreeNode,
 };
 
 // -----------------------------------------------------------------------
@@ -155,11 +156,12 @@ pub struct App {
     tree_scrollbar_area: Option<Rect>, // Cached tree scrollbar area for mouse handling
     detail_scrollbar_area: Option<Rect>, // Cached detail scrollbar area for mouse handling
     dragging_scrollbar: bool, // Whether user is currently dragging a scrollbar
-    dragging_tree_scrollbar: bool, // true = dragging tree scrollbar, false = dragging detail scrollbar
+    // true = dragging tree scrollbar, false = detail scrollbar
+    dragging_tree_scrollbar: bool,
     last_diagcomm_tab: usize, // Last selected tab when viewing service/job nodes (for persistence)
     last_section_tabs: HashMap<DetailSectionType, usize>, // Last selected tab per section type
-    jump_buffer: String,                    // Characters typed for type-to-jump in table views
-    jump_buffer_time: Option<Instant>,      // Timestamp of last type-to-jump character for auto-reset
+    jump_buffer: String,      // Characters typed for type-to-jump in table views
+    jump_buffer_time: Option<Instant>, // Timestamp of last type-to-jump character for auto-reset
 }
 
 #[derive(Clone)]
@@ -311,7 +313,7 @@ impl App {
     fn get_table_section_idx(&self) -> usize {
         self.selected_tab + self.get_section_offset()
     }
-    
+
     /// Update the selected tab and persist it generically for the current section type
     fn set_selected_tab(&mut self, new_tab: usize) {
         self.selected_tab = new_tab;
@@ -319,29 +321,28 @@ impl App {
         self.jump_buffer_time = None;
 
         // Save tab selection for the current section type
-        if self.cursor < self.visible.len() {
-            if let Some(&node_idx) = self.visible.get(self.cursor) {
-                if node_idx < self.all_nodes.len() {
-                    let node = &self.all_nodes[node_idx];
-                    
-                    // For backward compatibility, still save diagcomm tab
-                    if matches!(
-                        node.node_type,
-                        NodeType::Service | NodeType::ParentRefService | NodeType::Job
-                    ) {
-                        self.last_diagcomm_tab = new_tab;
-                    }
-                    
-                    // Save tab for any node with detail sections that have a section type
-                    if !node.detail_sections.is_empty() {
-                        // Get the section type from the currently selected tab
-                        let section_offset = self.get_section_offset();
-                        let section_idx = new_tab + section_offset;
-                        if section_idx < node.detail_sections.len() {
-                            let section_type = node.detail_sections[section_idx].section_type;
-                            self.last_section_tabs.insert(section_type, new_tab);
-                        }
-                    }
+        if self.cursor < self.visible.len()
+            && let Some(&node_idx) = self.visible.get(self.cursor)
+            && node_idx < self.all_nodes.len()
+        {
+            let node = &self.all_nodes[node_idx];
+
+            // For backward compatibility, still save diagcomm tab
+            if matches!(
+                node.node_type,
+                NodeType::Service | NodeType::ParentRefService | NodeType::Job
+            ) {
+                self.last_diagcomm_tab = new_tab;
+            }
+
+            // Save tab for any node with detail sections that have a section type
+            if !node.detail_sections.is_empty() {
+                // Get the section type from the currently selected tab
+                let section_offset = self.get_section_offset();
+                let section_idx = new_tab + section_offset;
+                if section_idx < node.detail_sections.len() {
+                    let section_type = node.detail_sections[section_idx].section_type;
+                    self.last_section_tabs.insert(section_type, new_tab);
                 }
             }
         }
@@ -373,14 +374,14 @@ impl App {
 
         // Find first row where first cell starts with the buffer (case-insensitive)
         for (i, row) in rows.iter().enumerate() {
-            if let Some(first_cell) = row.cells.first() {
-                if first_cell.to_lowercase().starts_with(&buffer_lower) {
-                    if section_idx < self.section_cursors.len() {
-                        self.section_cursors[section_idx] = i;
-                    }
-                    self.status = format!("Jump: \"{}\"", self.jump_buffer);
-                    return;
+            if let Some(first_cell) = row.cells.first()
+                && first_cell.to_lowercase().starts_with(&buffer_lower)
+            {
+                if section_idx < self.section_cursors.len() {
+                    self.section_cursors[section_idx] = i;
                 }
+                self.status = format!("Jump: \"{}\"", self.jump_buffer);
+                return;
             }
         }
 
@@ -389,31 +390,33 @@ impl App {
 
     /// Apply sorting to rows if a sort state exists for the given section
     fn apply_table_sort(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
-        if section_idx < self.table_sort_state.len() {
-            if let Some(sort_state) = &self.table_sort_state[section_idx] {
-                let mut sorted = rows.to_vec();
-                let col = sort_state.column;
-                let dir = sort_state.direction;
-                sorted.sort_by(|a, b| {
-                    let a_cell = a.cells.get(col).map(|s| s.as_str()).unwrap_or("");
-                    let b_cell = b.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+        if let Some(sort_state) = self
+            .table_sort_state
+            .get(section_idx)
+            .and_then(|s| s.as_ref())
+        {
+            let mut sorted = rows.to_vec();
+            let col = sort_state.column;
+            let dir = sort_state.direction;
+            sorted.sort_by(|a, b| {
+                let a_cell = a.cells.get(col).map(|s| s.as_str()).unwrap_or("");
+                let b_cell = b.cells.get(col).map(|s| s.as_str()).unwrap_or("");
 
-                    // Try to parse as numbers first, fall back to string comparison
-                    let cmp = match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
-                        (Ok(a_num), Ok(b_num)) => a_num
-                            .partial_cmp(&b_num)
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        _ => a_cell.cmp(b_cell),
-                    };
+                // Try to parse as numbers first, fall back to string comparison
+                let cmp = match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
+                    (Ok(a_num), Ok(b_num)) => a_num
+                        .partial_cmp(&b_num)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    _ => a_cell.cmp(b_cell),
+                };
 
-                    // Apply direction
-                    match dir {
-                        SortDirection::Ascending => cmp,
-                        SortDirection::Descending => cmp.reverse(),
-                    }
-                });
-                return sorted;
-            }
+                // Apply direction
+                match dir {
+                    SortDirection::Ascending => cmp,
+                    SortDirection::Descending => cmp.reverse(),
+                }
+            });
+            return sorted;
         }
         rows.to_vec()
     }
@@ -499,7 +502,11 @@ impl App {
     // -------------------------------------------------------------------
 
     /// Check if a node at index i is under a specific section type
-    fn is_under_section_type(&self, node_idx: usize, section_type: crate::tree::SectionType) -> bool {
+    fn is_under_section_type(
+        &self,
+        node_idx: usize,
+        section_type: crate::tree::SectionType,
+    ) -> bool {
         if node_idx == 0 {
             return false;
         }
@@ -516,34 +523,8 @@ impl App {
             }
 
             // If this is a section header at depth 0, check if it matches
-            if parent.depth == 0 && matches!(&parent.section_type, Some(st) if *st == section_type) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// DEPRECATED: Use is_under_section_type instead
-    /// Check if a node at index i is under a specific section header
-    fn is_under_section(&self, node_idx: usize, section_name: &str) -> bool {
-        if node_idx == 0 {
-            return false;
-        }
-
-        let node_depth = self.all_nodes[node_idx].depth;
-
-        // Search backwards from node_idx to find parent section
-        for i in (0..node_idx).rev() {
-            let parent = &self.all_nodes[i];
-
-            // Stop if we reach a node at the same or lower depth (not a parent)
-            if parent.depth >= node_depth {
-                continue;
-            }
-
-            // If this is a section header at depth 0, check if it matches
-            if parent.depth == 0 && parent.text == section_name {
+            if parent.depth == 0 && matches!(&parent.section_type, Some(st) if *st == section_type)
+            {
                 return true;
             }
         }
@@ -575,7 +556,7 @@ impl App {
             }
 
             self.visible.push(i);
-            
+
             // Mark as collapsed if node has unexpanded children
             if node.has_children && !node.expanded {
                 collapsed_below = Some(node.depth);
@@ -598,17 +579,12 @@ impl App {
     }
 
     /// Apply a single search filter to the include vector
-    fn apply_search_filter(
-        &self,
-        include: &[bool],
-        query: &str,
-        scope: &SearchScope,
-    ) -> Vec<bool> {
+    fn apply_search_filter(&self, include: &[bool], query: &str, scope: &SearchScope) -> Vec<bool> {
         let q = query.to_lowercase();
         let mut new_include = vec![false; self.all_nodes.len()];
 
-        for i in 0..self.all_nodes.len() {
-            if !include[i] {
+        for (i, &included) in include.iter().enumerate().take(self.all_nodes.len()) {
+            if !included {
                 continue;
             }
 
@@ -654,10 +630,8 @@ impl App {
                     Some(crate::tree::SectionType::EcuSharedData)
                 ) || (matches!(node.node_type, NodeType::Container)
                     && node_idx > 0
-                    && self.is_under_section_type(
-                        node_idx,
-                        crate::tree::SectionType::EcuSharedData,
-                    ))
+                    && self
+                        .is_under_section_type(node_idx, crate::tree::SectionType::EcuSharedData))
             }
             SearchScope::Services => matches!(
                 node.node_type,
@@ -714,7 +688,7 @@ impl App {
     /// Include all parent nodes up to the root
     fn include_all_parents(&self, node_idx: usize, target_depth: usize, new_include: &mut [bool]) {
         let mut parent_depth = target_depth.saturating_sub(1);
-        
+
         for j in (0..node_idx).rev() {
             if self.all_nodes[j].depth == parent_depth {
                 new_include[j] = true;
@@ -1022,7 +996,7 @@ impl App {
                 self.reset_detail_state();
                 self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
                 self.detail_focused = false;
-                
+
                 if let Some(&node_idx) = self.visible.get(self.cursor) {
                     self.status = format!("Navigated to: {}", self.all_nodes[node_idx].text);
                 }
@@ -1134,12 +1108,10 @@ impl App {
                     .enumerate()
                     .filter(|(idx, _)| *idx >= section_offset)
                     .find_map(|(idx, section)| {
-                        self.last_section_tabs
-                            .get(&section.section_type)
-                            .map(|_| {
-                                self.selected_tab = idx - section_offset;
-                                true
-                            })
+                        self.last_section_tabs.get(&section.section_type).map(|_| {
+                            self.selected_tab = idx - section_offset;
+                            true
+                        })
                     })
             })
             .is_some();
@@ -1436,7 +1408,10 @@ impl App {
 
         // DIAG-DATA-DICTIONARY-SPEC, DOP category, and individual DOP nodes with children:
         // navigate to child instead of popup
-        if matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx) || self.is_individual_dop_node(node_idx) {
+        if matches!(node.node_type, NodeType::DOP)
+            || self.is_dop_category_node(node_idx)
+            || self.is_individual_dop_node(node_idx)
+        {
             self.try_navigate_to_dop_child();
             return;
         }
@@ -1494,21 +1469,17 @@ impl App {
         }
 
         // Check for Overview section with "Inherited From" row
-        if section.section_type == DetailSectionType::Overview {
-            if let crate::tree::DetailContent::Table { rows, .. } = &section.content {
-                let row_cursor = self
-                    .section_cursors
-                    .get(section_idx)
-                    .copied()
-                    .unwrap_or(0);
-                let sorted_rows = self.apply_table_sort(rows, section_idx);
+        if section.section_type == DetailSectionType::Overview
+            && let crate::tree::DetailContent::Table { rows, .. } = &section.content
+        {
+            let row_cursor = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+            let sorted_rows = self.apply_table_sort(rows, section_idx);
 
-                if let Some(selected_row) = sorted_rows.get(row_cursor) {
-                    if selected_row.row_type == DetailRowType::InheritedFrom {
-                        self.try_navigate_to_inherited_parent();
-                        return;
-                    }
-                }
+            if let Some(selected_row) = sorted_rows.get(row_cursor)
+                && selected_row.row_type == DetailRowType::InheritedFrom
+            {
+                self.try_navigate_to_inherited_parent();
+                return;
             }
         }
 
@@ -1602,11 +1573,10 @@ impl App {
         // Get the selected row
         let selected_row: &DetailRow = &sorted_rows[row_cursor];
         let cells = &selected_row.cells;
-        let cell_types = &selected_row.cell_types;
 
         // Build popup content with all cell data
         let mut content = Vec::new();
-        
+
         for (i, cell) in cells.iter().enumerate() {
             if !cell.is_empty() {
                 // Get the header name for this column
@@ -1615,7 +1585,7 @@ impl App {
                 } else {
                     "Unknown"
                 };
-                
+
                 content.push(format!("{}: {}", header_name, cell));
             }
         }
@@ -1626,13 +1596,14 @@ impl App {
         }
 
         // Get a title from the first non-empty cell
-        let title = cells.iter().find(|c| !c.is_empty()).map(|s| s.to_owned()).unwrap_or_else(|| "Details".to_owned());
+        let title = cells
+            .iter()
+            .find(|c| !c.is_empty())
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| "Details".to_owned());
 
-        self.status = format!("Showing details for row");
-        self.detail_popup = Some(PopupData {
-            title,
-            content,
-        });
+        self.status = "Showing details for row".to_string();
+        self.detail_popup = Some(PopupData { title, content });
     }
 
     /// Navigate to a service in the tree from a service list table
@@ -1697,7 +1668,7 @@ impl App {
     fn expand_and_update_cursor(&mut self, node_idx: usize) {
         self.all_nodes[node_idx].expanded = true;
         self.rebuild_visible();
-        
+
         if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == node_idx) {
             self.cursor = new_cursor;
         }
@@ -1706,8 +1677,10 @@ impl App {
     /// Find and navigate to a service by name
     fn find_and_navigate_to_service(&mut self, service_name: &str, parent_node_idx: usize) {
         let parent_depth = self.all_nodes[parent_node_idx].depth;
-        let is_functional_class =
-            self.is_service_list_type(&self.all_nodes[parent_node_idx], crate::tree::ServiceListType::FunctionalClasses);
+        let is_functional_class = self.is_service_list_type(
+            &self.all_nodes[parent_node_idx],
+            crate::tree::ServiceListType::FunctionalClasses,
+        );
 
         // Find service in visible nodes after parent
         let found_idx = self.visible[self.cursor + 1..]
@@ -1716,7 +1689,11 @@ impl App {
             .take_while(|&vis_idx| self.all_nodes[vis_idx].depth > parent_depth)
             .filter(|&vis_idx| self.all_nodes[vis_idx].depth == parent_depth + 1)
             .find(|&vis_idx| {
-                self.node_matches_service_name(&self.all_nodes[vis_idx], service_name, is_functional_class)
+                self.node_matches_service_name(
+                    &self.all_nodes[vis_idx],
+                    service_name,
+                    is_functional_class,
+                )
             })
             .and_then(|vis_idx| self.visible.iter().position(|&idx| idx == vis_idx));
 
@@ -1740,7 +1717,12 @@ impl App {
     }
 
     /// Check if a node's name matches the target service name
-    fn node_matches_service_name(&self, node: &TreeNode, target_name: &str, is_functional_class: bool) -> bool {
+    fn node_matches_service_name(
+        &self,
+        node: &TreeNode,
+        target_name: &str,
+        is_functional_class: bool,
+    ) -> bool {
         if is_functional_class {
             node.node_type == NodeType::FunctionalClass && node.text == target_name
         } else {
@@ -1820,17 +1802,16 @@ impl App {
     /// Get parent layer name from the Overview section's "Inherited From" row
     fn get_parent_layer_name(&self, node_idx: usize) -> Option<String> {
         let node = &self.all_nodes[node_idx];
-        
-        let overview_idx = if node.detail_sections.len() > 1
-            && node.detail_sections[0].render_as_header
-        {
-            1
-        } else {
-            0
-        };
+
+        let overview_idx =
+            if node.detail_sections.len() > 1 && node.detail_sections[0].render_as_header {
+                1
+            } else {
+                0
+            };
 
         let overview_section = node.detail_sections.get(overview_idx)?;
-        
+
         let rows = match &overview_section.content {
             crate::tree::DetailContent::Table { rows, .. } => rows,
             _ => return None,
@@ -1855,34 +1836,31 @@ impl App {
     fn navigate_to_parent_service(&mut self, container_idx: usize, service_name: &str) {
         // Expand ancestors and container
         self.expand_node_ancestors(container_idx);
-        
+
         if self.all_nodes[container_idx].has_children {
             self.all_nodes[container_idx].expanded = true;
         }
 
         // Find Diag-Comms section
-        let diagcomm_idx = self.find_diagcomm_section(container_idx);
-
-        if let Some(dc_idx) = diagcomm_idx {
-            self.all_nodes[dc_idx].expanded = true;
-            self.rebuild_visible();
-
-            // Find service within Diag-Comms
-            if let Some(service_idx) = self.find_service_in_diagcomm(dc_idx, service_name) {
-                self.navigate_to_node_by_idx(service_idx);
-            } else {
-                self.navigate_to_node_by_idx(container_idx);
-            }
-        } else {
+        let Some(dc_idx) = self.find_diagcomm_section(container_idx) else {
             self.rebuild_visible();
             self.navigate_to_node_by_idx(container_idx);
-        }
+            return;
+        };
+
+        self.all_nodes[dc_idx].expanded = true;
+        self.rebuild_visible();
+
+        let target = self
+            .find_service_in_diagcomm(dc_idx, service_name)
+            .unwrap_or(container_idx);
+        self.navigate_to_node_by_idx(target);
     }
 
     /// Expand all ancestors of a node
     fn expand_node_ancestors(&mut self, node_idx: usize) {
         let target_depth = self.all_nodes[node_idx].depth;
-        
+
         if target_depth == 0 {
             return;
         }
@@ -2038,10 +2016,7 @@ impl App {
 
     /// Navigate to a DOP node by name
     fn navigate_to_dop(&mut self, dop_name: &str) {
-        let found_idx = self
-            .all_nodes
-            .iter()
-            .position(|node| node.text == dop_name);
+        let found_idx = self.all_nodes.iter().position(|node| node.text == dop_name);
 
         match found_idx {
             Some(dop_idx) => {
@@ -2257,7 +2232,8 @@ impl App {
             "service"
         } else {
             // For now, only services (DiagComms) are navigable
-            // TODO: Add navigation for DiagVariables, DOPs, and Tables when they're added to the tree
+            // TODO: Add navigation for DiagVariables, DOPs,
+            // and Tables when they're added to the tree
             self.status = "Navigation not yet supported for this element type".to_owned();
             return;
         };
@@ -2332,10 +2308,8 @@ impl App {
                 self.rebuild_visible();
 
                 // Navigate to the service
-                if let Some(new_cursor) = self
-                    .visible
-                    .iter()
-                    .position(|&idx| idx == service_node_idx)
+                if let Some(new_cursor) =
+                    self.visible.iter().position(|&idx| idx == service_node_idx)
                 {
                     self.push_to_history();
                     self.detail_focused = false;
@@ -2497,7 +2471,7 @@ impl App {
                 } else {
                     &n.text
                 };
-                
+
                 if node_name == layer_name {
                     found_layer_idx = Some(ni);
                     break;
@@ -2523,11 +2497,7 @@ impl App {
             self.rebuild_visible();
 
             // Navigate to the layer
-            if let Some(new_cursor) = self
-                .visible
-                .iter()
-                .position(|&idx| idx == layer_node_idx)
-            {
+            if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == layer_node_idx) {
                 self.push_to_history();
                 self.detail_focused = false;
                 self.cursor = new_cursor;
@@ -2616,11 +2586,7 @@ impl App {
             self.ensure_node_visible(variant_node_idx);
 
             // Find the variant in the visible list and navigate to it
-            if let Some(new_cursor) = self
-                .visible
-                .iter()
-                .position(|&idx| idx == variant_node_idx)
-            {
+            if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == variant_node_idx) {
                 self.push_to_history();
                 self.detail_focused = false;
                 self.cursor = new_cursor;
@@ -2697,7 +2663,9 @@ impl App {
                 }
 
                 // Check if this is the target child at the correct depth
-                if child_node.depth == target_depth && element_type.matches_node_text(&child_node.text) {
+                if child_node.depth == target_depth
+                    && element_type.matches_node_text(&child_node.text)
+                {
                     target_idx = Some(i);
                     break;
                 }
@@ -2708,10 +2676,8 @@ impl App {
                 self.ensure_node_visible(target_node_idx);
 
                 // Find the target in the visible list and navigate to it
-                if let Some(new_cursor) = self
-                    .visible
-                    .iter()
-                    .position(|&idx| idx == target_node_idx)
+                if let Some(new_cursor) =
+                    self.visible.iter().position(|&idx| idx == target_node_idx)
                 {
                     self.push_to_history();
                     self.detail_focused = false;
@@ -2727,7 +2693,8 @@ impl App {
     }
 
     /// Navigate from DIAG-DATA-DICTIONARY-SPEC or DOP category overview to a child node.
-    /// For DIAG-DATA-DICTIONARY-SPEC: rows are categories like "DTC-DOPS", navigates to the category child node.
+    /// For DIAG-DATA-DICTIONARY-SPEC: rows are categories
+    /// like "DTC-DOPS", navigates to the category child node.
     /// For DOP category nodes: rows are individual DOPs, navigates to the DOP child node.
     fn try_navigate_to_dop_child(&mut self) {
         if self.cursor >= self.visible.len() {
@@ -2805,11 +2772,7 @@ impl App {
             self.ensure_node_visible(target_node_idx);
 
             // Find the target in the visible list and navigate to it
-            if let Some(new_cursor) = self
-                .visible
-                .iter()
-                .position(|&idx| idx == target_node_idx)
-            {
+            if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == target_node_idx) {
                 self.push_to_history();
                 self.detail_focused = false;
                 self.cursor = new_cursor;
@@ -2868,11 +2831,7 @@ impl App {
             self.rebuild_visible();
 
             // Navigate to the service/job
-            if let Some(new_cursor) = self
-                .visible
-                .iter()
-                .position(|&idx| idx == service_node_idx)
-            {
+            if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == service_node_idx) {
                 self.push_to_history();
                 self.detail_focused = false;
                 self.cursor = new_cursor;
@@ -3163,12 +3122,12 @@ impl App {
                 let is_service_list = self.is_service_list_section(node);
 
                 // Check if this is the Variants overview section
-                let is_variants_section = matches!(
-                    node.section_type,
-                    Some(crate::tree::SectionType::Variants)
-                ) && node.detail_sections.first().is_some_and(|s| 
-                    matches!(&s.content, DetailContent::Table { .. })
-                );
+                let is_variants_section =
+                    matches!(node.section_type, Some(crate::tree::SectionType::Variants))
+                        && node
+                            .detail_sections
+                            .first()
+                            .is_some_and(|s| matches!(&s.content, DetailContent::Table { .. }));
 
                 // Check if this is any service-related node type (generic check)
                 let is_service_node = matches!(
@@ -3183,8 +3142,11 @@ impl App {
                 // Check if this is a functional class node
                 let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
 
-                // Check if this is a DOP node (DIAG-DATA-DICTIONARY-SPEC, DOP category, or individual DOP with children)
-                let is_dop_node = matches!(node.node_type, NodeType::DOP) || self.is_dop_category_node(node_idx) || self.is_individual_dop_node(node_idx);
+                // Check if this is a DOP node (DIAG-DATA-DICTIONARY-SPEC,
+                // DOP category, or individual DOP with children)
+                let is_dop_node = matches!(node.node_type, NodeType::DOP)
+                    || self.is_dop_category_node(node_idx)
+                    || self.is_individual_dop_node(node_idx);
 
                 if is_variants_section {
                     // Navigate to selected variant from the Variants overview table
@@ -3214,12 +3176,12 @@ impl App {
 
                     if section_idx < node.detail_sections.len() {
                         let section = &node.detail_sections[section_idx];
-                        
+
                         // Check if this is a request/response parameter table
                         if matches!(
                             section.section_type,
-                            DetailSectionType::Requests 
-                                | DetailSectionType::PosResponses 
+                            DetailSectionType::Requests
+                                | DetailSectionType::PosResponses
                                 | DetailSectionType::NegResponses
                         ) {
                             should_navigate_from_param_table = true;
@@ -3331,7 +3293,7 @@ impl App {
         // Calculate the new tree width based on mouse position
         // The column is relative to the start of tree_area
         let new_tree_width = column.saturating_sub(self.tree_area.x);
-        
+
         // Calculate percentage (clamped between 20% and 80%)
         let new_percentage = ((new_tree_width as f32 / total_width as f32) * 100.0) as u16;
         self.tree_width_percentage = new_percentage.clamp(20, 80);
@@ -3340,8 +3302,10 @@ impl App {
     /// Check if the mouse is in the tree scrollbar area
     fn is_in_tree_scrollbar(&self, column: u16, row: u16) -> bool {
         if let Some(area) = self.tree_scrollbar_area {
-            column >= area.x && column < area.x + area.width &&
-            row >= area.y && row < area.y + area.height
+            column >= area.x
+                && column < area.x + area.width
+                && row >= area.y
+                && row < area.y + area.height
         } else {
             false
         }
@@ -3350,8 +3314,10 @@ impl App {
     /// Check if the mouse is in the detail scrollbar area
     fn is_in_detail_scrollbar(&self, column: u16, row: u16) -> bool {
         if let Some(area) = self.detail_scrollbar_area {
-            column >= area.x && column < area.x + area.width &&
-            row >= area.y && row < area.y + area.height
+            column >= area.x
+                && column < area.x + area.width
+                && row >= area.y
+                && row < area.y + area.height
         } else {
             false
         }
@@ -3368,7 +3334,7 @@ impl App {
             if let Some(area) = self.tree_scrollbar_area {
                 let visible_count = self.visible.len();
                 let viewport_height = area.height as usize;
-                
+
                 if visible_count <= viewport_height {
                     return;
                 }
@@ -3376,7 +3342,7 @@ impl App {
                 // Calculate the new scroll position based on mouse Y position
                 let relative_y = row.saturating_sub(area.y) as usize;
                 let max_scroll = visible_count.saturating_sub(viewport_height);
-                
+
                 // Map mouse position to scroll position
                 let new_scroll = if area.height > 0 {
                     (relative_y * max_scroll) / (area.height as usize)
@@ -3385,7 +3351,7 @@ impl App {
                 };
 
                 self.scroll_offset = new_scroll.min(max_scroll);
-                
+
                 // Update cursor to stay in view
                 if self.cursor < self.scroll_offset {
                     self.cursor = self.scroll_offset;
@@ -3416,7 +3382,7 @@ impl App {
                 let row_count = match &section.content {
                     DetailContent::Table { rows, .. } => rows.len(),
                     DetailContent::PlainText(lines) => lines.len(),
-                    DetailContent::Composite(sections) => {
+                    DetailContent::Composite(_sections) => {
                         // For composite sections, we'd need to handle this differently
                         // For now, just return as it's complex
                         return;
@@ -3431,7 +3397,7 @@ impl App {
                 // Calculate the new scroll position based on mouse Y position
                 let relative_y = row.saturating_sub(area.y) as usize;
                 let max_scroll = row_count.saturating_sub(viewport_height);
-                
+
                 // Map mouse position to scroll position
                 let new_scroll = if area.height > 0 {
                     (relative_y * max_scroll) / (area.height as usize)
@@ -3440,13 +3406,17 @@ impl App {
                 };
 
                 self.section_scrolls[self.focused_section] = new_scroll.min(max_scroll);
-                
+
                 // Update cursor to stay in view
                 let current_cursor = self.section_cursors[self.focused_section];
                 if current_cursor < self.section_scrolls[self.focused_section] {
-                    self.section_cursors[self.focused_section] = self.section_scrolls[self.focused_section];
-                } else if current_cursor >= self.section_scrolls[self.focused_section] + viewport_height {
-                    self.section_cursors[self.focused_section] = self.section_scrolls[self.focused_section] + viewport_height - 1;
+                    self.section_cursors[self.focused_section] =
+                        self.section_scrolls[self.focused_section];
+                } else if current_cursor
+                    >= self.section_scrolls[self.focused_section] + viewport_height
+                {
+                    self.section_cursors[self.focused_section] =
+                        self.section_scrolls[self.focused_section] + viewport_height - 1;
                 }
             }
         }

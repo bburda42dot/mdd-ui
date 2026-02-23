@@ -5,9 +5,7 @@ use super::variants::{
     dops::add_dops_section,
     functional_classes::add_functional_classes,
     parent_refs::add_parent_refs_with_details,
-    placeholders::{
-        add_additional_audiences, add_sdgs,
-    },
+    placeholders::{add_additional_audiences, add_sdgs},
     requests::add_requests_section,
     responses::{add_neg_responses_section, add_pos_responses_section},
     services::add_diag_comms,
@@ -26,7 +24,9 @@ pub trait LayerExt {
         depth: usize,
         layer_name: &str,
         _expand: bool,
-        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,        all_variants: Option<impl Iterator<Item = Variant<'a>> + 'a>,    );
+        variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
+        all_variants: Option<impl Iterator<Item = Variant<'a>> + 'a>,
+    );
 }
 
 impl LayerExt for TreeBuilder {
@@ -61,19 +61,10 @@ impl LayerExt for TreeBuilder {
         );
 
         // DOPs (Data Object Properties)
-        add_dops_section(
-            self,
-            layer,
-            depth,
-        );
+        add_dops_section(self, layer, depth);
 
         // Functional Classes - pass all variants so it can search across them
-        add_functional_classes(
-            self,
-            layer,
-            depth,
-            all_variants,
-        );
+        add_functional_classes(self, layer, depth, all_variants);
 
         // Neg-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
         add_neg_responses_section(

@@ -20,19 +20,20 @@ pub enum ServiceListType {
 
 /// Type of node for styling purposes
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum NodeType {
     Container,
     SectionHeader,
     Service,
     ParentRefService, // Service inherited from parent reference
-    ParentRefs, // Parent References node
+    ParentRefs,       // Parent References node
     Request,
     PosResponse,
     NegResponse,
     FunctionalClass, // Functional class node
-    Job, // Single ECU Job
-    DOP, // Data Object Property
-    SDG, // Special Data Group
+    Job,             // Single ECU Job
+    DOP,             // Data Object Property
+    SDG,             // Special Data Group
     Default,
 }
 
@@ -106,21 +107,6 @@ impl ChildElementType {
             ChildElementType::Requests => "Requests",
             ChildElementType::SDGs => "SDGs",
             ChildElementType::StateCharts => "State-Charts",
-        }
-    }
-
-    /// Try to parse from display name
-    pub fn from_display_name(name: &str) -> Option<Self> {
-        match name {
-            "ComParam Refs" => Some(ChildElementType::ComParamRefs),
-            "Diag-Comms" => Some(ChildElementType::DiagComms),
-            "Functional Classes" => Some(ChildElementType::FunctionalClasses),
-            "Neg-Responses" => Some(ChildElementType::NegResponses),
-            "Pos-Responses" => Some(ChildElementType::PosResponses),
-            "Requests" => Some(ChildElementType::Requests),
-            "SDGs" => Some(ChildElementType::SDGs),
-            "State-Charts" => Some(ChildElementType::StateCharts),
-            _ => None,
         }
     }
 

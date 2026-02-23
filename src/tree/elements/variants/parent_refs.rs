@@ -33,7 +33,9 @@ pub fn add_parent_refs_with_details<'a>(
 
     // Add tabs for each not-inherited type
     detail_sections.push(build_not_inherited_diag_comms_section(&parent_refs_list));
-    detail_sections.push(build_not_inherited_diag_variables_section(&parent_refs_list));
+    detail_sections.push(build_not_inherited_diag_variables_section(
+        &parent_refs_list,
+    ));
     detail_sections.push(build_not_inherited_dops_section(&parent_refs_list));
     detail_sections.push(build_not_inherited_tables_section(&parent_refs_list));
 

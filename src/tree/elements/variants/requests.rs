@@ -58,123 +58,92 @@ pub fn add_requests_section<'a>(
 
         // Add own services first - using EXACTLY the same display as DiagComm
         for ds in own_services.iter() {
-            if let Some(dc) = ds.diag_comm() {
-                let name = dc.short_name().unwrap_or("?");
+            let Some(display_name) = super::format_service_display_name(ds) else {
+                continue;
+            };
 
-                // Format with service ID with proper padding for alignment (same as DiagComm)
-                let display_name = if let Some(sid) = ds.request_id() {
-                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                        let sub_fn_str = if bit_len <= 8 {
-                            format!("{sub_fn:02X}")
-                        } else {
-                            format!("{sub_fn:04X}")
-                        };
-                        let full_id = format!("{sid:02X}{sub_fn_str}");
-                        format!("0x{:6} - {}", full_id, name)
-                    } else {
-                        format!("0x{:6} - {}", format!("{sid:02X}"), name)
-                    }
-                } else {
-                    name.to_string()
-                };
+            // Build full service details, but with Request tab rendered by this module
+            let sections = build_request_view_sections(ds, None);
 
-                // Build full service details, but with Request tab rendered by this module
-                let sections = build_request_view_sections(ds, None);
+            // Check if there are params to show as children
+            let has_params = ds
+                .request()
+                .and_then(|req| req.params())
+                .map(|p| !p.is_empty())
+                .unwrap_or(false);
 
-                // Check if there are params to show as children
-                let has_params = ds.request()
-                    .and_then(|req| req.params())
-                    .map(|p| !p.is_empty())
-                    .unwrap_or(false);
+            b.push_details_structured(
+                depth + 1,
+                display_name.clone(),
+                false,
+                has_params,
+                sections,
+                NodeType::Request, // Use Request node type for navigation
+            );
 
-                b.push_details_structured(
-                    depth + 1,
-                    display_name.clone(),
-                    false,
-                    has_params,
-                    sections,
-                    NodeType::Request, // Use Request node type for navigation
-                );
-                
-                // Add params as child nodes
-                if let Some(req) = ds.request() {
-                    if let Some(params) = req.params() {
-                        for param in params.iter().map(Parameter) {
-                            let param_name = param.short_name().unwrap_or("?").to_owned();
-                            let param_detail = build_param_detail_sections(&param);
-                            let param_id = param.id();
-                            
-                            b.push_param(
-                                depth + 2,
-                                param_name,
-                                param_detail,
-                                NodeType::Default,
-                                param_id,
-                            );
-                        }
-                    }
-                }
-            }
+            // Add params as child nodes
+            ds.request()
+                .and_then(|req| req.params())
+                .into_iter()
+                .flat_map(|params| params.iter().map(Parameter))
+                .for_each(|param| {
+                    let param_name = param.short_name().unwrap_or("?").to_owned();
+                    let param_detail = build_param_detail_sections(&param);
+                    let param_id = param.id();
+
+                    b.push_param(
+                        depth + 2,
+                        param_name,
+                        param_detail,
+                        NodeType::Default,
+                        param_id,
+                    );
+                });
         }
 
         // Add parent ref services with different node type (same as DiagComm)
         for (ds, source_layer_name) in parent_services.iter() {
-            if let Some(dc) = ds.diag_comm() {
-                let name = dc.short_name().unwrap_or("?");
+            let Some(display_name) = super::format_service_display_name(ds) else {
+                continue;
+            };
 
-                let display_name = if let Some(sid) = ds.request_id() {
-                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                        let sub_fn_str = if bit_len <= 8 {
-                            format!("{sub_fn:02X}")
-                        } else {
-                            format!("{sub_fn:04X}")
-                        };
-                        let full_id = format!("{sid:02X}{sub_fn_str}");
-                        format!("0x{:6} - {}", full_id, name)
-                    } else {
-                        format!("0x{:6} - {}", format!("{sid:02X}"), name)
-                    }
-                } else {
-                    name.to_string()
-                };
+            // Build full service details, but with Request tab rendered by this module
+            let sections = build_request_view_sections(ds, Some(source_layer_name.clone()));
 
-                // Build full service details, but with Request tab rendered by this module
-                let sections = build_request_view_sections(ds, Some(source_layer_name.clone()));
+            // Check if there are params to show as children
+            let has_params = ds
+                .request()
+                .and_then(|req| req.params())
+                .map(|p| !p.is_empty())
+                .unwrap_or(false);
 
-                // Check if there are params to show as children
-                let has_params = ds.request()
-                    .and_then(|req| req.params())
-                    .map(|p| !p.is_empty())
-                    .unwrap_or(false);
+            b.push_details_structured(
+                depth + 1,
+                display_name.clone(),
+                false,
+                has_params,
+                sections,
+                NodeType::Request, // Use Request node type for navigation (inherited)
+            );
 
-                b.push_details_structured(
-                    depth + 1,
-                    display_name.clone(),
-                    false,
-                    has_params,
-                    sections,
-                    NodeType::Request, // Use Request node type for navigation (inherited)
-                );
-                
-                // Add params as child nodes
-                if let Some(req) = ds.request() {
-                    if let Some(params) = req.params() {
-                        for param in params.iter().map(Parameter) {
-                            let param_name = param.short_name().unwrap_or("?").to_owned();
-                            let param_detail = build_param_detail_sections(&param);
-                            let param_id = param.id();
-                            
-                            b.push_param(
-                                depth + 2,
-                                param_name,
-                                param_detail,
-                                NodeType::Default,
-                                param_id,
-                            );
-                        }
-                    }
-                }
-            }
+            // Add params as child nodes
+            ds.request()
+                .and_then(|req| req.params())
+                .into_iter()
+                .flat_map(|params| params.iter().map(Parameter))
+                .for_each(|param| {
+                    let param_name = param.short_name().unwrap_or("?").to_owned();
+                    let param_detail = build_param_detail_sections(&param);
+                    let param_id = param.id();
+
+                    b.push_param(
+                        depth + 2,
+                        param_name,
+                        param_detail,
+                        NodeType::Default,
+                        param_id,
+                    );
+                });
         }
     }
 }
@@ -197,10 +166,11 @@ fn build_request_view_sections(
 
     // Add header section with service ID and name
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
-    let header_title = if let Some(sid) = ds.request_id() {
-        format!("Request - 0x{:02X} - {}", sid, service_name)
-    } else {
+    let id_str = super::format_service_id(ds);
+    let header_title = if id_str.is_empty() {
         format!("Request - {}", service_name)
+    } else {
+        format!("Request - {} - {}", id_str, service_name)
     };
 
     sections.push(DetailSectionData {
@@ -221,22 +191,18 @@ fn build_request_view_sections(
     let mut rows = Vec::new();
 
     if let Some(dc) = ds.diag_comm() {
-        if let Some(sn) = dc.short_name() {
-            rows.push(DetailRow {
-                cells: vec!["Service".to_owned(), sn.to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text],
-                indent: 0,
-                ..Default::default()
-            });
-        }
-        if let Some(semantic) = dc.semantic() {
-            rows.push(DetailRow {
-                cells: vec!["Semantic".to_owned(), semantic.to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text],
-                indent: 0,
-                ..Default::default()
-            });
-        }
+        rows.extend(dc.short_name().map(|sn| DetailRow {
+            cells: vec!["Service".to_owned(), sn.to_owned()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 0,
+            ..Default::default()
+        }));
+        rows.extend(dc.semantic().map(|semantic| DetailRow {
+            cells: vec!["Semantic".to_owned(), semantic.to_owned()],
+            cell_types: vec![CellType::Text, CellType::Text],
+            indent: 0,
+            ..Default::default()
+        }));
     }
     if let Some(sid) = ds.request_id() {
         rows.push(DetailRow {
@@ -455,7 +421,8 @@ fn build_param_detail_sections(param: &Parameter<'_>) -> Vec<DetailSectionData> 
     }
 
     let bit_pos = param.bit_position();
-    if bit_pos != 255 {  // 255 is the default/unset value
+    if bit_pos != 255 {
+        // 255 is the default/unset value
         overview_rows.push(DetailRow::normal(
             vec!["Bit Position".to_owned(), bit_pos.to_string()],
             vec![CellType::Text, CellType::NumericValue],
@@ -527,65 +494,33 @@ fn build_requests_table_section(
 
     let mut rows = Vec::new();
 
+    // Helper: build a row for a service with given inherited flag
+    let build_row = |ds: &DiagService<'_>, inherited: &str| -> Option<DetailRow> {
+        let dc = ds.diag_comm()?;
+        let name = dc.short_name().unwrap_or("?").to_owned();
+        let id_str = super::format_service_id(ds);
+        let id = if id_str.is_empty() {
+            "-".to_owned()
+        } else {
+            id_str
+        };
+        Some(DetailRow {
+            cells: vec![id, name, inherited.to_owned()],
+            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+            indent: 0,
+            ..Default::default()
+        })
+    };
+
     // Add own services first (inherited = false)
-    for ds in own_services.iter() {
-        if let Some(dc) = ds.diag_comm() {
-            let name = dc.short_name().unwrap_or("?").to_owned();
-
-            let id = if let Some(sid) = ds.request_id() {
-                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                    let sub_fn_str = if bit_len <= 8 {
-                        format!("{sub_fn:02X}")
-                    } else {
-                        format!("{sub_fn:04X}")
-                    };
-                    let full_id = format!("{sid:02X}{sub_fn_str}");
-                    format!("0x{}", full_id)
-                } else {
-                    format!("0x{:02X}", sid)
-                }
-            } else {
-                "-".to_owned()
-            };
-
-            rows.push(DetailRow {
-                cells: vec![id, name, "false".to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
-                indent: 0,
-                ..Default::default()
-            });
-        }
-    }
+    rows.extend(own_services.iter().filter_map(|ds| build_row(ds, "false")));
 
     // Add parent services (inherited = true)
-    for (ds, _source_layer_name) in parent_services.iter() {
-        if let Some(dc) = ds.diag_comm() {
-            let name = dc.short_name().unwrap_or("?").to_owned();
-
-            let id = if let Some(sid) = ds.request_id() {
-                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                    let sub_fn_str = if bit_len <= 8 {
-                        format!("{sub_fn:02X}")
-                    } else {
-                        format!("{sub_fn:04X}")
-                    };
-                    let full_id = format!("{sid:02X}{sub_fn_str}");
-                    format!("0x{}", full_id)
-                } else {
-                    format!("0x{:02X}", sid)
-                }
-            } else {
-                "-".to_owned()
-            };
-
-            rows.push(DetailRow {
-                cells: vec![id, name, "true".to_owned()],
-                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
-                indent: 0,
-                ..Default::default()
-            });
-        }
-    }
+    rows.extend(
+        parent_services
+            .iter()
+            .filter_map(|(ds, _)| build_row(ds, "true")),
+    );
 
     let total_count = own_services.len() + parent_services.len();
 

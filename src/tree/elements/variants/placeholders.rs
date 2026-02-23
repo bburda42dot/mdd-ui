@@ -2,11 +2,8 @@ use cda_database::datatypes::DiagLayer;
 
 use crate::tree::{builder::TreeBuilder, types::NodeType};
 
-/// Add placeholder sections that are not fully implemented yet
-/// These are kept for structure but may be expanded in the future
-// Diag-Data-Dictionary-Spec is not supported and has been removed
-// pub fn add_diag_data_dictionary_spec(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) { ... }
-
+/// Add placeholder sections that are not fully implemented yet.
+/// These are kept for structure but may be expanded in the future.
 pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Check if layer has additional audiences
     if let Some(additional_audiences) = layer.additional_audiences() {
@@ -16,7 +13,7 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
 
         // Build table with additional audiences
         let mut rows = Vec::new();
-        
+
         for audience in additional_audiences.iter() {
             let short_name = audience.short_name().unwrap_or("?").to_owned();
             let long_name = audience
@@ -24,7 +21,7 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
                 .and_then(|ln| ln.value())
                 .unwrap_or("")
                 .to_owned();
-            
+
             rows.push(crate::tree::types::DetailRow::normal(
                 vec![short_name, long_name],
                 vec![
@@ -74,4 +71,3 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
 // SDGs are now implemented in the sdgs module
 // This re-export maintains backward compatibility
 pub use super::sdgs::add_sdgs;
-

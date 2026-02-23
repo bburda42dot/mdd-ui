@@ -122,7 +122,7 @@ pub fn add_diag_comms<'a>(
                     .collect()
             })
             .unwrap_or_default();
-        
+
         // Sort job names alphabetically
         job_names.sort_by_key(|name| name.to_lowercase());
         let detail_section =
@@ -142,72 +142,36 @@ pub fn add_diag_comms<'a>(
 
         // Add own services first
         for ds in own_services.iter() {
-            if let Some(dc) = ds.diag_comm() {
-                let name = dc.short_name().unwrap_or("?");
+            let Some(display_name) = super::format_service_display_name(ds) else {
+                continue;
+            };
+            let sections = build_diag_comm_details_with_parent(ds, None);
 
-                // Format with service ID with proper padding for alignment
-                let display_name = if let Some(sid) = ds.request_id() {
-                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                        let sub_fn_str = if bit_len <= 8 {
-                            format!("{sub_fn:02X}")
-                        } else {
-                            format!("{sub_fn:04X}")
-                        };
-                        let full_id = format!("{sid:02X}{sub_fn_str}");
-                        format!("0x{:6} - {}", full_id, name)
-                    } else {
-                        format!("0x{:6} - {}", format!("{sid:02X}"), name)
-                    }
-                } else {
-                    name.to_string()
-                };
-
-                let sections = build_diag_comm_details_with_parent(ds, None);
-
-                b.push_details_structured(
-                    depth + 1,
-                    format!("[Service] {}", display_name),
-                    false,
-                    false,
-                    sections,
-                    NodeType::Service,
-                );
-            }
+            b.push_details_structured(
+                depth + 1,
+                format!("[Service] {}", display_name),
+                false,
+                false,
+                sections,
+                NodeType::Service,
+            );
         }
 
         // Add parent ref services with different node type
         for (ds, source_layer_name) in parent_services.iter() {
-            if let Some(dc) = ds.diag_comm() {
-                let name = dc.short_name().unwrap_or("?");
+            let Some(display_name) = super::format_service_display_name(ds) else {
+                continue;
+            };
+            let sections = build_diag_comm_details_with_parent(ds, Some(source_layer_name.clone()));
 
-                let display_name = if let Some(sid) = ds.request_id() {
-                    if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                        let sub_fn_str = if bit_len <= 8 {
-                            format!("{sub_fn:02X}")
-                        } else {
-                            format!("{sub_fn:04X}")
-                        };
-                        let full_id = format!("{sid:02X}{sub_fn_str}");
-                        format!("0x{:6} - {}", full_id, name)
-                    } else {
-                        format!("0x{:6} - {}", format!("{sid:02X}"), name)
-                    }
-                } else {
-                    name.to_string()
-                };
-
-                let sections =
-                    build_diag_comm_details_with_parent(ds, Some(source_layer_name.clone()));
-
-                b.push_details_structured(
-                    depth + 1,
-                    format!("[Service] {}", display_name),
-                    false,
-                    false,
-                    sections,
-                    NodeType::ParentRefService, // Mark as inherited
-                );
-            }
+            b.push_details_structured(
+                depth + 1,
+                format!("[Service] {}", display_name),
+                false,
+                false,
+                sections,
+                NodeType::ParentRefService, // Mark as inherited
+            );
         }
 
         // Add single ECU jobs after services
@@ -220,13 +184,13 @@ pub fn add_diag_comms<'a>(
                     .unwrap_or("")
                     .to_lowercase()
             });
-            
+
             for job in sorted_jobs.into_iter() {
                 let job_name = job
                     .diag_comm()
                     .and_then(|dc| dc.short_name())
                     .unwrap_or("Unnamed");
-                
+
                 // Build job details inline
                 let mut sections = Vec::new();
 
@@ -435,20 +399,11 @@ pub fn build_diag_comm_details_with_parent(
 
     // Add header section with service ID and name (matching tree display format)
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
-    let header_title = if let Some(sid) = ds.request_id() {
-        if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-            let sub_fn_str = if bit_len <= 8 {
-                format!("{sub_fn:02X}")
-            } else {
-                format!("{sub_fn:04X}")
-            };
-            let full_id = format!("{sid:02X}{sub_fn_str}");
-            format!("Service - 0x{} - {}", full_id, service_name)
-        } else {
-            format!("Service - 0x{:02X} - {}", sid, service_name)
-        }
-    } else {
+    let id_str = super::format_service_id(ds);
+    let header_title = if id_str.is_empty() {
         format!("Service - {}", service_name)
+    } else {
+        format!("Service - {} - {}", id_str, service_name)
     };
 
     sections.push(DetailSectionData {
@@ -467,20 +422,20 @@ pub fn build_diag_comm_details_with_parent(
     let mut rows = Vec::new();
 
     if let Some(dc) = ds.diag_comm() {
-        if let Some(sn) = dc.short_name() {
-            rows.push(DetailRow::normal(
+        rows.extend(dc.short_name().map(|sn| {
+            DetailRow::normal(
                 vec!["Service".to_owned(), sn.to_owned()],
                 vec![CellType::Text, CellType::Text],
                 0,
-            ));
-        }
-        if let Some(semantic) = dc.semantic() {
-            rows.push(DetailRow::normal(
+            )
+        }));
+        rows.extend(dc.semantic().map(|semantic| {
+            DetailRow::normal(
                 vec!["Semantic".to_owned(), semantic.to_owned()],
                 vec![CellType::Text, CellType::Text],
                 0,
-            ));
-        }
+            )
+        }));
     }
     if let Some(sid) = ds.request_id() {
         rows.push(DetailRow::normal(
@@ -591,129 +546,113 @@ pub fn build_diag_comm_details_with_parent(
     });
 
     // Audience section - Combined into single tab with composite content
-    if let Some(dc) = ds.diag_comm() {
-        if let Some(audience) = dc.audience() {
-            let mut subsections = Vec::new();
+    let audience_section = ds
+        .diag_comm()
+        .and_then(|dc| dc.audience())
+        .map(|audience| {
+            let flag_lines = vec![
+                format!("IS_MANUFACTURER: {}", audience.is_manufacturing()),
+                format!("IS_DEVELOPMENT: {}", audience.is_development()),
+                format!("IS_AFTERSALES: {}", audience.is_after_sales()),
+                format!("IS_AFTERMARKET: {}", audience.is_after_market()),
+            ];
 
-            // Flags subsection
-            let mut flag_lines = Vec::new();
-            flag_lines.push(format!(
-                "IS_MANUFACTURER: {}",
-                if audience.is_manufacturing() {
-                    "true"
-                } else {
-                    "false"
-                }
-            ));
-            flag_lines.push(format!(
-                "IS_DEVELOPMENT: {}",
-                if audience.is_development() {
-                    "true"
-                } else {
-                    "false"
-                }
-            ));
-            flag_lines.push(format!(
-                "IS_AFTERSALES: {}",
-                if audience.is_after_sales() {
-                    "true"
-                } else {
-                    "false"
-                }
-            ));
-            flag_lines.push(format!(
-                "IS_AFTERMARKET: {}",
-                if audience.is_after_market() {
-                    "true"
-                } else {
-                    "false"
-                }
-            ));
-
-            subsections.push(DetailSectionData {
+            let mut subsections = vec![DetailSectionData {
                 title: "Audience Flags".to_owned(),
                 render_as_header: false,
                 section_type: DetailSectionType::Custom,
                 content: DetailContent::PlainText(flag_lines),
-            });
+            }];
 
             // Additional audiences subsection
-            if let Some(audiences) = audience.enabled_audiences() {
-                let audiences_list: Vec<_> = audiences
-                    .iter()
-                    .filter_map(|aa| aa.short_name().map(|s| s.to_owned()))
-                    .collect();
+            let audiences_list: Vec<_> = audience
+                .enabled_audiences()
+                .into_iter()
+                .flat_map(|a| a.iter())
+                .filter_map(|aa| aa.short_name().map(|s| s.to_owned()))
+                .collect();
 
-                if !audiences_list.is_empty() {
-                    subsections.push(DetailSectionData {
-                        title: "Additional Audiences".to_owned(),
-                        render_as_header: false,
-                        section_type: DetailSectionType::Custom,
-                        content: DetailContent::PlainText(audiences_list),
-                    });
-                }
+            if !audiences_list.is_empty() {
+                subsections.push(DetailSectionData {
+                    title: "Additional Audiences".to_owned(),
+                    render_as_header: false,
+                    section_type: DetailSectionType::Custom,
+                    content: DetailContent::PlainText(audiences_list),
+                });
             }
 
-            sections.push(DetailSectionData {
+            DetailSectionData {
                 title: "Audience".to_owned(),
                 render_as_header: false,
                 section_type: DetailSectionType::Custom,
                 content: DetailContent::Composite(subsections),
-            });
-        } else {
-            sections.push(DetailSectionData {
-                title: "Audience".to_owned(),
-                render_as_header: false,
-                section_type: DetailSectionType::Custom,
-                content: DetailContent::PlainText(vec!["(No audience info)".to_owned()]),
-            });
-        }
-    }
+            }
+        })
+        .unwrap_or_else(|| DetailSectionData {
+            title: "Audience".to_owned(),
+            render_as_header: false,
+            section_type: DetailSectionType::Custom,
+            content: DetailContent::PlainText(vec!["(No audience info)".to_owned()]),
+        });
+    sections.push(audience_section);
 
     // SDGs - Get from DiagComm
-    if let Some(dc) = ds.diag_comm() {
-        let mut sdg_rows = Vec::new();
-        if let Some(sdgs) = dc.sdgs() {
-            if let Some(sdg_list) = sdgs.sdgs() {
-                for sdg in sdg_list.iter() {
-                    // Add SDG header row
-                    if let Some(caption) = sdg.caption_sn() {
-                        let si = sdg.si().unwrap_or("-");
-                        sdg_rows.push(DetailRow::normal(
-                            vec![
-                                format!("SDG: {}", caption),
-                                si.to_owned(),
-                                String::new(),
-                                String::new(),
-                            ],
-                            vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
-                            0,
-                        ));
-                        
-                        // Add nested SD items
-                        if let Some(sds) = sdg.sds() {
-                            for sd_or_sdg in sds.iter() {
-                                if let Some(sd) = sd_or_sdg.sd_or_sdg_as_sd() {
-                                    let value = sd.value().unwrap_or("-");
-                                    let si = sd.si().unwrap_or("-");
-                                    let ti = sd.ti().unwrap_or("-");
-                                    sdg_rows.push(DetailRow::normal(
-                                        vec![
-                                            format!("  SD: {}", value),
-                                            si.to_owned(),
-                                            ti.to_owned(),
-                                            String::new(),
-                                        ],
-                                        vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
-                                        1,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    {
+        let mut sdg_rows: Vec<DetailRow> = ds
+            .diag_comm()
+            .and_then(|dc| dc.sdgs())
+            .and_then(|sdgs| sdgs.sdgs())
+            .into_iter()
+            .flat_map(|sdg_list| sdg_list.iter())
+            .filter_map(|sdg| {
+                let caption = sdg.caption_sn()?;
+                let si = sdg.si().unwrap_or("-");
+
+                let mut rows = vec![DetailRow::normal(
+                    vec![
+                        format!("SDG: {}", caption),
+                        si.to_owned(),
+                        String::new(),
+                        String::new(),
+                    ],
+                    vec![
+                        CellType::Text,
+                        CellType::Text,
+                        CellType::Text,
+                        CellType::Text,
+                    ],
+                    0,
+                )];
+
+                // Add nested SD items
+                rows.extend(
+                    sdg.sds()
+                        .into_iter()
+                        .flat_map(|sds| sds.iter())
+                        .filter_map(|entry| entry.sd_or_sdg_as_sd())
+                        .map(|sd| {
+                            DetailRow::normal(
+                                vec![
+                                    format!("  SD: {}", sd.value().unwrap_or("-")),
+                                    sd.si().unwrap_or("-").to_owned(),
+                                    sd.ti().unwrap_or("-").to_owned(),
+                                    String::new(),
+                                ],
+                                vec![
+                                    CellType::Text,
+                                    CellType::Text,
+                                    CellType::Text,
+                                    CellType::Text,
+                                ],
+                                1,
+                            )
+                        }),
+                );
+
+                Some(rows)
+            })
+            .flatten()
+            .collect();
 
         if sdg_rows.is_empty() {
             sdg_rows.push(DetailRow::normal(
@@ -724,8 +663,18 @@ pub fn build_diag_comm_details_with_parent(
         }
 
         let sdg_header = DetailRow::header(
-            vec!["Caption/Value".to_owned(), "SI".to_owned(), "TI".to_owned(), "".to_owned()],
-            vec![CellType::Text, CellType::Text, CellType::Text, CellType::Text],
+            vec![
+                "Caption/Value".to_owned(),
+                "SI".to_owned(),
+                "TI".to_owned(),
+                "".to_owned(),
+            ],
+            vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
         );
         sections.push(DetailSectionData {
             title: "SDGs".to_owned(),
@@ -745,97 +694,77 @@ pub fn build_diag_comm_details_with_parent(
         });
     }
 
-    // Precondition State Refs
-    if let Some(dc) = ds.diag_comm() {
-        let header = DetailRow {
-            row_type: DetailRowType::Normal,
-            metadata: None,
-            cells: vec!["Short Name".to_owned()],
-            cell_types: vec![CellType::Text],
-            indent: 0,
-        };
-
-        let mut rows = Vec::new();
-        for pc in dc.pre_condition_state_refs().into_iter().flatten() {
-            if let Some(val) = pc.value() {
-                rows.push(DetailRow {
-                    row_type: DetailRowType::Normal,
-                    metadata: None,
-                    cells: vec![val.to_owned()],
-                    cell_types: vec![CellType::Text],
-                    indent: 0,
-                });
-            }
-        }
-
-        if rows.is_empty() {
-            rows.push(DetailRow {
+    // Helper: build a ref-list section (precondition states, state transitions)
+    let build_ref_list_section =
+        |title: &str, section_type: DetailSectionType, refs: Vec<String>, empty_msg: &str| {
+            let header = DetailRow {
                 row_type: DetailRowType::Normal,
                 metadata: None,
-                cells: vec!["(No precondition state refs)".to_owned()],
+                cells: vec!["Short Name".to_owned()],
                 cell_types: vec![CellType::Text],
                 indent: 0,
-            });
-        }
+            };
+            let rows = if refs.is_empty() {
+                vec![DetailRow {
+                    row_type: DetailRowType::Normal,
+                    metadata: None,
+                    cells: vec![empty_msg.to_owned()],
+                    cell_types: vec![CellType::Text],
+                    indent: 0,
+                }]
+            } else {
+                refs.into_iter()
+                    .map(|val| DetailRow {
+                        row_type: DetailRowType::Normal,
+                        metadata: None,
+                        cells: vec![val],
+                        cell_types: vec![CellType::Text],
+                        indent: 0,
+                    })
+                    .collect()
+            };
+            DetailSectionData {
+                title: title.to_owned(),
+                render_as_header: false,
+                section_type,
+                content: DetailContent::Table {
+                    header,
+                    rows,
+                    constraints: vec![ColumnConstraint::Percentage(100)],
+                    use_row_selection: true,
+                },
+            }
+        };
 
-        sections.push(DetailSectionData {
-            title: "Precondition-State-Refs".to_owned(),
-            render_as_header: false,
-            section_type: DetailSectionType::Custom,
-            content: DetailContent::Table {
-                header: header.clone(),
-                rows,
-                constraints: vec![ColumnConstraint::Percentage(100)],
-                use_row_selection: true,
-            },
-        });
-    }
+    // Precondition State Refs
+    let pre_cond_refs: Vec<String> = ds
+        .diag_comm()
+        .and_then(|dc| dc.pre_condition_state_refs())
+        .into_iter()
+        .flat_map(|refs| refs.iter())
+        .filter_map(|pc| pc.value().map(|s| s.to_owned()))
+        .collect();
+    sections.push(build_ref_list_section(
+        "Precondition-State-Refs",
+        DetailSectionType::Custom,
+        pre_cond_refs,
+        "(No precondition state refs)",
+    ));
 
     // State Transition Refs
-    if let Some(dc) = ds.diag_comm() {
-        let header = DetailRow {
-            row_type: DetailRowType::Normal,
-            metadata: None,
-            cells: vec!["Short Name".to_owned()],
-            cell_types: vec![CellType::Text],
-            indent: 0,
-        };
-
-        let mut rows = Vec::new();
-        for st in dc.state_transition_refs().into_iter().flatten() {
-            if let Some(val) = st.value() {
-                rows.push(DetailRow {
-                    row_type: DetailRowType::Normal,
-                    metadata: None,
-                    cells: vec![val.to_owned()],
-                    cell_types: vec![CellType::Text],
-                    indent: 0,
-                });
-            }
-        }
-
-        if rows.is_empty() {
-            rows.push(DetailRow {
-                row_type: DetailRowType::Normal,
-                metadata: None,
-                cells: vec!["(No state transition refs)".to_owned()],
-                cell_types: vec![CellType::Text],
-                indent: 0,
-            });
-        }
-
-        sections.push(DetailSectionData {
-            title: "State-Transition-Refs".to_owned(),
-            render_as_header: false,
-            section_type: DetailSectionType::States,
-            content: DetailContent::Table {
-                header,
-                rows,
-                constraints: vec![ColumnConstraint::Percentage(100)],
-                use_row_selection: true,
-            },
-        });
-    }
+    let state_trans_refs: Vec<String> = ds
+        .diag_comm()
+        .and_then(|dc| dc.state_transition_refs())
+        .into_iter()
+        .flat_map(|refs| refs.iter())
+        .filter_map(|st| st.value().map(|s| s.to_owned()))
+        .collect();
+    sections.push(build_ref_list_section(
+        "State-Transition-Refs",
+        DetailSectionType::States,
+        state_trans_refs,
+        "(No state transition refs)",
+    ));
 
     // Related diag comm refs
     let related_header = DetailRow {
@@ -893,93 +822,58 @@ fn build_diag_comms_table_section(
 
     let mut rows = Vec::new();
 
+    // Helper: build a row for a service with given inherited flag
+    let build_service_row = |ds: &DiagService<'_>, inherited: &str| -> Option<DetailRow> {
+        let dc = ds.diag_comm()?;
+        let name = dc.short_name().unwrap_or("?").to_owned();
+        let id_str = super::format_service_id(ds);
+        let id = if id_str.is_empty() {
+            "-".to_owned()
+        } else {
+            id_str
+        };
+
+        let funct_class = dc
+            .funct_class()
+            .map(|fc_list| fc_list.get(0))
+            .and_then(|fc| fc.short_name())
+            .unwrap_or("-")
+            .to_owned();
+
+        Some(DetailRow {
+            row_type: DetailRowType::Normal,
+            metadata: None,
+            cells: vec![
+                id,
+                name,
+                funct_class,
+                "Service".to_owned(),
+                inherited.to_owned(),
+            ],
+            cell_types: vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
+            indent: 0,
+        })
+    };
+
     // Add own services first (inherited = false)
-    for ds in own_services.iter() {
-        if let Some(dc) = ds.diag_comm() {
-            let name = dc.short_name().unwrap_or("?").to_owned();
-
-            let id = if let Some(sid) = ds.request_id() {
-                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                    let sub_fn_str = if bit_len <= 8 {
-                        format!("{sub_fn:02X}")
-                    } else {
-                        format!("{sub_fn:04X}")
-                    };
-                    let full_id = format!("{sid:02X}{sub_fn_str}");
-                    format!("0x{}", full_id)
-                } else {
-                    format!("0x{:02X}", sid)
-                }
-            } else {
-                "-".to_owned()
-            };
-
-            // Extract functional class short name if available
-            let funct_class = dc.funct_class()
-                .map(|fc_list| fc_list.get(0))
-                .and_then(|fc| fc.short_name())
-                .unwrap_or("-")
-                .to_owned();
-
-            rows.push(DetailRow {
-                row_type: DetailRowType::Normal,
-                metadata: None,
-                cells: vec![id, name, funct_class, "Service".to_owned(), "false".to_owned()],
-                cell_types: vec![
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                ],
-                indent: 0,
-            });
-        }
-    }
+    rows.extend(
+        own_services
+            .iter()
+            .filter_map(|ds| build_service_row(ds, "false")),
+    );
 
     // Add parent services (inherited = true)
-    for (ds, _source_layer_name) in parent_services.iter() {
-        if let Some(dc) = ds.diag_comm() {
-            let name = dc.short_name().unwrap_or("?").to_owned();
-
-            let id = if let Some(sid) = ds.request_id() {
-                if let Some((sub_fn, bit_len)) = ds.request_sub_function_id() {
-                    let sub_fn_str = if bit_len <= 8 {
-                        format!("{sub_fn:02X}")
-                    } else {
-                        format!("{sub_fn:04X}")
-                    };
-                    let full_id = format!("{sid:02X}{sub_fn_str}");
-                    format!("0x{}", full_id)
-                } else {
-                    format!("0x{:02X}", sid)
-                }
-            } else {
-                "-".to_owned()
-            };
-
-            // Extract functional class short name if available
-            let funct_class = dc.funct_class()
-                .map(|fc_list| fc_list.get(0))
-                .and_then(|fc| fc.short_name())
-                .unwrap_or("-")
-                .to_owned();
-
-            rows.push(DetailRow {
-                row_type: DetailRowType::Normal,
-                metadata: None,
-                cells: vec![id, name, funct_class, "Service".to_owned(), "true".to_owned()],
-                cell_types: vec![
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                ],
-                indent: 0,
-            });
-        }
-    }
+    rows.extend(
+        parent_services
+            .iter()
+            .filter_map(|(ds, _)| build_service_row(ds, "true")),
+    );
 
     // Add job entries to the table
     for job_name in job_names.iter() {
@@ -1026,168 +920,3 @@ fn build_diag_comms_table_section(
         },
     }
 }
-
-/// Add child elements for a service (functional classes, precondition state refs, request)
-fn add_service_child_elements(b: &mut TreeBuilder, ds: &DiagService<'_>, depth: usize) {
-    if let Some(dc) = ds.diag_comm() {
-        // Add Functional Classes
-        if let Some(funct_classes) = dc.funct_class() {
-            let funct_class_list: Vec<String> = funct_classes
-                .iter()
-                .filter_map(|fc| fc.short_name().map(|s| s.to_owned()))
-                .collect();
-
-            if !funct_class_list.is_empty() {
-                let header = DetailRow::header(
-                    vec!["Functional Class".to_owned()],
-                    vec![CellType::Text],
-                );
-
-                let rows: Vec<DetailRow> = funct_class_list
-                    .iter()
-                    .map(|fc_name| {
-                        DetailRow::normal(vec![fc_name.clone()], vec![CellType::Text], 0)
-                    })
-                    .collect();
-
-                let section = DetailSectionData::new(
-                    format!("Functional Classes ({})", funct_class_list.len()),
-                    DetailContent::Table {
-                        header,
-                        rows,
-                        constraints: vec![ColumnConstraint::Percentage(100)],
-                        use_row_selection: true,
-                    },
-                    false,
-                )
-                .with_type(DetailSectionType::Custom);
-
-                b.push_details_structured(
-                    depth,
-                    format!("Functional Classes ({})", funct_class_list.len()),
-                    false,
-                    false,
-                    vec![section],
-                    NodeType::Default,
-                );
-            }
-        }
-
-        // Add Precondition State Refs
-        if let Some(pre_cond_refs) = dc.pre_condition_state_refs() {
-            let pre_cond_list: Vec<String> = pre_cond_refs
-                .iter()
-                .filter_map(|pr| pr.value().map(|s| s.to_owned()))
-                .collect();
-
-            if !pre_cond_list.is_empty() {
-                let header = DetailRow::header(
-                    vec!["Precondition State".to_owned()],
-                    vec![CellType::Text],
-                );
-
-                let rows: Vec<DetailRow> = pre_cond_list
-                    .iter()
-                    .map(|pc_name| {
-                        DetailRow::normal(vec![pc_name.clone()], vec![CellType::Text], 0)
-                    })
-                    .collect();
-
-                let section = DetailSectionData::new(
-                    format!("Precondition State Refs ({})", pre_cond_list.len()),
-                    DetailContent::Table {
-                        header,
-                        rows,
-                        constraints: vec![ColumnConstraint::Percentage(100)],
-                        use_row_selection: true,
-                    },
-                    false,
-                )
-                .with_type(DetailSectionType::Custom);
-
-                b.push_details_structured(
-                    depth,
-                    format!("Precondition State Refs ({})", pre_cond_list.len()),
-                    false,
-                    false,
-                    vec![section],
-                    NodeType::Default,
-                );
-            }
-        }
-    }
-
-    // Add Request
-    if let Some(request) = ds.request() {
-        if let Some(params) = request.params() {
-            let param_count = params.len();
-
-            let header = DetailRow::header(
-                vec!["Parameter".to_owned(), "Type".to_owned()],
-                vec![CellType::Text, CellType::Text],
-            );
-
-            let rows: Vec<DetailRow> = params
-                .iter()
-                .map(|p| {
-                    let param_name = p.short_name().unwrap_or("?");
-                    // Get param type as integer value since flatbuf ParamType is different from datatypes ParamType
-                    let param_type_value = p.param_type().0;
-                    let param_type_str = match param_type_value {
-                        0 => "Coded Const",
-                        1 => "Phys Const",
-                        2 => "Value",
-                        _ => "Other",
-                    };
-                    DetailRow::normal(
-                        vec![param_name.to_owned(), param_type_str.to_owned()],
-                        vec![CellType::Text, CellType::Text],
-                        0,
-                    )
-                })
-                .collect();
-
-            let section = DetailSectionData::new(
-                format!("Request Parameters ({})", param_count),
-                DetailContent::Table {
-                    header,
-                    rows,
-                    constraints: vec![
-                        ColumnConstraint::Percentage(60),
-                        ColumnConstraint::Percentage(40),
-                    ],
-                    use_row_selection: true,
-                },
-                false,
-            )
-            .with_type(DetailSectionType::Custom);
-
-            b.push_details_structured(
-                depth,
-                format!("Request ({})", param_count),
-                false,
-                false,
-                vec![section],
-                NodeType::Default,
-            );
-        } else {
-            // Request with no parameters
-            let section = DetailSectionData::new(
-                "Request".to_owned(),
-                DetailContent::PlainText(vec!["(No parameters)".to_owned()]),
-                false,
-            )
-            .with_type(DetailSectionType::Custom);
-
-            b.push_details_structured(
-                depth,
-                "Request".to_owned(),
-                false,
-                false,
-                vec![section],
-                NodeType::Default,
-            );
-        }
-    }
-}
-

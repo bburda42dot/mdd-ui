@@ -14,11 +14,11 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     let Some(sdgs) = layer.sdgs() else {
         return;
     };
-    
+
     let Some(sdg_list) = sdgs.sdgs() else {
         return;
     };
-    
+
     if sdg_list.is_empty() {
         return;
     }
@@ -26,39 +26,37 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Extract all SDG data including SD elements
     let mut sdg_data_list = Vec::new();
     for sdg in sdg_list.iter() {
-        if let Some(caption) = sdg.caption_sn() {
-            let si = sdg.si().unwrap_or("-");
-            
-            // Extract SD elements from this SDG
-            let mut sd_elements = Vec::new();
-            if let Some(sds) = sdg.sds() {
-                for (index, sd_or_sdg) in sds.iter().enumerate() {
-                    if let Some(sd) = sd_or_sdg.sd_or_sdg_as_sd() {
-                        // Use SI as the name, or fall back to index-based naming
-                        let short_name = sd.si()
-                            .map(|s| s.to_owned())
-                            .unwrap_or_else(|| format!("SD #{}", index + 1));
-                        let value = sd.value().unwrap_or("-").to_owned();
-                        let sd_si = sd.si().unwrap_or("-").to_owned();
-                        let ti = sd.ti().unwrap_or("-").to_owned();
-                        
-                        sd_elements.push(SdElement {
-                            short_name,
-                            value,
-                            si: sd_si,
-                            ti,
-                            depth: 0,
-                        });
-                    }
-                }
-            }
-            
-            sdg_data_list.push(SdgData {
-                caption: caption.to_owned(),
-                si: si.to_owned(),
-                sd_elements,
-            });
-        }
+        let Some(caption) = sdg.caption_sn() else {
+            continue;
+        };
+        let si = sdg.si().unwrap_or("-");
+
+        // Extract SD elements from this SDG
+        let sd_elements: Vec<_> = sdg
+            .sds()
+            .into_iter()
+            .flat_map(|sds| sds.iter().enumerate())
+            .filter_map(|(index, sd_or_sdg)| {
+                let sd = sd_or_sdg.sd_or_sdg_as_sd()?;
+                let short_name = sd
+                    .si()
+                    .map(|s| s.to_owned())
+                    .unwrap_or_else(|| format!("SD #{}", index + 1));
+                Some(SdElement {
+                    short_name,
+                    value: sd.value().unwrap_or("-").to_owned(),
+                    si: sd.si().unwrap_or("-").to_owned(),
+                    ti: sd.ti().unwrap_or("-").to_owned(),
+                    depth: 0,
+                })
+            })
+            .collect();
+
+        sdg_data_list.push(SdgData {
+            caption: caption.to_owned(),
+            si: si.to_owned(),
+            sd_elements,
+        });
     }
 
     if sdg_data_list.is_empty() {
@@ -80,7 +78,7 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     // Add each SDG as a child node with detail
     for sdg_data in &sdg_data_list {
         let detail_sections = build_sdg_detail_sections(sdg_data);
-        
+
         b.push_details_structured(
             depth + 1,
             sdg_data.caption.clone(),
@@ -188,10 +186,7 @@ fn build_sdg_overview_section(sdg_data: &SdgData) -> DetailSectionData {
 /// Build table section showing SD elements with Name | Value columns
 fn build_sd_elements_table_section(sd_elements: &[SdElement]) -> DetailSectionData {
     let header = DetailRow::header(
-        vec![
-            "Name".to_owned(),
-            "Value".to_owned(),
-        ],
+        vec!["Name".to_owned(), "Value".to_owned()],
         vec![CellType::Text, CellType::Text],
     );
 
@@ -199,10 +194,7 @@ fn build_sd_elements_table_section(sd_elements: &[SdElement]) -> DetailSectionDa
         .iter()
         .map(|sd| {
             DetailRow::normal(
-                vec![
-                    sd.short_name.clone(),
-                    sd.value.clone(),
-                ],
+                vec![sd.short_name.clone(), sd.value.clone()],
                 vec![CellType::Text, CellType::Text],
                 sd.depth,
             )
@@ -235,7 +227,9 @@ struct SdgData {
 struct SdElement {
     short_name: String,
     value: String,
+    #[allow(dead_code)]
     si: String,
+    #[allow(dead_code)]
     ti: String,
     depth: usize,
 }

@@ -246,33 +246,52 @@ pub fn add_diag_comms<'a>(
                 // Precondition State Refs
                 if let Some(dc) = job.diag_comm() {
                     let header = DetailRow {
-                        row_type: DetailRowType::Normal,
-                        metadata: None,
-                        cells: vec!["Short Name".to_owned()],
-                        cell_types: vec![CellType::Text],
+                        cells: vec![
+                            "State".to_owned(),
+                            "Value".to_owned(),
+                            "Input Param".to_owned(),
+                        ],
+                        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                         indent: 0,
+                        ..Default::default()
                     };
 
-                    let mut rows = Vec::new();
-                    for pc in dc.pre_condition_state_refs().into_iter().flatten() {
-                        if let Some(val) = pc.value() {
-                            rows.push(DetailRow {
-                                row_type: DetailRowType::Normal,
-                                metadata: None,
-                                cells: vec![val.to_owned()],
-                                cell_types: vec![CellType::Text],
+                    let mut rows: Vec<DetailRow> = dc
+                        .pre_condition_state_refs()
+                        .into_iter()
+                        .flat_map(|refs| refs.iter())
+                        .map(|pc| {
+                            let state_name = pc
+                                .state()
+                                .and_then(|s| s.short_name())
+                                .unwrap_or("-")
+                                .to_owned();
+                            let value = pc.value().unwrap_or("-").to_owned();
+                            let input_param = pc
+                                .in_param_if_short_name()
+                                .or_else(|| pc.in_param_path_short_name())
+                                .unwrap_or("-")
+                                .to_owned();
+
+                            DetailRow {
+                                cells: vec![state_name, value, input_param],
+                                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                                 indent: 0,
-                            });
-                        }
-                    }
+                                ..Default::default()
+                            }
+                        })
+                        .collect();
 
                     if rows.is_empty() {
                         rows.push(DetailRow {
-                            row_type: DetailRowType::Normal,
-                            metadata: None,
-                            cells: vec!["(No precondition state refs)".to_owned()],
-                            cell_types: vec![CellType::Text],
+                            cells: vec![
+                                "(No precondition state refs)".to_owned(),
+                                "-".to_owned(),
+                                "-".to_owned(),
+                            ],
+                            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
                             indent: 0,
+                            ..Default::default()
                         });
                     }
 
@@ -283,7 +302,11 @@ pub fn add_diag_comms<'a>(
                         content: DetailContent::Table {
                             header,
                             rows,
-                            constraints: vec![ColumnConstraint::Percentage(100)],
+                            constraints: vec![
+                                ColumnConstraint::Percentage(40),
+                                ColumnConstraint::Percentage(30),
+                                ColumnConstraint::Percentage(30),
+                            ],
                             use_row_selection: true,
                         },
                     });
@@ -694,77 +717,11 @@ pub fn build_diag_comm_details_with_parent(
         });
     }
 
-    // Helper: build a ref-list section (precondition states, state transitions)
-    let build_ref_list_section =
-        |title: &str, section_type: DetailSectionType, refs: Vec<String>, empty_msg: &str| {
-            let header = DetailRow {
-                row_type: DetailRowType::Normal,
-                metadata: None,
-                cells: vec!["Short Name".to_owned()],
-                cell_types: vec![CellType::Text],
-                indent: 0,
-            };
-            let rows = if refs.is_empty() {
-                vec![DetailRow {
-                    row_type: DetailRowType::Normal,
-                    metadata: None,
-                    cells: vec![empty_msg.to_owned()],
-                    cell_types: vec![CellType::Text],
-                    indent: 0,
-                }]
-            } else {
-                refs.into_iter()
-                    .map(|val| DetailRow {
-                        row_type: DetailRowType::Normal,
-                        metadata: None,
-                        cells: vec![val],
-                        cell_types: vec![CellType::Text],
-                        indent: 0,
-                    })
-                    .collect()
-            };
-            DetailSectionData {
-                title: title.to_owned(),
-                render_as_header: false,
-                section_type,
-                content: DetailContent::Table {
-                    header,
-                    rows,
-                    constraints: vec![ColumnConstraint::Percentage(100)],
-                    use_row_selection: true,
-                },
-            }
-        };
-
     // Precondition State Refs
-    let pre_cond_refs: Vec<String> = ds
-        .diag_comm()
-        .and_then(|dc| dc.pre_condition_state_refs())
-        .into_iter()
-        .flat_map(|refs| refs.iter())
-        .filter_map(|pc| pc.value().map(|s| s.to_owned()))
-        .collect();
-    sections.push(build_ref_list_section(
-        "Precondition-State-Refs",
-        DetailSectionType::Custom,
-        pre_cond_refs,
-        "(No precondition state refs)",
-    ));
+    sections.push(build_precondition_state_refs_section(ds));
 
     // State Transition Refs
-    let state_trans_refs: Vec<String> = ds
-        .diag_comm()
-        .and_then(|dc| dc.state_transition_refs())
-        .into_iter()
-        .flat_map(|refs| refs.iter())
-        .filter_map(|st| st.value().map(|s| s.to_owned()))
-        .collect();
-    sections.push(build_ref_list_section(
-        "State-Transition-Refs",
-        DetailSectionType::States,
-        state_trans_refs,
-        "(No state transition refs)",
-    ));
+    sections.push(build_state_transition_refs_section(ds));
 
     // Related diag comm refs
     let related_header = DetailRow {
@@ -804,8 +761,8 @@ fn build_diag_comms_table_section(
         row_type: DetailRowType::Normal,
         metadata: None,
         cells: vec![
-            "ID".to_owned(),
             "Short Name".to_owned(),
+            "ID".to_owned(),
             "Funct Class".to_owned(),
             "Type".to_owned(),
             "Inherited".to_owned(),
@@ -844,8 +801,8 @@ fn build_diag_comms_table_section(
             row_type: DetailRowType::Normal,
             metadata: None,
             cells: vec![
-                id,
                 name,
+                id,
                 funct_class,
                 "Service".to_owned(),
                 inherited.to_owned(),
@@ -881,8 +838,8 @@ fn build_diag_comms_table_section(
             row_type: DetailRowType::Normal,
             metadata: None,
             cells: vec![
-                "-".to_owned(),
                 job_name.clone(),
+                "-".to_owned(),
                 "-".to_owned(),
                 "Job".to_owned(),
                 "false".to_owned(),
@@ -910,10 +867,174 @@ fn build_diag_comms_table_section(
             header,
             rows,
             constraints: vec![
-                ColumnConstraint::Percentage(12),
                 ColumnConstraint::Percentage(35),
+                ColumnConstraint::Percentage(12),
                 ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(13),
+                ColumnConstraint::Percentage(20),
+            ],
+            use_row_selection: true,
+        },
+    }
+}
+
+/// Build precondition state refs section from a DiagService.
+/// Extracts data from the embedded State object rather than just the value string.
+fn build_precondition_state_refs_section(ds: &DiagService<'_>) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec![
+            "State".to_owned(),
+            "Value".to_owned(),
+            "Input Param".to_owned(),
+        ],
+        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+        indent: 0,
+        ..Default::default()
+    };
+
+    let rows: Vec<DetailRow> = ds
+        .diag_comm()
+        .and_then(|dc| dc.pre_condition_state_refs())
+        .into_iter()
+        .flat_map(|refs| refs.iter())
+        .map(|pc| {
+            let state_name = pc
+                .state()
+                .and_then(|s| s.short_name())
+                .unwrap_or("-")
+                .to_owned();
+            let value = pc.value().unwrap_or("-").to_owned();
+            let input_param = pc
+                .in_param_if_short_name()
+                .or_else(|| pc.in_param_path_short_name())
+                .unwrap_or("-")
+                .to_owned();
+
+            DetailRow {
+                cells: vec![state_name, value, input_param],
+                cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+                indent: 0,
+                ..Default::default()
+            }
+        })
+        .collect();
+
+    let rows = if rows.is_empty() {
+        vec![DetailRow {
+            cells: vec![
+                "(No precondition state refs)".to_owned(),
+                "-".to_owned(),
+                "-".to_owned(),
+            ],
+            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+            indent: 0,
+            ..Default::default()
+        }]
+    } else {
+        rows
+    };
+
+    DetailSectionData {
+        title: "Precondition-State-Refs".to_owned(),
+        render_as_header: false,
+        section_type: DetailSectionType::Custom,
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(40),
+                ColumnConstraint::Percentage(30),
+                ColumnConstraint::Percentage(30),
+            ],
+            use_row_selection: true,
+        },
+    }
+}
+
+/// Build state transition refs section from a DiagService.
+/// Extracts data from the embedded StateTransition object.
+fn build_state_transition_refs_section(ds: &DiagService<'_>) -> DetailSectionData {
+    let header = DetailRow {
+        cells: vec![
+            "Short Name".to_owned(),
+            "Source".to_owned(),
+            "Target".to_owned(),
+            "Value".to_owned(),
+        ],
+        cell_types: vec![
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
+        indent: 0,
+        ..Default::default()
+    };
+
+    let rows: Vec<DetailRow> = ds
+        .diag_comm()
+        .and_then(|dc| dc.state_transition_refs())
+        .into_iter()
+        .flat_map(|refs| refs.iter())
+        .map(|st| {
+            let (short_name, source, target) = st
+                .state_transition()
+                .map(|t| {
+                    (
+                        t.short_name().unwrap_or("-").to_owned(),
+                        t.source_short_name_ref().unwrap_or("-").to_owned(),
+                        t.target_short_name_ref().unwrap_or("-").to_owned(),
+                    )
+                })
+                .unwrap_or_else(|| ("-".to_owned(), "-".to_owned(), "-".to_owned()));
+            let value = st.value().unwrap_or("-").to_owned();
+
+            DetailRow {
+                cells: vec![short_name, source, target, value],
+                cell_types: vec![
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                ],
+                indent: 0,
+                ..Default::default()
+            }
+        })
+        .collect();
+
+    let rows = if rows.is_empty() {
+        vec![DetailRow {
+            cells: vec![
+                "(No state transition refs)".to_owned(),
+                "-".to_owned(),
+                "-".to_owned(),
+                "-".to_owned(),
+            ],
+            cell_types: vec![
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+                CellType::Text,
+            ],
+            indent: 0,
+            ..Default::default()
+        }]
+    } else {
+        rows
+    };
+
+    DetailSectionData {
+        title: "State-Transition-Refs".to_owned(),
+        render_as_header: false,
+        section_type: DetailSectionType::States,
+        content: DetailContent::Table {
+            header,
+            rows,
+            constraints: vec![
+                ColumnConstraint::Percentage(30),
+                ColumnConstraint::Percentage(25),
+                ColumnConstraint::Percentage(25),
                 ColumnConstraint::Percentage(20),
             ],
             use_row_selection: true,

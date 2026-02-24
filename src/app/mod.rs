@@ -39,6 +39,11 @@ pub(crate) enum SearchScope {
     DiagComms,        // Search only in Diag-Comms sections
     Requests,         // Search only in Requests
     Responses,        // Search only in Responses (Pos and Neg)
+    Subtree {
+        start_idx: usize,
+        end_idx: usize,
+        root_name: String,
+    },
 }
 
 impl std::fmt::Display for SearchScope {
@@ -52,6 +57,7 @@ impl std::fmt::Display for SearchScope {
             SearchScope::DiagComms => write!(f, "Diag-Comms"),
             SearchScope::Requests => write!(f, "Requests"),
             SearchScope::Responses => write!(f, "Responses"),
+            SearchScope::Subtree { root_name, .. } => write!(f, "in {root_name}"),
         }
     }
 }
@@ -68,6 +74,7 @@ impl SearchScope {
             SearchScope::DiagComms => " [diag-comms]",
             SearchScope::Requests => " [requests]",
             SearchScope::Responses => " [responses]",
+            SearchScope::Subtree { .. } => " [subtree]",
         }
     }
 
@@ -82,6 +89,7 @@ impl SearchScope {
             SearchScope::DiagComms => " | scope: diag-comms",
             SearchScope::Requests => " | scope: requests",
             SearchScope::Responses => " | scope: responses",
+            SearchScope::Subtree { .. } => " | scope: subtree",
         }
     }
 
@@ -96,6 +104,7 @@ impl SearchScope {
             SearchScope::DiagComms => "[D]",
             SearchScope::Requests => "[Rq]",
             SearchScope::Responses => "[Rs]",
+            SearchScope::Subtree { .. } => "[ST]",
         }
     }
 }
@@ -372,10 +381,10 @@ impl App {
 
         let buffer_lower = self.jump_buffer.to_lowercase();
 
-        // Find first row where first cell starts with the buffer (case-insensitive)
+        // Find first row where the focused column starts with the buffer (case-insensitive)
         for (i, row) in rows.iter().enumerate() {
-            if let Some(first_cell) = row.cells.first()
-                && first_cell.to_lowercase().starts_with(&buffer_lower)
+            if let Some(cell) = row.cells.get(self.focused_column)
+                && cell.to_lowercase().starts_with(&buffer_lower)
             {
                 if section_idx < self.section_cursors.len() {
                     self.section_cursors[section_idx] = i;
@@ -660,6 +669,9 @@ impl App {
                         NodeType::PosResponse | NodeType::NegResponse
                     )
             }
+            SearchScope::Subtree {
+                start_idx, end_idx, ..
+            } => node_idx >= *start_idx && node_idx <= *end_idx,
         };
 
         matches_scope && node.text.to_lowercase().contains(query)
@@ -1257,19 +1269,7 @@ impl App {
             let stack_display: Vec<String> = self
                 .search_stack
                 .iter()
-                .map(|(term, scope)| {
-                    let scope_abbrev = match scope {
-                        SearchScope::All => "",
-                        SearchScope::Variants => "[V]",
-                        SearchScope::FunctionalGroups => "[FG]",
-                        SearchScope::EcuSharedData => "[ESD]",
-                        SearchScope::Services => "[S]",
-                        SearchScope::DiagComms => "[D]",
-                        SearchScope::Requests => "[Rq]",
-                        SearchScope::Responses => "[Rs]",
-                    };
-                    format!("{}{}", term, scope_abbrev)
-                })
+                .map(|(term, scope)| format!("{}{}", term, scope.abbrev()))
                 .collect();
             self.status = format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
         }
@@ -1301,20 +1301,33 @@ impl App {
             SearchScope::DiagComms => SearchScope::Requests,
             SearchScope::Requests => SearchScope::Responses,
             SearchScope::Responses => SearchScope::All,
+            // Subtree is contextual, cycling from it resets to All
+            SearchScope::Subtree { .. } => SearchScope::All,
         };
 
-        let scope_name = match self.search_scope {
-            // todo use strum crate to avoid this repetition
-            SearchScope::All => "All",
-            SearchScope::Variants => "Variants",
-            SearchScope::FunctionalGroups => "Functional Groups",
-            SearchScope::EcuSharedData => "ECU Shared Data",
-            SearchScope::Services => "Services",
-            SearchScope::DiagComms => "Diag-Comms",
-            SearchScope::Requests => "Requests",
-            SearchScope::Responses => "Responses",
+        self.status = format!("Search scope: {}", self.search_scope);
+    }
+
+    /// Set search scope to the subtree rooted at the current cursor position
+    pub(crate) fn set_subtree_scope(&mut self) {
+        let Some(&start_idx) = self.visible.get(self.cursor) else {
+            return;
         };
-        self.status = format!("Search scope: {}", scope_name);
+        let root_depth = self.all_nodes[start_idx].depth;
+        let root_name = self.all_nodes[start_idx].text.clone();
+
+        // Walk forward to find the last descendant
+        let end_idx = self.all_nodes[start_idx + 1..]
+            .iter()
+            .position(|n| n.depth <= root_depth)
+            .map_or(self.all_nodes.len() - 1, |offset| start_idx + offset);
+
+        self.search_scope = SearchScope::Subtree {
+            start_idx,
+            end_idx,
+            root_name: root_name.clone(),
+        };
+        self.status = format!("Search scope: subtree '{root_name}'");
     }
 
     pub(crate) fn toggle_mouse_mode(&mut self) {
@@ -1480,8 +1493,8 @@ impl App {
             }
         }
 
-        // Default action: show detail popup
-        self.try_show_detail_popup();
+        // Try to navigate based on the current cell content
+        self.try_navigate_from_detail_row();
     }
 
     /// Handle Enter key for generic nodes with detail sections
@@ -1507,100 +1520,76 @@ impl App {
             } else if section.title.starts_with("Not Inherited") {
                 self.try_navigate_to_not_inherited_element();
             } else {
-                self.try_show_detail_popup();
+                self.try_navigate_from_detail_row();
             }
         } else {
-            self.try_show_detail_popup();
+            self.status = "No details available".to_owned();
         }
     }
 
-    /// Try to show a popup based on the current row selection
-    pub(crate) fn try_show_detail_popup(&mut self) {
-        // Validate cursor position
+    /// Try to navigate to the item referenced by the currently focused cell.
+    /// Falls back to searching the tree for a node matching the cell text.
+    fn try_navigate_from_detail_row(&mut self) {
         if self.cursor >= self.visible.len() {
-            self.status = "Cursor out of bounds".to_string();
             return;
         }
 
         let node_idx = self.visible[self.cursor];
         let node = &self.all_nodes[node_idx];
+        let section_idx = self.get_section_index();
 
-        // Validate node has detail sections
-        if node.detail_sections.is_empty() {
-            self.status = "No details available".to_string();
-            return;
-        }
-
-        // Validate section cursor is initialized
-        let section_index = self.get_section_index();
-        if section_index >= self.section_cursors.len() {
-            self.status = "Section cursor not initialized".to_string();
-            return;
-        }
-        let row_cursor = self.section_cursors[section_index];
-
-        // Validate tab exists
-        let sections = &node.detail_sections;
-        if section_index >= sections.len() {
-            self.status = format!("Tab {} out of {} tabs", section_index, sections.len());
-            return;
-        }
-
-        let section = &sections[section_index];
-
-        // Extract rows from table content
-        use crate::tree::DetailContent;
-        let rows = match &section.content {
-            DetailContent::Table { rows, .. } => rows,
-            _ => {
-                self.status = "Popup only available for table rows".to_owned();
+        let (rows, use_row_selection) = match self.get_table_rows(node, section_idx) {
+            Some(data) => data,
+            None => {
+                self.status = "No table data".to_owned();
                 return;
             }
         };
 
-        // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_index);
+        let row_cursor = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+        let sorted_rows = self.apply_table_sort(rows, section_idx);
 
-        // Validate row exists
-        if row_cursor >= sorted_rows.len() {
-            self.status = format!("Row {} out of {} lines", row_cursor, sorted_rows.len());
+        let Some(selected_row) = sorted_rows.get(row_cursor) else {
+            return;
+        };
+
+        let focused_col = self.get_focused_column(use_row_selection, &selected_row.cell_types);
+        let cell_type = selected_row
+            .cell_types
+            .get(focused_col)
+            .cloned()
+            .unwrap_or(CellType::Text);
+        let cell_value = selected_row
+            .cells
+            .get(focused_col)
+            .map(|s| s.as_str())
+            .unwrap_or("");
+
+        if cell_value.is_empty() || cell_value == "-" {
+            self.status = "Empty cell".to_owned();
             return;
         }
 
-        // Get the selected row
-        let selected_row: &DetailRow = &sorted_rows[row_cursor];
-        let cells = &selected_row.cells;
-
-        // Build popup content with all cell data
-        let mut content = Vec::new();
-
-        for (i, cell) in cells.iter().enumerate() {
-            if !cell.is_empty() {
-                // Get the header name for this column
-                let header_name = if let DetailContent::Table { header, .. } = &section.content {
-                    header.cells.get(i).map(|s| s.as_str()).unwrap_or("Unknown")
-                } else {
-                    "Unknown"
-                };
-
-                content.push(format!("{}: {}", header_name, cell));
+        // Handle typed cells
+        match cell_type {
+            CellType::DopReference => {
+                self.navigate_to_dop(cell_value);
+                return;
             }
+            CellType::ParameterName => {
+                self.navigate_to_parameter(selected_row);
+                return;
+            }
+            CellType::Text | CellType::NumericValue => {}
         }
 
-        if content.is_empty() {
-            self.status = "No data in this row".to_owned();
-            return;
+        // Try to find a matching tree node by text
+        let found_idx = self.all_nodes.iter().position(|n| n.text == cell_value);
+        if let Some(idx) = found_idx {
+            self.navigate_to_node(idx);
+        } else {
+            self.status = "This cell is not navigable".to_owned();
         }
-
-        // Get a title from the first non-empty cell
-        let title = cells
-            .iter()
-            .find(|c| !c.is_empty())
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| "Details".to_owned());
-
-        self.status = "Showing details for row".to_string();
-        self.detail_popup = Some(PopupData { title, content });
     }
 
     /// Navigate to a service in the tree from a service list table
@@ -1973,8 +1962,32 @@ impl App {
         // Handle different cell types
         match cell_type {
             CellType::DopReference => self.navigate_to_dop(cell_value),
-            CellType::ParameterName => self.navigate_to_parameter(selected_row),
-            _ => self.status = "This cell is not navigable".to_owned(),
+            CellType::ParameterName => {
+                let node_type = self.all_nodes[node_idx].node_type.clone();
+                match node_type {
+                    // DiagComm view: navigate to the matching Request/Response service node
+                    NodeType::Service | NodeType::ParentRefService => {
+                        self.navigate_to_request_response_counterpart(node_idx, section_idx);
+                    }
+                    // Already on a Request/Response node: navigate to parameter child
+                    NodeType::Request | NodeType::PosResponse | NodeType::NegResponse => {
+                        self.navigate_to_parameter(selected_row);
+                    }
+                    NodeType::Container
+                    | NodeType::SectionHeader
+                    | NodeType::ParentRefs
+                    | NodeType::FunctionalClass
+                    | NodeType::Job
+                    | NodeType::DOP
+                    | NodeType::SDG
+                    | NodeType::Default => {
+                        self.status = "Parameter navigation not available here".to_owned();
+                    }
+                }
+            }
+            CellType::Text | CellType::NumericValue => {
+                self.status = "This cell is not navigable".to_owned();
+            }
         }
     }
 
@@ -1993,6 +2006,50 @@ impl App {
                 ..
             } => Some((rows, *use_row_selection)),
             _ => None,
+        }
+    }
+
+    /// Navigate from a DiagComm service to the corresponding Request/Response node.
+    /// The DiagComm node text has a `[Service] ` prefix that the counterpart lacks.
+    fn navigate_to_request_response_counterpart(&mut self, node_idx: usize, section_idx: usize) {
+        let service_name = self.all_nodes[node_idx]
+            .text
+            .strip_prefix("[Service] ")
+            .unwrap_or(&self.all_nodes[node_idx].text)
+            .to_owned();
+
+        let section_type = self.all_nodes[node_idx]
+            .detail_sections
+            .get(section_idx)
+            .map(|s| s.section_type);
+
+        let Some(target_node_type) = section_type.and_then(|st| match st {
+            DetailSectionType::Requests => Some(NodeType::Request),
+            DetailSectionType::PosResponses => Some(NodeType::PosResponse),
+            DetailSectionType::NegResponses => Some(NodeType::NegResponse),
+            DetailSectionType::Header
+            | DetailSectionType::Overview
+            | DetailSectionType::Services
+            | DetailSectionType::ComParams
+            | DetailSectionType::States
+            | DetailSectionType::RelatedRefs
+            | DetailSectionType::FunctionalClass
+            | DetailSectionType::Custom => None,
+        }) else {
+            self.status = "Cannot navigate from this section type".to_owned();
+            return;
+        };
+
+        let found = self
+            .all_nodes
+            .iter()
+            .position(|n| n.node_type == target_node_type && n.text == service_name);
+
+        match found {
+            Some(idx) => self.navigate_to_node(idx),
+            None => {
+                self.status = format!("No matching node found for {service_name}");
+            }
         }
     }
 
@@ -2047,8 +2104,7 @@ impl App {
         };
 
         // Expand ancestors to make parameter visible
-        self.expand_param_ancestors(param_idx);
-        self.rebuild_visible();
+        self.ensure_node_visible(param_idx);
 
         // Navigate to parameter
         if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == param_idx) {
@@ -2068,32 +2124,6 @@ impl App {
         self.all_nodes
             .iter()
             .position(|node| node.param_id == Some(param_id))
-    }
-
-    /// Expand all ancestors of a parameter node
-    fn expand_param_ancestors(&mut self, param_idx: usize) {
-        let param_depth = self.all_nodes[param_idx].depth;
-        let mut current_depth = param_depth;
-
-        // Walk backwards to find and expand ancestors
-        for i in (0..param_idx).rev() {
-            let node_depth = self.all_nodes[i].depth;
-
-            if node_depth >= current_depth {
-                continue;
-            }
-
-            // Check if this node is an ancestor by verifying param is in its subtree
-            let is_ancestor = self.all_nodes[(i + 1)..]
-                .iter()
-                .take_while(|n| n.depth > node_depth)
-                .any(|_| i < param_idx && param_idx < i + self.all_nodes.len());
-
-            if is_ancestor {
-                self.all_nodes[i].expanded = true;
-                current_depth = node_depth;
-            }
-        }
     }
 
     /// Navigate to a parent ref element from the Parent References table
@@ -3209,8 +3239,7 @@ impl App {
                     } else if should_navigate_to_parent {
                         self.try_navigate_to_inherited_parent();
                     } else {
-                        // Default: try to show DOP popup for other rows
-                        self.try_show_detail_popup();
+                        self.try_navigate_from_detail_row();
                     }
                 } else {
                     // Check if we're in a Parent References section
@@ -3229,8 +3258,7 @@ impl App {
                         }
                     }
 
-                    // Try to show DOP popup
-                    self.try_show_detail_popup();
+                    self.try_navigate_from_detail_row();
                 }
             }
         }
@@ -3337,25 +3365,23 @@ impl App {
                     return;
                 }
 
-                // Calculate the new scroll position based on mouse Y position
+                // Map mouse position to cursor position in the full list
                 let relative_y = row.saturating_sub(area.y) as usize;
-                let max_scroll = visible_count.saturating_sub(viewport_height);
+                let max_cursor = visible_count.saturating_sub(1);
 
-                // Map mouse position to scroll position
-                let new_scroll = if area.height > 0 {
-                    (relative_y * max_scroll) / (area.height as usize)
+                let new_cursor = if area.height > 1 {
+                    (relative_y * max_cursor) / (area.height.saturating_sub(1) as usize)
                 } else {
                     0
                 };
 
-                self.scroll_offset = new_scroll.min(max_scroll);
+                self.cursor = new_cursor.min(max_cursor);
 
-                // Update cursor to stay in view
-                if self.cursor < self.scroll_offset {
-                    self.cursor = self.scroll_offset;
-                } else if self.cursor >= self.scroll_offset + viewport_height {
-                    self.cursor = self.scroll_offset + viewport_height - 1;
-                }
+                // Adjust scroll_offset to keep cursor centered in view
+                let half_viewport = viewport_height / 2;
+                self.scroll_offset = self.cursor.saturating_sub(half_viewport);
+                let max_scroll = visible_count.saturating_sub(viewport_height);
+                self.scroll_offset = self.scroll_offset.min(max_scroll);
             }
         } else {
             // Dragging detail scrollbar
@@ -3381,8 +3407,6 @@ impl App {
                     DetailContent::Table { rows, .. } => rows.len(),
                     DetailContent::PlainText(lines) => lines.len(),
                     DetailContent::Composite(_sections) => {
-                        // For composite sections, we'd need to handle this differently
-                        // For now, just return as it's complex
                         return;
                     }
                 };
@@ -3392,30 +3416,24 @@ impl App {
                     return;
                 }
 
-                // Calculate the new scroll position based on mouse Y position
+                // Map mouse position to cursor position in the section
                 let relative_y = row.saturating_sub(area.y) as usize;
-                let max_scroll = row_count.saturating_sub(viewport_height);
+                let max_cursor = row_count.saturating_sub(1);
 
-                // Map mouse position to scroll position
-                let new_scroll = if area.height > 0 {
-                    (relative_y * max_scroll) / (area.height as usize)
+                let new_cursor = if area.height > 1 {
+                    (relative_y * max_cursor) / (area.height.saturating_sub(1) as usize)
                 } else {
                     0
                 };
 
-                self.section_scrolls[self.focused_section] = new_scroll.min(max_scroll);
+                self.section_cursors[self.focused_section] = new_cursor.min(max_cursor);
 
-                // Update cursor to stay in view
-                let current_cursor = self.section_cursors[self.focused_section];
-                if current_cursor < self.section_scrolls[self.focused_section] {
-                    self.section_cursors[self.focused_section] =
-                        self.section_scrolls[self.focused_section];
-                } else if current_cursor
-                    >= self.section_scrolls[self.focused_section] + viewport_height
-                {
-                    self.section_cursors[self.focused_section] =
-                        self.section_scrolls[self.focused_section] + viewport_height - 1;
-                }
+                // Adjust scroll to keep cursor centered
+                let half_viewport = viewport_height / 2;
+                let new_scroll =
+                    self.section_cursors[self.focused_section].saturating_sub(half_viewport);
+                let max_scroll = row_count.saturating_sub(viewport_height);
+                self.section_scrolls[self.focused_section] = new_scroll.min(max_scroll);
             }
         }
     }
@@ -3693,29 +3711,26 @@ impl App {
         }
     }
 
-    /// Ensure a node is visible by expanding all its parent nodes
+    /// Ensure a node is visible by expanding only its direct ancestors
     fn ensure_node_visible(&mut self, target_node_idx: usize) {
         if target_node_idx >= self.all_nodes.len() {
             return;
         }
 
-        // Find all ancestors of the target node
-        let mut ancestors = Vec::new();
-        let target_depth = self.all_nodes[target_node_idx].depth;
+        let mut needed_depth = self.all_nodes[target_node_idx].depth;
 
-        // Walk backwards from target to find all ancestors
+        // Walk backwards, expanding only the direct ancestor at each level
         for i in (0..target_node_idx).rev() {
-            if self.all_nodes[i].depth < target_depth {
-                ancestors.push(i);
-                if self.all_nodes[i].depth == 0 {
-                    break; // Reached root
+            let node_depth = self.all_nodes[i].depth;
+
+            if node_depth < needed_depth {
+                self.all_nodes[i].expanded = true;
+                needed_depth = node_depth;
+
+                if node_depth == 0 {
+                    break;
                 }
             }
-        }
-
-        // Expand all ancestors
-        for ancestor_idx in ancestors {
-            self.all_nodes[ancestor_idx].expanded = true;
         }
 
         // Rebuild visible list to reflect expansions

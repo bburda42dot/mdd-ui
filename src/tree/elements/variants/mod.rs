@@ -158,7 +158,16 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
 
-                b.push(1, name.to_string(), false, true, NodeType::Container);
+                let detail_sections = build_layer_summary_section(&layer, name);
+
+                b.push_details_structured(
+                    1,
+                    name.to_string(),
+                    false,
+                    true,
+                    detail_sections,
+                    NodeType::Container,
+                );
 
                 // Pass parent refs from functional group for inherited elements
                 let parent_refs_iter = fg
@@ -245,7 +254,16 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 let layer = DiagLayer(dl);
                 let name = layer.short_name().unwrap_or("unnamed");
 
-                b.push(1, name.to_string(), false, true, NodeType::Container);
+                let detail_sections = build_layer_summary_section(&layer, name);
+
+                b.push_details_structured(
+                    1,
+                    name.to_string(),
+                    false,
+                    true,
+                    detail_sections,
+                    NodeType::Container,
+                );
 
                 // ECU shared data doesn't have parent refs like variants
                 // add_diag_layer_structured will handle adding functional classes
@@ -372,40 +390,7 @@ fn build_variant_summary_section(vw: &VariantWrap<'_>, name: &str) -> Vec<Detail
 
     if let Some(dl) = vw.diag_layer() {
         let layer = DiagLayer(dl);
-        if let Some(sn) = layer.short_name() {
-            info_rows.push(DetailRow::normal(
-                vec!["Short Name".to_owned(), sn.to_owned()],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-        }
-        if let Some(ln) = layer.long_name() {
-            info_rows.push(DetailRow::normal(
-                vec!["Long Name".to_owned(), format!("{:?}", ln)],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-        }
-
-        // Add children inline in the overview
-        if let Some(children_rows) = build_children_rows(&layer) {
-            // Add separator row
-            info_rows.push(DetailRow::normal(
-                vec!["".to_owned(), "".to_owned()],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-            // Add children header
-            info_rows.push(DetailRow::normal(
-                vec!["Children".to_owned(), "".to_owned()],
-                vec![CellType::Text, CellType::Text],
-                0,
-            ));
-            // Add all children rows
-            for child_row in children_rows {
-                info_rows.push(child_row);
-            }
-        }
+        append_layer_info_rows(&layer, &mut info_rows);
     }
 
     sections.push(
@@ -428,6 +413,71 @@ fn build_variant_summary_section(vw: &VariantWrap<'_>, name: &str) -> Vec<Detail
     sections
 }
 
+/// Build summary section for a DiagLayer (used by functional groups and ECU shared data)
+fn build_layer_summary_section(layer: &DiagLayer<'_>, name: &str) -> Vec<DetailSectionData> {
+    let header = DetailRow::header(
+        vec!["Property".to_owned(), "Value".to_owned()],
+        vec![CellType::Text, CellType::Text],
+    );
+
+    let mut info_rows = vec![DetailRow::normal(
+        vec!["Name".to_owned(), name.to_owned()],
+        vec![CellType::Text, CellType::Text],
+        0,
+    )];
+
+    append_layer_info_rows(layer, &mut info_rows);
+
+    vec![
+        DetailSectionData::new(
+            "Overview".to_owned(),
+            DetailContent::Table {
+                header,
+                rows: info_rows,
+                constraints: vec![
+                    ColumnConstraint::Percentage(30),
+                    ColumnConstraint::Percentage(70),
+                ],
+                use_row_selection: true,
+            },
+            false,
+        )
+        .with_type(DetailSectionType::Overview),
+    ]
+}
+
+/// Append DiagLayer info rows (short name, long name, children) to an existing row list
+fn append_layer_info_rows(layer: &DiagLayer<'_>, info_rows: &mut Vec<DetailRow>) {
+    if let Some(sn) = layer.short_name() {
+        info_rows.push(DetailRow::normal(
+            vec!["Short Name".to_owned(), sn.to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+    if let Some(ln) = layer.long_name() {
+        info_rows.push(DetailRow::normal(
+            vec!["Long Name".to_owned(), format!("{:?}", ln)],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+    }
+
+    if let Some(children_rows) = build_children_rows(layer) {
+        info_rows.push(DetailRow::normal(
+            vec!["".to_owned(), "".to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+        info_rows.push(DetailRow::normal(
+            vec!["Children".to_owned(), "".to_owned()],
+            vec![CellType::Text, CellType::Text],
+            0,
+        ));
+        info_rows.extend(children_rows);
+    }
+}
+
 /// Build rows listing all child elements with counts
 fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
     let mut rows = Vec::new();
@@ -439,9 +489,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         && !cp_refs.is_empty()
     {
         rows.push(DetailRow {
-            cells: vec!["  ComParam Refs".to_owned(), cp_refs.len().to_string()],
+            cells: vec!["ComParam Refs".to_owned(), cp_refs.len().to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::ComParamRefs,
@@ -455,11 +505,11 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
     if service_count + job_count > 0 {
         rows.push(DetailRow {
             cells: vec![
-                "  Diag-Comms".to_owned(),
+                "Diag-Comms".to_owned(),
                 format!("{} services, {} jobs", service_count, job_count),
             ],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::DiagComms,
@@ -472,9 +522,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         && !fcs.is_empty()
     {
         rows.push(DetailRow {
-            cells: vec!["  Functional Classes".to_owned(), fcs.len().to_string()],
+            cells: vec!["Functional Classes".to_owned(), fcs.len().to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::FunctionalClasses,
@@ -498,9 +548,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         .unwrap_or(0);
     if neg_count > 0 {
         rows.push(DetailRow {
-            cells: vec!["  Neg-Responses".to_owned(), neg_count.to_string()],
+            cells: vec!["Neg-Responses".to_owned(), neg_count.to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::NegResponses,
@@ -524,9 +574,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         .unwrap_or(0);
     if pos_count > 0 {
         rows.push(DetailRow {
-            cells: vec!["  Pos-Responses".to_owned(), pos_count.to_string()],
+            cells: vec!["Pos-Responses".to_owned(), pos_count.to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::PosResponses,
@@ -546,9 +596,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         .unwrap_or(0);
     if request_count > 0 {
         rows.push(DetailRow {
-            cells: vec!["  Requests".to_owned(), request_count.to_string()],
+            cells: vec!["Requests".to_owned(), request_count.to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::Requests,
@@ -564,9 +614,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
         .map(|list| list.len());
     if let Some(count) = sdg_count {
         rows.push(DetailRow {
-            cells: vec!["  SDGs".to_owned(), count.to_string()],
+            cells: vec!["SDGs".to_owned(), count.to_string()],
             cell_types: vec![CellType::Text, CellType::Text],
-            indent: 1,
+            indent: 0,
             row_type: DetailRowType::ChildElement,
             metadata: Some(RowMetadata::ChildElement {
                 element_type: ChildElementType::SDGs,
@@ -580,9 +630,9 @@ fn build_children_rows(layer: &DiagLayer<'_>) -> Option<Vec<DetailRow>> {
             .state_charts()
             .filter(|c| !c.is_empty())
             .map(|charts| DetailRow {
-                cells: vec!["  State-Charts".to_owned(), charts.len().to_string()],
+                cells: vec!["State-Charts".to_owned(), charts.len().to_string()],
                 cell_types: vec![CellType::Text, CellType::Text],
-                indent: 1,
+                indent: 0,
                 row_type: DetailRowType::ChildElement,
                 metadata: Some(RowMetadata::ChildElement {
                     element_type: ChildElementType::StateCharts,

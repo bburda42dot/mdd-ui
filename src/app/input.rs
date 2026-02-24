@@ -274,6 +274,11 @@ impl App {
                 self.cycle_search_scope();
             }
 
+            // Set subtree search scope to current node ('t')
+            KeyCode::Char('t') if !self.detail_focused => {
+                self.set_subtree_scope();
+            }
+
             // Toggle DiagComm sorting (only when tree is focused)
             KeyCode::Char('s') if !self.detail_focused => {
                 self.toggle_diagcomm_sort();

@@ -292,7 +292,7 @@ pub(super) fn build_dtc_dop_tabs(
     if let Some(dtcs) = dtc_dop.dtcs() {
         let dtcs_header = DetailRow {
             cells: vec![
-                "ShortName".to_owned(),
+                "Short Name".to_owned(),
                 "Trouble Code".to_owned(),
                 "Text".to_owned(),
             ],

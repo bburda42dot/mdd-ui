@@ -202,6 +202,8 @@ fn collect_services_and_jobs_for_functional_class<'a>(
 ) -> FcServicesAndJobs<'a> {
     let mut services = Vec::new();
     let mut job_info = Vec::new();
+    let mut seen_services = std::collections::HashSet::new();
+    let mut seen_jobs = std::collections::HashSet::new();
 
     for variant_wrap in all_variants.iter() {
         let variant_layer = match variant_wrap.diag_layer() {
@@ -220,6 +222,11 @@ fn collect_services_and_jobs_for_functional_class<'a>(
                     None => continue,
                 };
 
+                let short_name = match dc.short_name() {
+                    Some(name) => name,
+                    None => continue,
+                };
+
                 // Check if this service belongs to our functional class
                 let belongs_to_fc = dc
                     .funct_class()
@@ -232,7 +239,7 @@ fn collect_services_and_jobs_for_functional_class<'a>(
                     })
                     .unwrap_or(false);
 
-                if belongs_to_fc {
+                if belongs_to_fc && seen_services.insert(short_name.to_owned()) {
                     services.push((service_wrap, variant_name.to_string()));
                 }
             }
@@ -263,7 +270,7 @@ fn collect_services_and_jobs_for_functional_class<'a>(
                     })
                     .unwrap_or(false);
 
-                if belongs_to_fc {
+                if belongs_to_fc && seen_jobs.insert(short_name.to_owned()) {
                     job_info.push((short_name.to_string(), variant_name.to_string()));
                 }
             }
@@ -293,7 +300,7 @@ fn build_functional_class_detail(
     // Build services table
     let header = DetailRow::header(
         vec![
-            "ShortName".to_owned(),
+            "Short Name".to_owned(),
             "Type".to_owned(),
             "SID_RQ".to_owned(),
             "Semantic".to_owned(),

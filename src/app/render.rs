@@ -136,7 +136,7 @@ impl App {
             frame,
             area,
             self.visible.len(),
-            self.scroll_offset,
+            self.cursor,
             viewport_height,
         );
     }
@@ -380,6 +380,7 @@ impl App {
             "  /               Start search (type, then Enter to add to stack)",
             "  Shift+S         Cycle search scope \
              (All/Variants/Services/Diag-Comms/Requests/Responses)",
+            "  t               Scope search to subtree under cursor",
             "  Enter           Confirm search and add to stack",
             "  x               Clear all search filters",
             "  Backspace       Remove last search from stack (when search input empty)",
@@ -1103,15 +1104,12 @@ impl App {
                 width: inner.width,
                 height: inner.height.saturating_sub(header_height),
             };
-            // The scrollbar needs to know about total scrollable range
-            // Max scroll position is (row_count - viewport_height)
-            let max_scroll = row_count.saturating_sub(viewport_height);
             self.detail_scrollbar_area = render_scrollbar(
                 frame,
                 scrollbar_area,
-                max_scroll + 1, // Total positions (0 to max_scroll inclusive)
-                self.section_scrolls[section_idx],
-                1, // Viewport is always "1" position at a time
+                row_count,
+                self.section_cursors[section_idx],
+                viewport_height,
             );
         } else {
             self.detail_scrollbar_area = None;

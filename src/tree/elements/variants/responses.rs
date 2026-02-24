@@ -658,8 +658,8 @@ fn build_pos_responses_table_section(
 ) -> DetailSectionData {
     let header = DetailRow {
         cells: vec![
-            "ID".to_owned(),
             "Short Name".to_owned(),
+            "ID".to_owned(),
             "Inherited".to_owned(),
         ],
         cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
@@ -678,7 +678,7 @@ fn build_pos_responses_table_section(
             id_str
         };
         Some(DetailRow {
-            cells: vec![id, name, inherited.to_owned()],
+            cells: vec![name, id, inherited.to_owned()],
             cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
             indent: 0,
             ..Default::default()
@@ -702,8 +702,8 @@ fn build_pos_responses_table_section(
             header,
             rows,
             constraints: vec![
-                ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(60),
+                ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(20),
             ],
             use_row_selection: true,
@@ -718,8 +718,8 @@ fn build_neg_responses_table_section(
 ) -> DetailSectionData {
     let header = DetailRow {
         cells: vec![
-            "ID".to_owned(),
             "Short Name".to_owned(),
+            "ID".to_owned(),
             "Inherited".to_owned(),
         ],
         cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
@@ -738,7 +738,7 @@ fn build_neg_responses_table_section(
             id_str
         };
         Some(DetailRow {
-            cells: vec![id, name, inherited.to_owned()],
+            cells: vec![name, id, inherited.to_owned()],
             cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
             indent: 0,
             ..Default::default()
@@ -762,8 +762,8 @@ fn build_neg_responses_table_section(
             header,
             rows,
             constraints: vec![
-                ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(60),
+                ColumnConstraint::Percentage(20),
                 ColumnConstraint::Percentage(20),
             ],
             use_row_selection: true,

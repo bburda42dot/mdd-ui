@@ -125,11 +125,6 @@ impl TreeBuilder {
         });
     }
 
-    /// Convenience: push a leaf node (no children, no details).
-    pub(crate) fn push_leaf(&mut self, depth: usize, text: String, node_type: NodeType) {
-        self.push(depth, text, false, false, node_type);
-    }
-
     pub(crate) fn finish(self) -> Vec<TreeNode> {
         self.nodes
     }

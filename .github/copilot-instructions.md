@@ -10,6 +10,7 @@
 * Never modify dependencies in Cargo.toml without approval. If you think a new dependency is needed, ask first.
 * Never change code that is downloaded from a dependency. If you think a change is needed, ask first and we can submit a PR to the dependency.
 * Jump or link means that clicking on the element in the UI should navigate to the target element in the UI. This should be implemented using the existing navigation system and not by re-rendering the entire tree or using a different mechanism, also don't implemenet a popup or something like that. The target element should be focused and highlighted as if the user had navigated to it manually.
+* Do not disable clippy warnings or prefix parameters with _ to silence warnings. If clippy is complaining, fix the underlying issue or ask if it is a false positive.
 
 ## Style guide 
 

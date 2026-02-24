@@ -148,7 +148,7 @@ pub struct App {
     last_click_time: Option<Instant>, // Time of last click for double-click detection
     last_click_pos: (u16, u16),       // Position of last click (column, row)
     pub(crate) mouse_enabled: bool,   // Whether mouse input is enabled
-    navigation_history: Vec<usize>,   // History of cursor positions (node indices in visible)
+    navigation_history: Vec<usize>, // History of node indices in all_nodes (stable across expand/collapse)
     history_position: usize, // Current position in history (for potential forward navigation)
     breadcrumb_area: Rect,   // Cached breadcrumb area for mouse handling
     breadcrumb_segments: Vec<(String, usize, u16, u16)>, // (text, node_idx, start_col, end_col)
@@ -946,27 +946,23 @@ impl App {
     // Navigation history
     // -------------------------------------------------------------------
 
-    /// Add current cursor position to navigation history
+    /// Add current node to navigation history (stores all_nodes index for stability)
     fn push_to_history(&mut self) {
-        // Only store if cursor is in valid range
-        if self.cursor >= self.visible.len() {
+        let Some(&node_idx) = self.visible.get(self.cursor) else {
+            return;
+        };
+
+        // Don't store duplicate consecutive entries
+        if self.navigation_history.last() == Some(&node_idx) {
             return;
         }
 
-        // Don't store duplicate consecutive positions
-        if let Some(&last) = self.navigation_history.last()
-            && last == self.cursor
-        {
-            return;
-        }
-
-        // If we're not at the end of history, truncate forward history
+        // Truncate forward history if not at end
         if self.history_position < self.navigation_history.len() {
             self.navigation_history.truncate(self.history_position);
         }
 
-        // Add current position
-        self.navigation_history.push(self.cursor);
+        self.navigation_history.push(node_idx);
         self.history_position = self.navigation_history.len();
 
         // Limit history size to prevent unbounded growth
@@ -985,27 +981,28 @@ impl App {
             return;
         }
 
-        // Go back one step in history
-        if self.history_position > 1 {
-            self.history_position -= 1;
-            let target_cursor = self.navigation_history[self.history_position - 1];
-
-            // Validate the target cursor is still valid in visible
-            if target_cursor < self.visible.len() {
-                self.cursor = target_cursor;
-                self.reset_detail_state();
-                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
-                self.detail_focused = false;
-
-                if let Some(&node_idx) = self.visible.get(self.cursor) {
-                    self.status = format!("Navigated to: {}", self.all_nodes[node_idx].text);
-                }
-            } else {
-                self.status = "Previous element no longer visible".to_owned();
-            }
-        } else {
+        if self.history_position <= 1 {
             self.status = "Already at oldest element in history".to_owned();
+            return;
         }
+
+        self.history_position -= 1;
+        let target_node_idx = self.navigation_history[self.history_position - 1];
+
+        // Ensure ancestors are expanded so the target node becomes visible
+        self.ensure_node_visible(target_node_idx);
+
+        // Find the target node in the (now-updated) visible list
+        let Some(cursor_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) else {
+            self.status = "Previous element no longer reachable".to_owned();
+            return;
+        };
+
+        self.cursor = cursor_pos;
+        self.reset_detail_state();
+        self.scroll_offset = self.cursor.saturating_sub(5);
+        self.detail_focused = false;
+        self.status = format!("Navigated to: {}", self.all_nodes[target_node_idx].text);
     }
 
     /// Navigate up one level in hierarchy (parent node)
@@ -3074,6 +3071,7 @@ impl App {
                     self.move_up();
                 }
             }
+            // Mouse back button not supported by crossterm 0.29 (only Left/Right/Middle)
             _ => {}
         }
         Action::Continue

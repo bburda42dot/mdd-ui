@@ -72,7 +72,7 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
         false,
         true,
         vec![sdgs_table],
-        NodeType::Container,
+        NodeType::SectionHeader,
     );
 
     // Add each SDG as a child node with detail

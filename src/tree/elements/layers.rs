@@ -10,6 +10,8 @@ use super::variants::{
     responses::{add_neg_responses_section, add_pos_responses_section},
     services::add_diag_comms,
     state_charts::add_state_charts,
+    tables::add_tables,
+    unit_spec::add_unit_spec,
 };
 use crate::tree::builder::TreeBuilder;
 
@@ -103,5 +105,15 @@ impl LayerExt for TreeBuilder {
 
         // State-Charts
         add_state_charts(self, layer, depth);
+
+        // Tables (from parent refs)
+        add_tables(
+            self,
+            depth,
+            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
+        );
+
+        // Unit Spec (from ComParamRef -> ProtStack -> ComParamSubSet)
+        add_unit_spec(self, layer, depth);
     }
 }

@@ -9,6 +9,8 @@ pub mod responses;
 pub mod sdgs;
 pub mod services;
 pub mod state_charts;
+pub mod tables;
+pub mod unit_spec;
 
 use cda_database::datatypes::{DiagLayer, DiagService, EcuDb, Variant as VariantWrap};
 

@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use super::{App, ColumnWidthCacheKey};
+use super::{App, COLUMN_SPACING, ColumnWidthCacheKey};
 use crate::tree::DetailSectionType;
 
 impl App {
@@ -33,7 +33,7 @@ impl App {
     /// Convert percentage-based column widths to absolute pixel widths
     pub(crate) fn convert_to_absolute_widths(&mut self, section_idx: usize) {
         let table_width = self.layout.table_content_area.map_or(100, |a| a.width);
-        let column_spacing = 3u16;
+        let column_spacing = COLUMN_SPACING;
 
         let Some(widths) = self.table.column_widths.get(section_idx) else {
             return;
@@ -109,7 +109,7 @@ impl App {
 
     /// Ensure the focused column is visible by adjusting horizontal scroll
     pub(crate) fn ensure_focused_column_visible(&mut self, section_idx: usize) {
-        let column_spacing = 3u16;
+        let column_spacing = COLUMN_SPACING;
 
         let Some(widths) = self.table.column_widths.get(section_idx) else {
             return;

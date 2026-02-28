@@ -13,7 +13,7 @@ use ratatui::{
 
 use super::{render_horizontal_scrollbar, render_scrollbar};
 use crate::{
-    app::{App, FocusState, SortDirection, TableSortState},
+    app::{App, COLUMN_SPACING, FocusState, SortDirection, TableSortState},
     tree::{CellType, DetailRow},
 };
 
@@ -196,7 +196,7 @@ impl App {
             .unwrap_or(false);
 
         // Calculate total table width and determine if horizontal scrolling is needed
-        let column_spacing = 3u16;
+        let column_spacing = COLUMN_SPACING;
         let num_gaps = max_columns.saturating_sub(1);
         let total_table_width: u16 = if is_absolute {
             let cols_total: u16 = column_widths.iter().sum();

@@ -3,6 +3,9 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+/// Sentinel value for an unset bit position in the database.
+pub(crate) const BIT_POSITION_UNSET: u32 = 255;
+
 /// Type of top-level section
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SectionType {

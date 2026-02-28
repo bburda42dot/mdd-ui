@@ -10,8 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use super::border_style;
-use super::table::TableContentParams;
+use super::{border_style, table::TableContentParams};
 use crate::{
     app::{App, FocusState, TableSortState},
     tree::{DetailContent, DetailSectionData},

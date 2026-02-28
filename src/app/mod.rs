@@ -28,6 +28,20 @@ use ratatui::{
 use crate::tree::{DetailRow, DetailSectionType, NodeType, TreeNode};
 
 // -----------------------------------------------------------------------
+// Layout & interaction constants
+// -----------------------------------------------------------------------
+
+pub(crate) const COLUMN_SPACING: u16 = 3;
+pub(crate) const PAGE_SIZE: usize = 20;
+pub(crate) const SCROLL_CONTEXT_LINES: usize = 5;
+pub(crate) const TREE_WIDTH_STEP: u16 = 5;
+pub(crate) const COMPOSITE_SCROLL_STEP: usize = 5;
+pub(crate) const DOUBLE_CLICK_MS: u64 = 500;
+pub(crate) const DIVIDER_MIN_PCT: u16 = 20;
+pub(crate) const DIVIDER_MAX_PCT: u16 = 80;
+pub(crate) const DEFAULT_TREE_WIDTH_PCT: u16 = 35;
+
+// -----------------------------------------------------------------------
 // Application state
 // -----------------------------------------------------------------------
 
@@ -333,7 +347,7 @@ impl App {
                 tree_scrollbar_area: None,
                 detail_scrollbar_area: None,
                 detail_hscrollbar_area: None,
-                tree_width_percentage: 35,
+                tree_width_percentage: DEFAULT_TREE_WIDTH_PCT,
             },
             status: String::new(),
             focus_state: FocusState::Tree,
@@ -560,7 +574,7 @@ impl App {
         if let Some(target) = found {
             self.tree.cursor = target;
             self.reset_detail_state();
-            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
             self.status = format!("Jump: \"{}\"", self.table.jump_buffer);
         } else {
             self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);

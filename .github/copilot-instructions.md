@@ -5,8 +5,9 @@ SPDX-FileCopyrightText: 2026 Alexander Mohr
 
 # Instructions
 
-* Run `cargo fmt` to format the code according to Rust's standard style.
-* Run `cargo clippy` to check for common mistakes and improve the code quality.
+* Run `cargo +nightly fmt -- --config error_on_unformatted=true,error_on_line_overflow=true,format_strings=true,group_imports=StdExternalCrate,imports_granularity=Crate ` to format the code according to Rust's standard style.
+* Run `cargo +nightly clippy` to check for common mistakes and improve the code quality.
+
 
 ## Strucutre
 * The project structure in src/tree should reflect how the tree is shown. All elements that have children should be reflected in the tree as such by using modules.

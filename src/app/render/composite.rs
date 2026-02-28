@@ -12,7 +12,7 @@ use ratatui::{
 
 use super::render_scrollbar;
 use crate::{
-    app::App,
+    app::{App, COLUMN_SPACING},
     tree::{DetailContent, DetailRow, DetailSectionData},
 };
 
@@ -318,7 +318,7 @@ impl App {
             .collect();
 
         let table = Table::new(data_rows, ratatui_constraints)
-            .column_spacing(3)
+            .column_spacing(COLUMN_SPACING)
             .header(header_row);
         frame.render_widget(table, area);
     }

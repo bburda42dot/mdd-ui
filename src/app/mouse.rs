@@ -7,7 +7,10 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{MouseButton, MouseEventKind};
 
-use super::{App, DragState, FocusState, input::Action};
+use super::{
+    App, COLUMN_SPACING, DIVIDER_MAX_PCT, DIVIDER_MIN_PCT, DOUBLE_CLICK_MS, DragState, FocusState,
+    SCROLL_CONTEXT_LINES, input::Action,
+};
 use crate::tree::{DetailContent, DetailRowType, DetailSectionType, NodeType};
 
 impl App {
@@ -61,7 +64,7 @@ impl App {
                 // Check for double-click (within 500ms and same position)
                 let is_double_click = if let Some(last_time) = self.mouse.last_click_time {
                     let elapsed = last_time.elapsed();
-                    elapsed < Duration::from_millis(500)
+                    elapsed < Duration::from_millis(DOUBLE_CLICK_MS)
                         && self.mouse.last_click_pos == (column, row)
                 } else {
                     false
@@ -419,7 +422,7 @@ impl App {
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(self.table.cached_ratatui_constraints.clone())
-            .spacing(3)
+            .spacing(COLUMN_SPACING)
             .split(area);
 
         // Check each border between adjacent columns (in the spacing gap)
@@ -451,7 +454,7 @@ impl App {
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(self.table.cached_ratatui_constraints.clone())
-            .spacing(3)
+            .spacing(COLUMN_SPACING)
             .split(area);
 
         let Some(left_area) = column_areas.get(col_idx) else {
@@ -507,7 +510,7 @@ impl App {
 
         // Calculate percentage (clamped between 20% and 80%)
         let percentage_f32 = (f32::from(new_tree_width) / f32::from(total_width)) * 100.0;
-        let clamped = percentage_f32.clamp(20.0, 80.0);
+        let clamped = percentage_f32.clamp(f32::from(DIVIDER_MIN_PCT), f32::from(DIVIDER_MAX_PCT));
         // clamped percentage (20..=80) always fits in u16
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let percentage = clamped.round().clamp(0.0, 100.0) as u16;
@@ -915,7 +918,7 @@ impl App {
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(self.table.cached_ratatui_constraints.clone())
-            .spacing(3) // Match the column_spacing(3) from Table
+            .spacing(COLUMN_SPACING)
             .split(area);
 
         // Find which column area contains the click
@@ -1034,7 +1037,7 @@ impl App {
                 self.focus_state = FocusState::Tree;
                 self.tree.cursor = new_pos;
                 self.reset_detail_state();
-                self.tree.scroll_offset = self.tree.cursor.saturating_sub(5); // Center the view
+                self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
             }
         } else {
             // Node is not currently visible (might be collapsed), try to make it visible
@@ -1051,7 +1054,7 @@ impl App {
                 self.focus_state = FocusState::Tree;
                 self.tree.cursor = visible_pos;
                 self.reset_detail_state();
-                self.tree.scroll_offset = self.tree.cursor.saturating_sub(5); // Center the view
+                self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
             }
         }
     }

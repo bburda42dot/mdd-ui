@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use super::{App, FocusState, HistoryEntry};
+use super::{App, FocusState, HistoryEntry, SCROLL_CONTEXT_LINES};
 
 impl App {
     /// Build the path from root to the given node index as a list of
@@ -162,7 +162,7 @@ impl App {
 
         self.tree.cursor = cursor_pos;
         self.reset_detail_state();
-        self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
+        self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
         self.focus_state = FocusState::Tree;
         if let Some(node) = self.tree.all_nodes.get(target_node_idx) {
             self.status = format!("Navigated to: {}", node.text);

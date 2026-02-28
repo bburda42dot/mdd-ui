@@ -9,8 +9,8 @@ use super::services::{extract_coded_value, extract_dop_name, get_parent_ref_serv
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType,
+        BIT_POSITION_UNSET, CellType, ColumnConstraint, DetailContent, DetailRow,
+        DetailSectionData, DetailSectionType, NodeType,
     },
 };
 
@@ -451,8 +451,7 @@ fn build_param_detail_sections(param: &Parameter<'_>) -> Vec<DetailSectionData> 
     }
 
     let bit_pos = param.bit_position();
-    if bit_pos != 255 {
-        // 255 is the default/unset value
+    if bit_pos != BIT_POSITION_UNSET {
         overview_rows.push(DetailRow::normal(
             vec!["Bit Position".to_owned(), bit_pos.to_string()],
             vec![CellType::Text, CellType::NumericValue],

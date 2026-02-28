@@ -4,7 +4,7 @@
  */
 
 use crate::{
-    app::{App, FocusState},
+    app::{App, FocusState, SCROLL_CONTEXT_LINES},
     tree::{DetailSectionType, NodeType, TreeNode},
 };
 
@@ -176,7 +176,7 @@ impl App {
             self.focus_state = FocusState::Tree;
             self.tree.cursor = target_cursor;
             self.reset_detail_state();
-            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
         } else {
             let item_type = if is_functional_class {
                 "Functional class"
@@ -353,7 +353,7 @@ impl App {
             self.focus_state = FocusState::Tree;
             self.tree.cursor = new_cursor;
             self.reset_detail_state();
-            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
             self.status = format!("Navigated to: {target_short_name}");
         }
     }

@@ -5,7 +5,10 @@
 
 use crossterm::event::KeyCode;
 
-use super::{App, FocusState};
+use super::{
+    App, COMPOSITE_SCROLL_STEP, DIVIDER_MAX_PCT, DIVIDER_MIN_PCT, FocusState, PAGE_SIZE,
+    TREE_WIDTH_STEP,
+};
 
 /// Result of processing a key press.
 pub enum Action {
@@ -67,10 +70,10 @@ impl App {
                 self.try_expand();
             }
             KeyCode::PageUp => {
-                self.page_up(20);
+                self.page_up(PAGE_SIZE);
             }
             KeyCode::PageDown => {
-                self.page_down(20);
+                self.page_down(PAGE_SIZE);
             }
             KeyCode::Home => {
                 self.home();
@@ -137,12 +140,18 @@ impl App {
 
             // Pane resizing
             KeyCode::Char('+' | '=') => {
-                self.layout.tree_width_percentage =
-                    self.layout.tree_width_percentage.saturating_add(5).min(80);
+                self.layout.tree_width_percentage = self
+                    .layout
+                    .tree_width_percentage
+                    .saturating_add(TREE_WIDTH_STEP)
+                    .min(DIVIDER_MAX_PCT);
             }
             KeyCode::Char('-' | '_') => {
-                self.layout.tree_width_percentage =
-                    (self.layout.tree_width_percentage.saturating_sub(5)).max(20);
+                self.layout.tree_width_percentage = (self
+                    .layout
+                    .tree_width_percentage
+                    .saturating_sub(TREE_WIDTH_STEP))
+                .max(DIVIDER_MIN_PCT);
             }
 
             // Arrow keys and uppercase vim keys navigate in all modes
@@ -280,8 +289,8 @@ impl App {
         match code {
             KeyCode::Up | KeyCode::Char('K' | 'k') => self.move_up(),
             KeyCode::Down | KeyCode::Char('J' | 'j') => self.move_down(),
-            KeyCode::PageUp => self.page_up(20),
-            KeyCode::PageDown => self.page_down(20),
+            KeyCode::PageUp => self.page_up(PAGE_SIZE),
+            KeyCode::PageDown => self.page_down(PAGE_SIZE),
             KeyCode::Home => self.home(),
             KeyCode::End => self.end(),
             KeyCode::Left | KeyCode::Char('H' | 'h') => self.try_collapse_or_parent(),
@@ -312,12 +321,12 @@ impl App {
                 }
                 KeyCode::PageUp => {
                     if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_sub(5);
+                        *scroll = scroll.saturating_sub(COMPOSITE_SCROLL_STEP);
                     }
                 }
                 KeyCode::PageDown => {
                     if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_add(5);
+                        *scroll = scroll.saturating_add(COMPOSITE_SCROLL_STEP);
                     }
                 }
                 KeyCode::Home => {
@@ -358,12 +367,12 @@ impl App {
             }
             KeyCode::PageUp => {
                 if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_sub(20);
+                    *cursor = cursor.saturating_sub(PAGE_SIZE);
                 }
             }
             KeyCode::PageDown => {
                 if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_add(20);
+                    *cursor = cursor.saturating_add(PAGE_SIZE);
                 }
             }
             KeyCode::Home => {

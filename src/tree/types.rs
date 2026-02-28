@@ -6,43 +6,66 @@
 /// Sentinel value for an unset bit position in the database.
 pub(crate) const BIT_POSITION_UNSET: u32 = 255;
 
-/// Type of top-level section
+/// Type of top-level section in the tree hierarchy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SectionType {
+    /// General information section (ECU name, metadata).
     General,
+    /// Variant/layer definitions section.
     Variants,
+    /// Functional group definitions section.
     FunctionalGroups,
+    /// ECU shared data section.
     EcuSharedData,
+    /// Communication protocols section.
     Protocols,
 }
 
-/// Type of service list section
+/// Type of service list section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ServiceListType {
+    /// All diagnostic communication services.
     DiagComms,
+    /// Request-only service list.
     Requests,
+    /// Positive response service list.
     PosResponses,
+    /// Negative response service list.
     NegResponses,
+    /// Functional class list.
     FunctionalClasses,
 }
 
-/// Type of node for styling purposes
+/// Type of node for styling and interaction purposes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // DOP, SDG are standard domain abbreviations
 #[allow(clippy::upper_case_acronyms)]
 pub enum NodeType {
+    /// Collapsible container without its own detail content.
     Container,
+    /// Bold section header at a given depth.
     SectionHeader,
+    /// A diagnostic service node.
     Service,
-    ParentRefService, // Service inherited from parent reference
-    ParentRefs,       // Parent References node
+    /// A service inherited from a parent reference.
+    ParentRefService,
+    /// Parent references collection node.
+    ParentRefs,
+    /// A request definition node.
     Request,
+    /// A positive response definition node.
     PosResponse,
+    /// A negative response definition node.
     NegResponse,
-    FunctionalClass, // Functional class node
-    Job,             // Single ECU Job
-    DOP,             // Data Object Property
-    SDG,             // Special Data Group
+    /// A functional class node.
+    FunctionalClass,
+    /// A single ECU job node.
+    Job,
+    /// A Data Object Property node.
+    DOP,
+    /// A Special Data Group node.
+    SDG,
+    /// Fallback node type with default styling.
     Default,
 }
 
@@ -50,11 +73,17 @@ pub enum NodeType {
 /// `expanded` / `has_children` drive the collapse/expand behaviour.
 #[derive(Clone)]
 pub struct TreeNode {
+    /// Indentation level in the tree hierarchy (0 = root).
     pub depth: usize,
+    /// Display text shown in the tree view.
     pub text: String,
+    /// Whether this node is currently expanded to show its children.
     pub expanded: bool,
+    /// Whether this node has child nodes that can be expanded.
     pub has_children: bool,
+    /// Detail sections displayed when this node is selected.
     pub detail_sections: Vec<DetailSectionData>,
+    /// Classification of this node for styling and interaction.
     pub node_type: NodeType,
     /// If this is a `SectionHeader` at depth 0, specifies which top-level section it represents
     pub section_type: Option<SectionType>,
@@ -64,41 +93,64 @@ pub struct TreeNode {
     pub param_id: Option<u32>,
 }
 
-/// Type of detail section for logic purposes
+/// Type of detail section for logic and navigation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DetailSectionType {
-    Header,          // Just a title/header section
-    Overview,        // Overview table with key-value pairs
-    Services,        // Services list table
-    Requests,        // Request parameters
-    PosResponses,    // Positive responses
-    NegResponses,    // Negative responses
-    ComParams,       // Communication parameters
-    States,          // State information
-    RelatedRefs,     // Related references
-    FunctionalClass, // Functional class details
-    Custom,          // Fallback for dynamic sections
+    /// Title-only header section rendered above tabs.
+    Header,
+    /// Key-value overview table.
+    Overview,
+    /// Services list table.
+    Services,
+    /// Request parameters table.
+    Requests,
+    /// Positive response parameters table.
+    PosResponses,
+    /// Negative response parameters table.
+    NegResponses,
+    /// Communication parameters section.
+    ComParams,
+    /// State information section.
+    States,
+    /// Related references section (parent refs, etc.).
+    RelatedRefs,
+    /// Functional class details section.
+    FunctionalClass,
+    /// Dynamic/fallback section type.
+    Custom,
 }
 
-/// Type of row for interaction purposes
+/// Type of row for interaction purposes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DetailRowType {
-    Normal,        // Regular data row
-    Header,        // Table header row
-    InheritedFrom, // "Inherited From" navigation row
-    ChildElement,  // Child element summary row (clickable)
+    /// Regular data row.
+    Normal,
+    /// Table header row.
+    Header,
+    /// "Inherited From" navigation row (clickable).
+    InheritedFrom,
+    /// Child element summary row (clickable navigation target).
+    ChildElement,
 }
 
-/// Type of child element in variant summary
+/// Type of child element in a variant summary section.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChildElementType {
+    /// References to communication parameters.
     ComParamRefs,
+    /// Diagnostic communication services.
     DiagComms,
+    /// Functional class definitions.
     FunctionalClasses,
+    /// Negative response definitions.
     NegResponses,
+    /// Positive response definitions.
     PosResponses,
+    /// Request definitions.
     Requests,
+    /// Special Data Group entries.
     SDGs,
+    /// State chart definitions.
     StateCharts,
 }
 
@@ -123,11 +175,14 @@ impl ChildElementType {
     }
 }
 
-/// Metadata for special rows
+/// Metadata attached to special rows for navigation lookups.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowMetadata {
+    /// Row represents an inherited element with the source layer name.
     InheritedFrom { layer_name: String },
+    /// Row represents a child element of a specific type.
     ChildElement { element_type: ChildElementType },
+    /// Row represents a parameter with the given database ID.
     ParameterRow { param_id: u32 },
 }
 
@@ -158,15 +213,20 @@ pub enum CellJumpTarget {
     ContainerByName,
 }
 
-/// A row in a detail table
+/// A row in a detail table.
 #[derive(Clone, Debug)]
 pub struct DetailRow {
+    /// Column values for this row.
     pub cells: Vec<String>,
+    /// Content type of each cell (controls styling).
     pub cell_types: Vec<CellType>,
     /// Per-cell jump targets. Same length as `cells`; `None` means not navigable.
     pub cell_jump_targets: Vec<Option<CellJumpTarget>>,
+    /// Indentation level for nested display.
     pub indent: usize,
+    /// Semantic type of this row for interaction handling.
     pub row_type: DetailRowType,
+    /// Optional metadata for navigation lookups.
     pub metadata: Option<RowMetadata>,
 }
 
@@ -261,10 +321,12 @@ impl DetailContent {
     }
 }
 
-/// A detail section with a title and content
+/// A detail section with a title and content.
 #[derive(Clone, Debug)]
 pub struct DetailSectionData {
+    /// Display title of this section (shown as tab label).
     pub title: String,
+    /// Body content (table, plain text, or composite).
     pub content: DetailContent,
     /// If true, this section is rendered as a header above tabs, not as a tab itself
     pub render_as_header: bool,

@@ -159,10 +159,14 @@ pub(crate) struct ColumnWidthCacheKey {
     column_count: usize,
 }
 
+/// Which pane currently has keyboard focus.
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum FocusState {
+    /// The tree navigation pane.
     Tree,
+    /// The detail/table pane.
     Detail,
+    /// The help popup overlay.
     HelpPopup,
 }
 
@@ -254,6 +258,7 @@ pub(crate) struct LayoutCache {
     pub tree_width_percentage: u16,
 }
 
+/// Main application state, owning all sub-states and driving the TUI event loop.
 pub struct App {
     pub(crate) tree: TreeState,
     pub(crate) search: SearchState,
@@ -267,9 +272,12 @@ pub struct App {
     pub(crate) theme: ResolvedTheme,
 }
 
+/// Data for a popup overlay (e.g. DOP reference details).
 #[derive(Clone)]
 pub struct PopupData {
+    /// Title displayed in the popup border.
     pub title: String,
+    /// Lines of content displayed inside the popup.
     pub content: Vec<String>,
 }
 

@@ -16,14 +16,14 @@ use crate::{
 
 impl App {
     pub(crate) fn handle_enter_in_detail_pane(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -82,14 +82,14 @@ impl App {
 
     /// Handle Enter key for generic nodes with detail sections
     fn handle_generic_detail_enter(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let section_idx = self.get_section_index();
@@ -117,14 +117,14 @@ impl App {
     /// Try to navigate to the item referenced by the currently focused cell.
     /// Falls back to searching the tree for a node matching the cell text.
     pub(crate) fn try_navigate_from_detail_row(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let section_idx = self.get_section_index();
@@ -134,7 +134,12 @@ impl App {
             return;
         };
 
-        let row_cursor = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+        let row_cursor = self
+            .detail
+            .section_cursors
+            .get(section_idx)
+            .copied()
+            .unwrap_or(0);
         let sorted_rows = self.apply_table_sort(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
@@ -205,7 +210,12 @@ impl App {
             CellJumpTarget::TreeNodeByName => {
                 let found_idx = self
                     .find_in_hierarchy(|n| n.text == cell_value)
-                    .or_else(|| self.all_nodes.iter().position(|n| n.text == cell_value));
+                    .or_else(|| {
+                        self.tree
+                            .all_nodes
+                            .iter()
+                            .position(|n| n.text == cell_value)
+                    });
                 if let Some(idx) = found_idx {
                     self.navigate_to_node(idx);
                 } else {

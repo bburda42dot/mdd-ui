@@ -11,14 +11,14 @@ use crate::{
 impl App {
     /// Handle Enter key for service nodes
     pub(super) fn handle_service_node_enter(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let section_idx = self.get_section_index();
@@ -46,7 +46,12 @@ impl App {
         if section.section_type == DetailSectionType::Overview
             && let Some(rows) = section.content.table_rows()
         {
-            let row_cursor = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+            let row_cursor = self
+                .detail
+                .section_cursors
+                .get(section_idx)
+                .copied()
+                .unwrap_or(0);
             let sorted_rows = self.apply_table_sort(rows, section_idx);
 
             if let Some(selected_row) = sorted_rows.get(row_cursor)
@@ -65,15 +70,15 @@ impl App {
     /// (Diag-Comms, Requests, Responses)
     pub(crate) fn try_navigate_to_service(&mut self) {
         // Early validation
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             self.status = "Cursor out of bounds".to_string();
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -88,7 +93,7 @@ impl App {
         };
 
         // Expand service list section if collapsed
-        if let Some(node_at_idx) = self.all_nodes.get(node_idx)
+        if let Some(node_at_idx) = self.tree.all_nodes.get(node_idx)
             && !node_at_idx.expanded
         {
             self.expand_and_update_cursor(node_idx);
@@ -100,7 +105,7 @@ impl App {
 
     /// Extract service name from the current table row
     pub(super) fn extract_service_name_from_table(&mut self, node_idx: usize) -> Option<String> {
-        let node = self.all_nodes.get(node_idx)?;
+        let node = self.tree.all_nodes.get(node_idx)?;
         let section = node.detail_sections.first()?;
 
         let Some(rows) = section.content.table_rows() else {
@@ -109,7 +114,7 @@ impl App {
         };
 
         let section_index = self.get_section_index();
-        let row_cursor = *self.section_cursors.get(section_index)?;
+        let row_cursor = *self.detail.section_cursors.get(section_index)?;
         let sorted_rows = self.apply_table_sort(rows, section_index);
         let selected_row = sorted_rows.get(row_cursor)?;
 
@@ -127,7 +132,7 @@ impl App {
         service_name: &str,
         parent_node_idx: usize,
     ) {
-        let Some(parent_node) = self.all_nodes.get(parent_node_idx) else {
+        let Some(parent_node) = self.tree.all_nodes.get(parent_node_idx) else {
             return;
         };
         let parent_depth = parent_node.depth;
@@ -138,37 +143,40 @@ impl App {
 
         // Find service in visible nodes after parent
         let found_idx = self
+            .tree
             .visible
-            .get(self.cursor.saturating_add(1)..)
+            .get(self.tree.cursor.saturating_add(1)..)
             .and_then(|rest| {
                 rest.iter()
                     .copied()
                     .take_while(|&vis_idx| {
-                        self.all_nodes
+                        self.tree
+                            .all_nodes
                             .get(vis_idx)
                             .is_some_and(|n| n.depth > parent_depth)
                     })
                     .filter(|&vis_idx| {
-                        self.all_nodes
+                        self.tree
+                            .all_nodes
                             .get(vis_idx)
                             .is_some_and(|n| n.depth == parent_depth.saturating_add(1))
                     })
                     .find(|&vis_idx| {
-                        if let Some(node) = self.all_nodes.get(vis_idx) {
+                        if let Some(node) = self.tree.all_nodes.get(vis_idx) {
                             Self::node_matches_service_name(node, service_name, is_functional_class)
                         } else {
                             false
                         }
                     })
-                    .and_then(|vis_idx| self.visible.iter().position(|&idx| idx == vis_idx))
+                    .and_then(|vis_idx| self.tree.visible.iter().position(|&idx| idx == vis_idx))
             });
 
         if let Some(target_cursor) = found_idx {
             self.push_to_history();
             self.focus_state = FocusState::Tree;
-            self.cursor = target_cursor;
+            self.tree.cursor = target_cursor;
             self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
         } else {
             let item_type = if is_functional_class {
                 "Functional class"
@@ -236,9 +244,9 @@ impl App {
         // Expand ancestors and container
         self.expand_node_ancestors(container_idx);
 
-        if let Some(node) = self.all_nodes.get(container_idx)
+        if let Some(node) = self.tree.all_nodes.get(container_idx)
             && node.has_children
-            && let Some(node_mut) = self.all_nodes.get_mut(container_idx)
+            && let Some(node_mut) = self.tree.all_nodes.get_mut(container_idx)
         {
             node_mut.expanded = true;
         }
@@ -250,7 +258,7 @@ impl App {
             return;
         };
 
-        if let Some(node_mut) = self.all_nodes.get_mut(dc_idx) {
+        if let Some(node_mut) = self.tree.all_nodes.get_mut(dc_idx) {
             node_mut.expanded = true;
         }
         self.rebuild_visible();
@@ -263,10 +271,10 @@ impl App {
 
     /// Find the Diag-Comms section within a container
     pub(super) fn find_diagcomm_section(&self, container_idx: usize) -> Option<usize> {
-        let container = self.all_nodes.get(container_idx)?;
+        let container = self.tree.all_nodes.get(container_idx)?;
         let container_depth = container.depth;
 
-        if let Some(children_slice) = self.all_nodes.get(container_idx.saturating_add(1)..) {
+        if let Some(children_slice) = self.tree.all_nodes.get(container_idx.saturating_add(1)..) {
             children_slice
                 .iter()
                 .enumerate()
@@ -290,10 +298,10 @@ impl App {
         diagcomm_idx: usize,
         service_name: &str,
     ) -> Option<usize> {
-        let diagcomm_node = self.all_nodes.get(diagcomm_idx)?;
+        let diagcomm_node = self.tree.all_nodes.get(diagcomm_idx)?;
         let diagcomm_depth = diagcomm_node.depth;
 
-        if let Some(children_slice) = self.all_nodes.get(diagcomm_idx.saturating_add(1)..) {
+        if let Some(children_slice) = self.tree.all_nodes.get(diagcomm_idx.saturating_add(1)..) {
             children_slice
                 .iter()
                 .enumerate()
@@ -326,7 +334,7 @@ impl App {
 
         let found_service_idx = self
             .find_in_hierarchy(matches_service)
-            .or_else(|| self.all_nodes.iter().position(matches_service));
+            .or_else(|| self.tree.all_nodes.iter().position(matches_service));
 
         let Some(service_node_idx) = found_service_idx else {
             self.status = format!("Service/Job '{target_short_name}' not found in tree");
@@ -335,12 +343,17 @@ impl App {
 
         self.ensure_node_visible(service_node_idx);
 
-        if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == service_node_idx) {
+        if let Some(new_cursor) = self
+            .tree
+            .visible
+            .iter()
+            .position(|&idx| idx == service_node_idx)
+        {
             self.push_to_history();
             self.focus_state = FocusState::Tree;
-            self.cursor = new_cursor;
+            self.tree.cursor = new_cursor;
             self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
             self.status = format!("Navigated to: {target_short_name}");
         }
     }
@@ -348,14 +361,14 @@ impl App {
     /// Navigate to a service or job from a functional class detail view
     /// Uses the `ShortName` column (column 0) to find the target
     pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -388,8 +401,8 @@ impl App {
         };
 
         // Get the selected row cursor
-        let row_cursor = if section_idx < self.section_cursors.len() {
-            *self.section_cursors.get(section_idx).unwrap_or(&0)
+        let row_cursor = if section_idx < self.detail.section_cursors.len() {
+            *self.detail.section_cursors.get(section_idx).unwrap_or(&0)
         } else {
             return;
         };

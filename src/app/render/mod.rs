@@ -89,12 +89,12 @@ impl App {
     /// Build breadcrumb path for the currently selected node
     /// Returns a vector of (text, `node_idx`) pairs in root-to-leaf order
     fn build_breadcrumb_segments(&self) -> Vec<(String, usize)> {
-        if let Some(&node_idx) = self.visible.get(self.cursor) {
+        if let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) {
             let mut path_segments = Vec::new();
             let mut current_idx = node_idx;
 
             // Walk up the tree to build the path
-            while let Some(node) = self.all_nodes.get(current_idx) {
+            while let Some(node) = self.tree.all_nodes.get(current_idx) {
                 path_segments.push((node.text.clone(), current_idx));
 
                 // Find parent by looking for previous node with lower depth
@@ -104,7 +104,8 @@ impl App {
                 }
 
                 let parent_idx = (0..current_idx).rev().find(|&i| {
-                    self.all_nodes
+                    self.tree
+                        .all_nodes
                         .get(i)
                         .is_some_and(|n| n.depth < current_depth)
                 });
@@ -146,7 +147,7 @@ impl App {
         }
 
         // Store segments for click handling
-        self.breadcrumb_segments = breadcrumb_segments;
+        self.layout.breadcrumb_segments = breadcrumb_segments;
 
         // Build display string
         let breadcrumb_text: String = segments
@@ -164,12 +165,13 @@ impl App {
     }
 
     pub(super) fn draw_status(&self, frame: &mut Frame, area: Rect) {
-        let (text, st) = if self.searching {
-            let current_search_info = if self.search_stack.is_empty() {
+        let (text, st) = if self.search.active {
+            let current_search_info = if self.search.stack.is_empty() {
                 String::new()
             } else {
                 let stack_display: Vec<String> = self
-                    .search_stack
+                    .search
+                    .stack
                     .iter()
                     .map(|(term, _scope)| term.clone())
                     .collect();
@@ -180,10 +182,10 @@ impl App {
                 format!(
                     " /{}█{}{}  (scope: {} | Shift+S to change (leave search first) | Enter to \
                      add, Esc to cancel |  Backspace to undo last search)",
-                    self.search,
-                    self.search_scope.search_indicator(),
+                    self.search.query,
+                    self.search.scope.search_indicator(),
                     current_search_info,
-                    self.search_scope
+                    self.search.scope
                 ),
                 Style::default()
                     .fg(self.theme.table_header)
@@ -201,11 +203,12 @@ impl App {
                 "tree"
             };
 
-            let search_info = if self.search_stack.is_empty() {
+            let search_info = if self.search.stack.is_empty() {
                 String::new()
             } else {
                 let stack_display: Vec<String> = self
-                    .search_stack
+                    .search
+                    .stack
                     .iter()
                     .map(|(term, scope)| format!("{term}{}", scope.abbrev()))
                     .collect();
@@ -216,10 +219,10 @@ impl App {
             (
                 format!(
                     " {}/{} nodes | cursor: {} | focus: {focus}{}{}",
-                    self.visible.len(),
-                    self.all_nodes.len(),
-                    self.cursor.saturating_add(1),
-                    self.search_scope.status_indicator(),
+                    self.tree.visible.len(),
+                    self.tree.all_nodes.len(),
+                    self.tree.cursor.saturating_add(1),
+                    self.search.scope.status_indicator(),
                     search_info,
                 ),
                 Style::default().fg(self.theme.status_fg),

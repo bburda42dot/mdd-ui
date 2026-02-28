@@ -141,15 +141,20 @@ impl App {
         };
 
         // Clamp scroll offset (block index of first visible block)
-        while self.composite_scroll.len() <= section_idx {
-            self.composite_scroll.push(0);
+        while self.detail.composite_scroll.len() <= section_idx {
+            self.detail.composite_scroll.push(0);
         }
         let max_first_block = block_count.saturating_sub(1);
-        self.composite_max_scroll = max_first_block;
-        if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+        self.detail.composite_max_scroll = max_first_block;
+        if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
             *scroll = (*scroll).min(max_first_block);
         }
-        let first_block = self.composite_scroll.get(section_idx).copied().unwrap_or(0);
+        let first_block = self
+            .detail
+            .composite_scroll
+            .get(section_idx)
+            .copied()
+            .unwrap_or(0);
 
         // Render blocks starting from first_block, stacking downward
         let spacing = 1u16;
@@ -200,7 +205,7 @@ impl App {
                 width: area.width,
                 height: area.height,
             };
-            self.detail_scrollbar_area =
+            self.layout.detail_scrollbar_area =
                 render_scrollbar(frame, scrollbar_area, block_count, first_block, 1);
         }
     }

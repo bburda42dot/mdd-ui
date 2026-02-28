@@ -16,7 +16,8 @@ use crate::app::{App, FocusState};
 impl App {
     /// Extract ECU name from the General node's detail sections
     fn get_ecu_name(&self) -> &str {
-        self.all_nodes
+        self.tree
+            .all_nodes
             .first()
             .and_then(|node| {
                 if node.text != "General" {
@@ -53,14 +54,15 @@ impl App {
         self.ensure_cursor_visible(viewport_height);
 
         let lines: Vec<Line> = self
+            .tree
             .visible
             .iter()
             .enumerate()
-            .skip(self.scroll_offset)
+            .skip(self.tree.scroll_offset)
             .take(viewport_height)
             .filter_map(|(vi, &node_idx)| {
-                let node = self.all_nodes.get(node_idx)?;
-                let row_style = row_style(node, vi == self.cursor, &self.theme);
+                let node = self.tree.all_nodes.get(node_idx)?;
+                let row_style = row_style(node, vi == self.tree.cursor, &self.theme);
 
                 let indent = "  ".repeat(node.depth);
                 let icon = expand_icon(node);
@@ -74,11 +76,11 @@ impl App {
             .collect();
 
         frame.render_widget(Paragraph::new(lines), tree_inner);
-        self.tree_scrollbar_area = render_scrollbar(
+        self.layout.tree_scrollbar_area = render_scrollbar(
             frame,
             area,
-            self.visible.len(),
-            self.cursor,
+            self.tree.visible.len(),
+            self.tree.cursor,
             viewport_height,
         );
     }

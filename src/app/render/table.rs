@@ -31,7 +31,8 @@ pub(super) enum CellHighlight {
 impl App {
     pub(super) fn sort_rows(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
         let Some(sort_state) = self
-            .table_sort_state
+            .table
+            .sort_state
             .get(section_idx)
             .and_then(|s| s.as_ref())
         else {
@@ -77,10 +78,10 @@ impl App {
         row_count: usize,
         viewport_height: usize,
     ) {
-        let Some(cursor) = self.section_cursors.get_mut(section_idx) else {
+        let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) else {
             return;
         };
-        let Some(scroll) = self.section_scrolls.get_mut(section_idx) else {
+        let Some(scroll) = self.detail.section_scrolls.get_mut(section_idx) else {
             return;
         };
 
@@ -131,10 +132,10 @@ impl App {
         let row_count = rows_refs.len();
         self.clamp_section_cursor_and_scroll(section_idx, row_count, viewport_height);
 
-        let focused_col = if self.focused_column >= max_columns {
+        let focused_col = if self.table.focused_column >= max_columns {
             max_columns.saturating_sub(1)
         } else {
-            self.focused_column
+            self.table.focused_column
         };
 
         // Build visible rows with column-specific or row-specific highlighting
@@ -151,6 +152,7 @@ impl App {
         let column_widths = self.get_column_widths(section_idx, constraints);
 
         let is_absolute = self
+            .table
             .column_widths_absolute
             .get(section_idx)
             .copied()
@@ -180,10 +182,11 @@ impl App {
         };
 
         // Determine horizontal scroll offset
-        while self.horizontal_scroll.len() <= section_idx {
-            self.horizontal_scroll.push(0);
+        while self.table.horizontal_scroll.len() <= section_idx {
+            self.table.horizontal_scroll.push(0);
         }
         let h_scroll = self
+            .table
             .horizontal_scroll
             .get(section_idx)
             .copied()
@@ -191,16 +194,17 @@ impl App {
 
         // Clamp horizontal scroll
         let max_h_scroll = total_table_width.saturating_sub(inner.width);
-        if let Some(hs) = self.horizontal_scroll.get_mut(section_idx) {
+        if let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx) {
             *hs = h_scroll.min(max_h_scroll);
         }
         let h_scroll = self
+            .table
             .horizontal_scroll
             .get(section_idx)
             .copied()
             .unwrap_or(0);
 
-        self.cached_total_table_width = total_table_width;
+        self.table.cached_total_table_width = total_table_width;
 
         if needs_hscroll {
             self.render_hscrolled_table(
@@ -216,7 +220,7 @@ impl App {
                 section_idx,
             );
         } else {
-            self.detail_hscrollbar_area = None;
+            self.layout.detail_hscrollbar_area = None;
             // Standard rendering (no horizontal scroll needed)
             let ratatui_constraints: Vec<Constraint> = column_widths
                 .iter()
@@ -229,7 +233,8 @@ impl App {
                 })
                 .collect();
 
-            self.cached_ratatui_constraints
+            self.table
+                .cached_ratatui_constraints
                 .clone_from(&ratatui_constraints);
 
             let header_row = self.build_header_row(header, section_idx, max_columns);
@@ -253,15 +258,15 @@ impl App {
                 width: inner.width,
                 height: vscroll_height.saturating_sub(header_height),
             };
-            self.detail_scrollbar_area = render_scrollbar(
+            self.layout.detail_scrollbar_area = render_scrollbar(
                 frame,
                 scrollbar_area,
                 row_count,
-                *self.section_cursors.get(section_idx).unwrap_or(&0),
+                *self.detail.section_cursors.get(section_idx).unwrap_or(&0),
                 viewport_height,
             );
         } else {
-            self.detail_scrollbar_area = None;
+            self.layout.detail_scrollbar_area = None;
         }
     }
 
@@ -287,10 +292,12 @@ impl App {
             table_area.width,
             header,
             visible_rows,
-            self.table_sort_state.get(section_idx).and_then(|s| *s),
+            self.table.sort_state.get(section_idx).and_then(|s| *s),
         );
 
-        self.cached_ratatui_constraints.clone_from(&vis_constraints);
+        self.table
+            .cached_ratatui_constraints
+            .clone_from(&vis_constraints);
 
         let table = Table::new(vis_rows, vis_constraints)
             .column_spacing(column_spacing)
@@ -310,7 +317,7 @@ impl App {
             h_scroll,
             inner.width,
         );
-        self.detail_hscrollbar_area = Some(hscroll_area);
+        self.layout.detail_hscrollbar_area = Some(hscroll_area);
     }
 
     /// Apply horizontal scroll to determine visible columns and build clipped constraints/rows.
@@ -424,8 +431,18 @@ impl App {
         focused_col: usize,
         use_row_selection: bool,
     ) -> Vec<Row<'static>> {
-        let scroll_offset = self.section_scrolls.get(section_idx).copied().unwrap_or(0);
-        let cursor_pos = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+        let scroll_offset = self
+            .detail
+            .section_scrolls
+            .get(section_idx)
+            .copied()
+            .unwrap_or(0);
+        let cursor_pos = self
+            .detail
+            .section_cursors
+            .get(section_idx)
+            .copied()
+            .unwrap_or(0);
 
         rows_refs
             .iter()
@@ -524,7 +541,7 @@ impl App {
         section_idx: usize,
         max_columns: usize,
     ) -> Row<'static> {
-        let sort_state = self.table_sort_state.get(section_idx).and_then(|s| *s);
+        let sort_state = self.table.sort_state.get(section_idx).and_then(|s| *s);
 
         let header_cells: Vec<Cell> = header
             .cells
@@ -567,26 +584,27 @@ impl App {
         constraints: &[crate::tree::ColumnConstraint],
     ) -> Vec<u16> {
         // Ensure we have enough entries
-        while self.column_widths.len() <= section_idx {
-            self.column_widths.push(Vec::new());
+        while self.table.column_widths.len() <= section_idx {
+            self.table.column_widths.push(Vec::new());
         }
-        while self.column_widths_absolute.len() <= section_idx {
-            self.column_widths_absolute.push(false);
+        while self.table.column_widths_absolute.len() <= section_idx {
+            self.table.column_widths_absolute.push(false);
         }
 
         // If we don't have custom widths for this section, try persistent store or init defaults
         if self
+            .table
             .column_widths
             .get(section_idx)
             .is_none_or(Vec::is_empty)
         {
             let key = self.make_column_width_key(section_idx, constraints.len());
-            if let Some(persisted) = self.persisted_column_widths.get(&key).cloned() {
+            if let Some(persisted) = self.table.persisted_column_widths.get(&key).cloned() {
                 // Restore persisted absolute widths
-                if let Some(col_widths) = self.column_widths.get_mut(section_idx) {
+                if let Some(col_widths) = self.table.column_widths.get_mut(section_idx) {
                     *col_widths = persisted;
                 }
-                if let Some(abs) = self.column_widths_absolute.get_mut(section_idx) {
+                if let Some(abs) = self.table.column_widths_absolute.get_mut(section_idx) {
                     *abs = true;
                 }
             } else {
@@ -629,14 +647,15 @@ impl App {
                     }
                 }
 
-                if let Some(col_widths) = self.column_widths.get_mut(section_idx) {
+                if let Some(col_widths) = self.table.column_widths.get_mut(section_idx) {
                     *col_widths = widths;
                 }
                 // column_widths_absolute stays false (percentage mode)
             }
         }
 
-        self.column_widths
+        self.table
+            .column_widths
             .get(section_idx)
             .map_or_else(Vec::new, Clone::clone)
     }

@@ -18,7 +18,7 @@ use crate::{
 
 impl App {
     pub(in crate::app) fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(border_style(
@@ -30,7 +30,7 @@ impl App {
             return;
         };
 
-        let Some(selected_node) = self.all_nodes.get(node_idx) else {
+        let Some(selected_node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let node_text = selected_node.text.clone();
@@ -97,7 +97,10 @@ impl App {
         frame.render_widget(outer_block, area);
 
         // Clamp selected tab to valid range
-        self.selected_tab = self.selected_tab.min(tab_sections.len().saturating_sub(1));
+        self.detail.selected_tab = self
+            .detail
+            .selected_tab
+            .min(tab_sections.len().saturating_sub(1));
 
         // Initialize state vectors
         self.ensure_section_state_initialized(sections);
@@ -173,30 +176,31 @@ impl App {
 
     /// Ensure section state vectors are properly sized
     pub(super) fn ensure_section_state_initialized(&mut self, sections: &[DetailSectionData]) {
-        while self.section_scrolls.len() < sections.len() {
-            self.section_scrolls.push(0);
+        while self.detail.section_scrolls.len() < sections.len() {
+            self.detail.section_scrolls.push(0);
         }
-        while self.section_cursors.len() < sections.len() {
-            self.section_cursors.push(0);
+        while self.detail.section_cursors.len() < sections.len() {
+            self.detail.section_cursors.push(0);
         }
 
         // Initialize table_sort_state and column_widths
-        while self.table_sort_state.len() < sections.len() {
-            let section_idx = self.table_sort_state.len();
-            self.table_sort_state
+        while self.table.sort_state.len() < sections.len() {
+            let section_idx = self.table.sort_state.len();
+            self.table
+                .sort_state
                 .push(Self::initialize_table_sort(sections.get(section_idx)));
         }
 
-        while self.column_widths.len() < sections.len() {
-            self.column_widths.push(Vec::new());
+        while self.table.column_widths.len() < sections.len() {
+            self.table.column_widths.push(Vec::new());
         }
 
-        while self.column_widths_absolute.len() < sections.len() {
-            self.column_widths_absolute.push(false);
+        while self.table.column_widths_absolute.len() < sections.len() {
+            self.table.column_widths_absolute.push(false);
         }
 
-        while self.horizontal_scroll.len() < sections.len() {
-            self.horizontal_scroll.push(0);
+        while self.table.horizontal_scroll.len() < sections.len() {
+            self.table.horizontal_scroll.push(0);
         }
     }
 
@@ -261,7 +265,7 @@ impl App {
         let show_tabs = tab_sections.len() > 1;
         let section_offset = usize::from(all_sections.len() > tab_sections.len());
 
-        let Some(section) = tab_sections.get(self.selected_tab) else {
+        let Some(section) = tab_sections.get(self.detail.selected_tab) else {
             return;
         };
         let help_text = if self.focus_state == FocusState::Detail {
@@ -286,20 +290,20 @@ impl App {
         let inner = if show_tabs {
             self.render_tabs_and_get_content_area(frame, block_inner, tab_sections)
         } else {
-            self.tab_area = None;
-            self.tab_titles.clear();
+            self.layout.tab_area = None;
+            self.layout.tab_titles.clear();
             block_inner
         };
 
         // Cache table content area
-        self.table_content_area = Some(inner);
+        self.layout.table_content_area = Some(inner);
 
         // Render section content
         self.render_section_content(
             frame,
             inner,
             section,
-            self.selected_tab.saturating_add(section_offset),
+            self.detail.selected_tab.saturating_add(section_offset),
         );
     }
 
@@ -327,11 +331,11 @@ impl App {
         };
 
         // Cache tab data
-        self.tab_area = Some(tab_area);
-        self.tab_titles.clone_from(&tab_titles);
+        self.layout.tab_area = Some(tab_area);
+        self.layout.tab_titles.clone_from(&tab_titles);
 
         // Render tabs
-        self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.selected_tab);
+        self.render_wrapped_tabs(frame, tab_area, &tab_titles, self.detail.selected_tab);
 
         content_inner
     }

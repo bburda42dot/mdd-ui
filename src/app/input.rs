@@ -19,25 +19,26 @@ impl App {
         match code {
             KeyCode::Esc => {
                 // Clear current search input and exit search mode
-                self.searching = false;
-                self.search.clear();
+                self.search.active = false;
+                self.search.query.clear();
                 // Note: Don't clear search_stack, it persists
             }
             KeyCode::Enter => {
                 // Finalize current search and add to stack
-                self.searching = false;
+                self.search.active = false;
                 self.update_search();
             }
             KeyCode::Backspace => {
-                if self.search.is_empty() {
+                if self.search.query.is_empty() {
                     // If search input is empty, pop from search stack
-                    if !self.search_stack.is_empty() {
-                        self.search_stack.pop();
+                    if !self.search.stack.is_empty() {
+                        self.search.stack.pop();
                         self.rebuild_visible();
-                        let depth = self.search_stack.len();
+                        let depth = self.search.stack.len();
                         if depth > 0 {
                             let stack_display: Vec<String> = self
-                                .search_stack
+                                .search
+                                .stack
                                 .iter()
                                 .map(|(term, _scope)| term.clone())
                                 .collect();
@@ -48,7 +49,7 @@ impl App {
                         }
                     }
                 } else {
-                    self.search.pop();
+                    self.search.query.pop();
                 }
             }
 
@@ -80,7 +81,7 @@ impl App {
 
             // Regular character input for search
             KeyCode::Char(c) => {
-                self.search.push(c);
+                self.search.query.push(c);
                 // Don't call update_search() here - only update on Enter
             }
 
@@ -100,19 +101,19 @@ impl App {
         }
 
         // Early return for detail popup
-        if self.detail_popup.is_some() {
+        if self.detail.popup.is_some() {
             if matches!(code, KeyCode::Esc) {
-                self.detail_popup = None;
+                self.detail.popup = None;
             }
             return Action::Continue;
         }
 
         // Clear jump buffer if timed out (>1 second since last character)
-        if let Some(last_time) = self.jump_buffer_time
+        if let Some(last_time) = self.table.jump_buffer_time
             && last_time.elapsed() > std::time::Duration::from_secs(1)
         {
-            self.jump_buffer.clear();
-            self.jump_buffer_time = None;
+            self.table.jump_buffer.clear();
+            self.table.jump_buffer_time = None;
         }
 
         match code {
@@ -130,16 +131,18 @@ impl App {
                     FocusState::Detail
                 };
                 if self.focus_state != FocusState::Detail {
-                    self.focused_section = 0; // Reset when returning to tree
+                    self.detail.focused_section = 0; // Reset when returning to tree
                 }
             }
 
             // Pane resizing
             KeyCode::Char('+' | '=') => {
-                self.tree_width_percentage = self.tree_width_percentage.saturating_add(5).min(80);
+                self.layout.tree_width_percentage =
+                    self.layout.tree_width_percentage.saturating_add(5).min(80);
             }
             KeyCode::Char('-' | '_') => {
-                self.tree_width_percentage = (self.tree_width_percentage.saturating_sub(5)).max(20);
+                self.layout.tree_width_percentage =
+                    (self.layout.tree_width_percentage.saturating_sub(5)).max(20);
             }
 
             // Arrow keys and uppercase vim keys navigate in all modes
@@ -199,9 +202,9 @@ impl App {
             }
 
             KeyCode::Char('/') => {
-                self.searching = true;
-                self.search.clear();
-                let depth = self.search_stack.len();
+                self.search.active = true;
+                self.search.query.clear();
+                let depth = self.search.stack.len();
                 if depth > 0 {
                     self.status = format!("Add search (depth {depth}+1): ");
                 } else {
@@ -230,15 +233,15 @@ impl App {
 
             // Type-to-jump: alphanumeric keys jump to matching row in detail pane
             KeyCode::Char(c) if self.focus_state == FocusState::Detail && c.is_alphanumeric() => {
-                self.jump_buffer.push(c.to_ascii_lowercase());
-                self.jump_buffer_time = Some(std::time::Instant::now());
+                self.table.jump_buffer.push(c.to_ascii_lowercase());
+                self.table.jump_buffer_time = Some(std::time::Instant::now());
                 self.jump_to_matching_row();
             }
 
             // Type-to-jump: alphanumeric keys jump to matching tree node
             KeyCode::Char(c) if self.focus_state != FocusState::Detail && c.is_alphanumeric() => {
-                self.jump_buffer.push(c.to_ascii_lowercase());
-                self.jump_buffer_time = Some(std::time::Instant::now());
+                self.table.jump_buffer.push(c.to_ascii_lowercase());
+                self.table.jump_buffer_time = Some(std::time::Instant::now());
                 self.jump_to_matching_tree_node();
             }
 
@@ -253,12 +256,12 @@ impl App {
             KeyCode::Char('[') => self.resize_column(-10),
             KeyCode::Char(']') => self.resize_column(10),
             KeyCode::Char(',') => {
-                self.focused_column = self.focused_column.saturating_sub(1);
+                self.table.focused_column = self.table.focused_column.saturating_sub(1);
                 let section_idx = self.get_section_index();
                 self.ensure_focused_column_visible(section_idx);
             }
             KeyCode::Char('.') => {
-                self.focused_column = self.focused_column.saturating_add(1);
+                self.table.focused_column = self.table.focused_column.saturating_add(1);
                 let section_idx = self.get_section_index();
                 self.ensure_focused_column_visible(section_idx);
             }
@@ -293,49 +296,49 @@ impl App {
 
         // For Composite sections, scroll by block index
         if self.is_current_section_composite() {
-            while self.composite_scroll.len() <= section_idx {
-                self.composite_scroll.push(0);
+            while self.detail.composite_scroll.len() <= section_idx {
+                self.detail.composite_scroll.push(0);
             }
             match code {
                 KeyCode::Up | KeyCode::Char('K') => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = scroll.saturating_sub(1);
                     }
                 }
                 KeyCode::Down | KeyCode::Char('J') => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = scroll.saturating_add(1);
                     }
                 }
                 KeyCode::PageUp => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = scroll.saturating_sub(5);
                     }
                 }
                 KeyCode::PageDown => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = scroll.saturating_add(5);
                     }
                 }
                 KeyCode::Home => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = 0;
                     }
                 }
                 KeyCode::End => {
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = usize::MAX;
                     }
                 }
                 KeyCode::Left | KeyCode::Char('H') => {
-                    let new_tab = self.selected_tab.saturating_sub(1);
+                    let new_tab = self.detail.selected_tab.saturating_sub(1);
                     self.set_selected_tab(new_tab);
-                    self.focused_column = 0;
+                    self.table.focused_column = 0;
                 }
                 KeyCode::Right | KeyCode::Char('L') => {
-                    let new_tab = self.selected_tab.saturating_add(1);
+                    let new_tab = self.detail.selected_tab.saturating_add(1);
                     self.set_selected_tab(new_tab);
-                    self.focused_column = 0;
+                    self.table.focused_column = 0;
                 }
                 _ => {}
             }
@@ -344,44 +347,44 @@ impl App {
 
         match code {
             KeyCode::Up | KeyCode::Char('K') => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = cursor.saturating_sub(1);
                 }
             }
             KeyCode::Down | KeyCode::Char('J') => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = cursor.saturating_add(1);
                 }
             }
             KeyCode::PageUp => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = cursor.saturating_sub(20);
                 }
             }
             KeyCode::PageDown => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = cursor.saturating_add(20);
                 }
             }
             KeyCode::Home => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = 0;
                 }
             }
             KeyCode::End => {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = usize::MAX;
                 }
             }
             KeyCode::Left | KeyCode::Char('H') => {
-                let new_tab = self.selected_tab.saturating_sub(1);
+                let new_tab = self.detail.selected_tab.saturating_sub(1);
                 self.set_selected_tab(new_tab);
-                self.focused_column = 0;
+                self.table.focused_column = 0;
             }
             KeyCode::Right | KeyCode::Char('L') => {
-                let new_tab = self.selected_tab.saturating_add(1);
+                let new_tab = self.detail.selected_tab.saturating_add(1);
                 self.set_selected_tab(new_tab);
-                self.focused_column = 0;
+                self.table.focused_column = 0;
             }
             _ => {}
         }

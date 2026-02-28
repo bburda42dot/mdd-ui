@@ -10,7 +10,7 @@ impl App {
     /// `(depth, text)` pairs. Walking backwards from `node_idx`, we collect
     /// each ancestor (first node at each successively lower depth).
     fn build_node_path(&self, node_idx: usize) -> Vec<(usize, String)> {
-        let Some(target) = self.all_nodes.get(node_idx) else {
+        let Some(target) = self.tree.all_nodes.get(node_idx) else {
             return vec![];
         };
 
@@ -22,7 +22,7 @@ impl App {
             if current_depth == 0 {
                 break;
             }
-            let Some(node) = self.all_nodes.get(i) else {
+            let Some(node) = self.tree.all_nodes.get(i) else {
                 continue;
             };
             if node.depth < current_depth {
@@ -45,6 +45,7 @@ impl App {
             let search_start = last_found_idx.map_or(0, |i| i.saturating_add(1));
 
             let found = self
+                .tree
                 .all_nodes
                 .iter()
                 .enumerate()
@@ -58,7 +59,7 @@ impl App {
             };
 
             // Expand this node so subsequent children are visible
-            if let Some(node) = self.all_nodes.get_mut(idx)
+            if let Some(node) = self.tree.all_nodes.get_mut(idx)
                 && node.has_children
             {
                 node.expanded = true;
@@ -77,7 +78,7 @@ impl App {
     pub(crate) fn push_to_history(&mut self) {
         const MAX_HISTORY: usize = 100;
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
 
@@ -85,7 +86,8 @@ impl App {
 
         // Don't store duplicate consecutive entries
         if self
-            .navigation_history
+            .history
+            .entries
             .last()
             .is_some_and(|e| e.node_path == path)
         {
@@ -93,8 +95,8 @@ impl App {
         }
 
         // Truncate forward history if not at end
-        if self.history_position < self.navigation_history.len() {
-            self.navigation_history.truncate(self.history_position);
+        if self.history.position < self.history.entries.len() {
+            self.history.entries.truncate(self.history.position);
         }
 
         let entry = HistoryEntry {
@@ -102,28 +104,28 @@ impl App {
             node_path: path,
         };
 
-        self.navigation_history.push(entry);
-        self.history_position = self.navigation_history.len();
-        if self.navigation_history.len() > MAX_HISTORY {
-            self.navigation_history.remove(0);
-            self.history_position = self.navigation_history.len();
+        self.history.entries.push(entry);
+        self.history.position = self.history.entries.len();
+        if self.history.entries.len() > MAX_HISTORY {
+            self.history.entries.remove(0);
+            self.history.position = self.history.entries.len();
         }
     }
 
     /// Navigate to the previous element in navigation history
     pub(crate) fn navigate_to_previous_in_history(&mut self) {
-        if self.navigation_history.is_empty() {
+        if self.history.entries.is_empty() {
             "No previous element in history".clone_into(&mut self.status);
             return;
         }
 
-        if self.history_position == 0 {
+        if self.history.position == 0 {
             "Already at oldest element in history".clone_into(&mut self.status);
             return;
         }
 
-        self.history_position = self.history_position.saturating_sub(1);
-        let Some(entry) = self.navigation_history.get(self.history_position).cloned() else {
+        self.history.position = self.history.position.saturating_sub(1);
+        let Some(entry) = self.history.entries.get(self.history.position).cloned() else {
             "History access failed".clone_into(&mut self.status);
             return;
         };
@@ -131,6 +133,7 @@ impl App {
         // First try the stored node_idx (fast path — still correct if tree
         // structure hasn't changed)
         let target_node_idx = if self
+            .tree
             .all_nodes
             .get(entry.node_idx)
             .is_some_and(|n| entry.node_path.last().is_some_and(|(_, t)| *t == n.text))
@@ -147,16 +150,21 @@ impl App {
             idx
         };
 
-        let Some(cursor_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) else {
+        let Some(cursor_pos) = self
+            .tree
+            .visible
+            .iter()
+            .position(|&idx| idx == target_node_idx)
+        else {
             "Previous element no longer reachable".clone_into(&mut self.status);
             return;
         };
 
-        self.cursor = cursor_pos;
+        self.tree.cursor = cursor_pos;
         self.reset_detail_state();
-        self.scroll_offset = self.cursor.saturating_sub(5);
+        self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
         self.focus_state = FocusState::Tree;
-        if let Some(node) = self.all_nodes.get(target_node_idx) {
+        if let Some(node) = self.tree.all_nodes.get(target_node_idx) {
             self.status = format!("Navigated to: {}", node.text);
         }
     }

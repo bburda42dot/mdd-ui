@@ -12,14 +12,14 @@ impl App {
     /// Navigate to an inherited parent layer in the tree
     pub(crate) fn try_navigate_to_inherited_parent(&mut self) {
         // Early validations
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -44,7 +44,7 @@ impl App {
 
     /// Get parent layer name from the Overview section's "Inherited From" row
     pub(super) fn get_parent_layer_name(&self, node_idx: usize) -> Option<String> {
-        let node = self.all_nodes.get(node_idx)?;
+        let node = self.tree.all_nodes.get(node_idx)?;
 
         let overview_idx = usize::from(
             node.detail_sections.len() > 1
@@ -58,7 +58,12 @@ impl App {
 
         let rows = overview_section.content.table_rows()?;
 
-        let row_cursor = self.section_cursors.get(overview_idx).copied().unwrap_or(0);
+        let row_cursor = self
+            .detail
+            .section_cursors
+            .get(overview_idx)
+            .copied()
+            .unwrap_or(0);
         let sorted_rows = self.apply_table_sort(rows, overview_idx);
         let selected_row = sorted_rows.get(row_cursor)?;
 
@@ -76,12 +81,12 @@ impl App {
     /// Navigate to a parent ref target when pressing Enter on a parent ref child
     /// in the tree pane. Returns `true` if navigation was attempted.
     pub(crate) fn try_navigate_parent_ref_from_tree(&mut self) -> bool {
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return false;
         };
 
         // Check if the current node is a child of a ParentRefs node
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return false;
         };
         let node_depth = node.depth;
@@ -92,10 +97,12 @@ impl App {
 
         // Walk backwards to find the parent node
         let parent_is_parent_refs = (0..node_idx).rev().any(|i| {
-            self.all_nodes
+            self.tree
+                .all_nodes
                 .get(i)
                 .is_some_and(|n| n.depth < node_depth && n.node_type == NodeType::ParentRefs)
                 && self
+                    .tree
                     .all_nodes
                     .get(i)
                     .is_some_and(|n| n.depth == node_depth.saturating_sub(1))
@@ -113,10 +120,10 @@ impl App {
 
     /// Navigate to a parent ref element from the Parent References table
     pub(crate) fn try_navigate_to_parent_ref(&mut self) {
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -133,7 +140,7 @@ impl App {
         };
 
         // Get the selected row cursor
-        let Some(&row_cursor) = self.section_cursors.get(section_idx) else {
+        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
             return;
         };
 
@@ -158,14 +165,14 @@ impl App {
 
     /// Navigate to a not-inherited element (`DiagComm`, `DiagVariable`, `Dop`, `Table`)
     pub(crate) fn try_navigate_to_not_inherited_element(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -197,8 +204,8 @@ impl App {
         };
 
         // Get the selected row cursor
-        let row_cursor = if section_idx < self.section_cursors.len() {
-            *self.section_cursors.get(section_idx).unwrap_or(&0)
+        let row_cursor = if section_idx < self.detail.section_cursors.len() {
+            *self.detail.section_cursors.get(section_idx).unwrap_or(&0)
         } else {
             return;
         };

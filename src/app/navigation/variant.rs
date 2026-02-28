@@ -11,7 +11,7 @@ use crate::{
 impl App {
     /// Handle Enter key for functional class nodes
     pub(super) fn handle_functional_class_enter(&mut self) {
-        match self.focused_column {
+        match self.table.focused_column {
             0 => self.try_navigate_to_service_from_functional_class(),
             5 => self.try_navigate_to_layer_from_functional_class(),
             _ => {}
@@ -21,14 +21,14 @@ impl App {
     /// Navigate to a layer from functional class detail view
     /// The layer name is extracted from the "Layer" column of the selected row
     pub(crate) fn try_navigate_to_layer_from_functional_class(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -61,8 +61,8 @@ impl App {
         };
 
         // Get the selected row cursor
-        let row_cursor = if section_idx < self.section_cursors.len() {
-            *self.section_cursors.get(section_idx).unwrap_or(&0)
+        let row_cursor = if section_idx < self.detail.section_cursors.len() {
+            *self.detail.section_cursors.get(section_idx).unwrap_or(&0)
         } else {
             return;
         };
@@ -97,14 +97,14 @@ impl App {
 
     /// Navigate to a variant from the Variants overview table
     pub(crate) fn try_navigate_to_variant(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -121,7 +121,7 @@ impl App {
         };
 
         // Get the selected row cursor
-        let Some(&row_cursor) = self.section_cursors.get(section_idx) else {
+        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
             return;
         };
 
@@ -143,14 +143,14 @@ impl App {
 
     /// Navigate from variant overview to a child element
     pub(crate) fn try_navigate_from_variant_overview(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -172,7 +172,7 @@ impl App {
         };
 
         // Get the selected row cursor
-        let Some(&row_cursor) = self.section_cursors.get(section_idx) else {
+        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
             return;
         };
 

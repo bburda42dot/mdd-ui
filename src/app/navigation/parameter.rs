@@ -14,14 +14,14 @@ impl App {
     /// For Request/Response nodes: uses per-cell jump target metadata.
     pub(crate) fn try_navigate_from_param_table(&mut self) {
         // Early validation
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let section_idx = self.get_section_index();
@@ -31,7 +31,12 @@ impl App {
             return;
         };
 
-        let row_cursor = self.section_cursors.get(section_idx).copied().unwrap_or(0);
+        let row_cursor = self
+            .detail
+            .section_cursors
+            .get(section_idx)
+            .copied()
+            .unwrap_or(0);
         let sorted_rows = self.apply_table_sort(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
@@ -93,7 +98,7 @@ impl App {
         node_idx: usize,
         section_idx: usize,
     ) {
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             "Invalid node index".clone_into(&mut self.status);
             return;
         };
@@ -129,7 +134,8 @@ impl App {
         let found = self
             .find_in_hierarchy(|n| n.node_type == target_node_type && n.text == service_name)
             .or_else(|| {
-                self.all_nodes
+                self.tree
+                    .all_nodes
                     .iter()
                     .position(|n| n.node_type == target_node_type && n.text == service_name)
             });
@@ -148,7 +154,9 @@ impl App {
         _use_row_selection: bool,
         cell_types: &[CellType],
     ) -> usize {
-        self.focused_column.min(cell_types.len().saturating_sub(1))
+        self.table
+            .focused_column
+            .min(cell_types.len().saturating_sub(1))
     }
 
     /// Navigate to a DOP node by name.
@@ -158,7 +166,12 @@ impl App {
     pub(super) fn navigate_to_dop(&mut self, dop_name: &str) {
         let found_idx = self
             .find_in_hierarchy(|node| node.text == dop_name)
-            .or_else(|| self.all_nodes.iter().position(|node| node.text == dop_name));
+            .or_else(|| {
+                self.tree
+                    .all_nodes
+                    .iter()
+                    .position(|node| node.text == dop_name)
+            });
 
         match found_idx {
             Some(dop_idx) => {
@@ -176,7 +189,7 @@ impl App {
     /// jumping to a same-named parameter in a different section.
     pub(super) fn navigate_to_parameter_by_id(&mut self, param_id: u32) {
         // Get current node index to scope the search
-        let current_node_idx = self.visible.get(self.cursor).copied();
+        let current_node_idx = self.tree.visible.get(self.tree.cursor).copied();
 
         // Find parameter node by ID, preferring children of the current node
         let param_idx = current_node_idx
@@ -192,12 +205,12 @@ impl App {
         self.ensure_node_visible(param_idx);
 
         // Navigate to parameter
-        if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == param_idx) {
+        if let Some(new_cursor) = self.tree.visible.iter().position(|&idx| idx == param_idx) {
             self.push_to_history();
             self.focus_state = FocusState::Tree;
-            self.cursor = new_cursor;
+            self.tree.cursor = new_cursor;
             self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
             self.status = format!("Navigated to parameter (ID: {param_id})");
         } else {
             self.status = format!("Parameter found but not visible (ID: {param_id})");
@@ -206,10 +219,11 @@ impl App {
 
     /// Find parameter node by `param_id` within a node's subtree
     pub(super) fn find_param_in_subtree(&self, parent_idx: usize, param_id: u32) -> Option<usize> {
-        let parent = self.all_nodes.get(parent_idx)?;
+        let parent = self.tree.all_nodes.get(parent_idx)?;
         let parent_depth = parent.depth;
 
-        self.all_nodes
+        self.tree
+            .all_nodes
             .iter()
             .enumerate()
             .skip(parent_idx.saturating_add(1))
@@ -220,7 +234,8 @@ impl App {
 
     /// Find parameter node by `param_id`
     pub(super) fn find_param_by_id(&self, param_id: u32) -> Option<usize> {
-        self.all_nodes
+        self.tree
+            .all_nodes
             .iter()
             .position(|node| node.param_id == Some(param_id))
     }
@@ -230,14 +245,14 @@ impl App {
     /// like "DTC-DOPS", navigates to the category child node.
     /// For DOP category nodes: rows are individual DOPs, navigates to the DOP child node.
     pub(crate) fn try_navigate_to_dop_child(&mut self) {
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -258,7 +273,7 @@ impl App {
         };
 
         // Get the selected row cursor
-        let Some(&row_cursor) = self.section_cursors.get(section_idx) else {
+        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
             return;
         };
 
@@ -297,6 +312,7 @@ impl App {
         let target_depth = current_depth.saturating_add(1);
 
         let target_idx = self
+            .tree
             .all_nodes
             .iter()
             .enumerate()

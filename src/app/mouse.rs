@@ -22,9 +22,9 @@ impl App {
         row: u16,
     ) -> Action {
         // If popup is open, only close on click
-        if self.detail_popup.is_some() {
+        if self.detail.popup.is_some() {
             if matches!(kind, MouseEventKind::Down(_)) {
-                self.detail_popup = None;
+                self.detail.popup = None;
             }
             return Action::Continue;
         }
@@ -33,35 +33,36 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 // Check if clicking on a scrollbar to start drag
                 if self.is_in_tree_scrollbar(column, row) {
-                    self.drag_state = DragState::TreeScrollbar;
+                    self.mouse.drag_state = DragState::TreeScrollbar;
                     self.handle_scrollbar_drag(row);
                     return Action::Continue;
                 } else if self.is_in_detail_scrollbar(column, row) {
-                    self.drag_state = DragState::DetailScrollbar;
+                    self.mouse.drag_state = DragState::DetailScrollbar;
                     self.handle_scrollbar_drag(row);
                     return Action::Continue;
                 } else if self.is_in_detail_hscrollbar(column, row) {
-                    self.drag_state = DragState::DetailHScrollbar;
+                    self.mouse.drag_state = DragState::DetailHScrollbar;
                     self.handle_hscrollbar_drag(column);
                     return Action::Continue;
                 }
 
                 // Check if clicking near the divider to start drag
                 if self.is_near_divider(column) {
-                    self.drag_state = DragState::Divider;
+                    self.mouse.drag_state = DragState::Divider;
                     return Action::Continue;
                 }
 
                 // Check if clicking near a column border in the table header
                 if let Some(col_idx) = self.find_column_border(column, row) {
-                    self.drag_state = DragState::ColumnBorder(col_idx);
+                    self.mouse.drag_state = DragState::ColumnBorder(col_idx);
                     return Action::Continue;
                 }
 
                 // Check for double-click (within 500ms and same position)
-                let is_double_click = if let Some(last_time) = self.last_click_time {
+                let is_double_click = if let Some(last_time) = self.mouse.last_click_time {
                     let elapsed = last_time.elapsed();
-                    elapsed < Duration::from_millis(500) && self.last_click_pos == (column, row)
+                    elapsed < Duration::from_millis(500)
+                        && self.mouse.last_click_pos == (column, row)
                 } else {
                     false
                 };
@@ -73,34 +74,34 @@ impl App {
                     self.handle_double_click(column, row);
                     // Reset click tracking to avoid triple-click being detected
                     // as another double-click
-                    self.last_click_time = None;
+                    self.mouse.last_click_time = None;
                 } else {
                     self.handle_click(column, row);
                     // Track this click for double-click detection
-                    self.last_click_time = Some(Instant::now());
-                    self.last_click_pos = (column, row);
+                    self.mouse.last_click_time = Some(Instant::now());
+                    self.mouse.last_click_pos = (column, row);
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 // Stop dragging when mouse button is released
-                self.drag_state = DragState::None;
+                self.mouse.drag_state = DragState::None;
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 // Handle drag to scroll via scrollbar
                 if matches!(
-                    self.drag_state,
+                    self.mouse.drag_state,
                     DragState::TreeScrollbar | DragState::DetailScrollbar
                 ) {
                     self.handle_scrollbar_drag(row);
-                } else if self.drag_state == DragState::DetailHScrollbar {
+                } else if self.mouse.drag_state == DragState::DetailHScrollbar {
                     self.handle_hscrollbar_drag(column);
                 }
                 // Handle drag to resize tree pane
-                else if self.drag_state == DragState::Divider {
+                else if self.mouse.drag_state == DragState::Divider {
                     self.handle_divider_drag(column);
                 }
                 // Handle drag to resize table columns
-                else if let DragState::ColumnBorder(col_idx) = self.drag_state {
+                else if let DragState::ColumnBorder(col_idx) = self.mouse.drag_state {
                     self.handle_column_border_drag(col_idx, column);
                 }
             }
@@ -111,15 +112,15 @@ impl App {
                     self.focus_state = FocusState::Detail;
                     if self.is_current_section_composite() {
                         let section_idx = self.get_section_index();
-                        while self.composite_scroll.len() <= section_idx {
-                            self.composite_scroll.push(0);
+                        while self.detail.composite_scroll.len() <= section_idx {
+                            self.detail.composite_scroll.push(0);
                         }
-                        if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                        if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                             *scroll = scroll.saturating_add(1);
                         }
                     } else {
                         let section_idx = self.get_section_index();
-                        if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                        if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                             *cursor = cursor.saturating_add(3);
                         }
                     }
@@ -132,15 +133,15 @@ impl App {
                     self.focus_state = FocusState::Detail;
                     if self.is_current_section_composite() {
                         let section_idx = self.get_section_index();
-                        while self.composite_scroll.len() <= section_idx {
-                            self.composite_scroll.push(0);
+                        while self.detail.composite_scroll.len() <= section_idx {
+                            self.detail.composite_scroll.push(0);
                         }
-                        if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                        if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                             *scroll = scroll.saturating_sub(1);
                         }
                     } else {
                         let section_idx = self.get_section_index();
-                        if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                        if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                             *cursor = cursor.saturating_sub(3);
                         }
                     }
@@ -192,7 +193,7 @@ impl App {
             self.focus_state = FocusState::Detail;
 
             // Check if double-click is on table header and ignore it
-            if let Some(area) = self.table_content_area {
+            if let Some(area) = self.layout.table_content_area {
                 let relative_row = (row.saturating_sub(area.y)) as usize;
                 if relative_row < HEADER_HEIGHT {
                     // Ignore double-clicks on header
@@ -201,11 +202,11 @@ impl App {
             }
 
             // Check what type of node we're on
-            if self.cursor < self.visible.len() {
-                let Some(&node_idx) = self.visible.get(self.cursor) else {
+            if self.tree.cursor < self.tree.visible.len() {
+                let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
                     return;
                 };
-                let Some(node) = self.all_nodes.get(node_idx) else {
+                let Some(node) = self.tree.all_nodes.get(node_idx) else {
                     return;
                 };
 
@@ -249,9 +250,9 @@ impl App {
                     // For functional class nodes, check which column is focused
                     // Column 0 (ShortName): navigate to service/job
                     // Column 5 (Layer): navigate to variant/layer
-                    if self.focused_column == 0 {
+                    if self.table.focused_column == 0 {
                         self.try_navigate_to_service_from_functional_class();
-                    } else if self.focused_column == 5 {
+                    } else if self.table.focused_column == 5 {
                         self.try_navigate_to_layer_from_functional_class();
                     }
                 } else if is_dop_node {
@@ -284,8 +285,12 @@ impl App {
                         } else if section.section_type == DetailSectionType::Overview
                             && let Some(rows) = section.content.table_rows()
                         {
-                            let row_cursor =
-                                self.section_cursors.get(section_idx).copied().unwrap_or(0);
+                            let row_cursor = self
+                                .detail
+                                .section_cursors
+                                .get(section_idx)
+                                .copied()
+                                .unwrap_or(0);
 
                             // Apply sorting if active for this section
                             let sorted_rows = self.apply_table_sort(rows, section_idx);
@@ -328,21 +333,41 @@ impl App {
     }
 
     fn is_in_tree_area(&self, column: u16, row: u16) -> bool {
-        column >= self.tree_area.x
-            && column < self.tree_area.x.saturating_add(self.tree_area.width)
-            && row >= self.tree_area.y
-            && row < self.tree_area.y.saturating_add(self.tree_area.height)
+        column >= self.layout.tree_area.x
+            && column
+                < self
+                    .layout
+                    .tree_area
+                    .x
+                    .saturating_add(self.layout.tree_area.width)
+            && row >= self.layout.tree_area.y
+            && row
+                < self
+                    .layout
+                    .tree_area
+                    .y
+                    .saturating_add(self.layout.tree_area.height)
     }
 
     fn is_in_detail_area(&self, column: u16, row: u16) -> bool {
-        column >= self.detail_area.x
-            && column < self.detail_area.x.saturating_add(self.detail_area.width)
-            && row >= self.detail_area.y
-            && row < self.detail_area.y.saturating_add(self.detail_area.height)
+        column >= self.layout.detail_area.x
+            && column
+                < self
+                    .layout
+                    .detail_area
+                    .x
+                    .saturating_add(self.layout.detail_area.width)
+            && row >= self.layout.detail_area.y
+            && row
+                < self
+                    .layout
+                    .detail_area
+                    .y
+                    .saturating_add(self.layout.detail_area.height)
     }
 
     fn is_in_tab_area(&self, column: u16, row: u16) -> bool {
-        if let Some(tab_area) = self.tab_area {
+        if let Some(tab_area) = self.layout.tab_area {
             column >= tab_area.x
                 && column < tab_area.x.saturating_add(tab_area.width)
                 && row >= tab_area.y
@@ -353,7 +378,7 @@ impl App {
     }
 
     fn is_in_table_content_area(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.table_content_area {
+        if let Some(area) = self.layout.table_content_area {
             column >= area.x
                 && column < area.x.saturating_add(area.width)
                 && row >= area.y
@@ -366,7 +391,11 @@ impl App {
     /// Check if the mouse is near the divider between tree and detail panes
     /// The divider is considered to be within 1-2 columns of the tree pane's right edge
     fn is_near_divider(&self, column: u16) -> bool {
-        let divider_col = self.tree_area.x.saturating_add(self.tree_area.width);
+        let divider_col = self
+            .layout
+            .tree_area
+            .x
+            .saturating_add(self.layout.tree_area.width);
         // Allow clicking on the last column of tree or first column of detail
         column >= divider_col.saturating_sub(1) && column <= divider_col.saturating_add(1)
     }
@@ -376,20 +405,20 @@ impl App {
     fn find_column_border(&self, column: u16, row: u16) -> Option<usize> {
         use ratatui::layout::{Direction, Layout};
 
-        let area = self.table_content_area?;
+        let area = self.layout.table_content_area?;
 
         // Only detect on the header rows (first 3 rows of the table)
         if row < area.y || row >= area.y.saturating_add(3) {
             return None;
         }
 
-        if self.cached_ratatui_constraints.len() < 2 {
+        if self.table.cached_ratatui_constraints.len() < 2 {
             return None;
         }
 
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(self.cached_ratatui_constraints.clone())
+            .constraints(self.table.cached_ratatui_constraints.clone())
             .spacing(3)
             .split(area);
 
@@ -411,17 +440,17 @@ impl App {
     fn handle_column_border_drag(&mut self, col_idx: usize, column: u16) {
         use ratatui::layout::{Direction, Layout};
 
-        let Some(area) = self.table_content_area else {
+        let Some(area) = self.layout.table_content_area else {
             return;
         };
 
-        if self.cached_ratatui_constraints.len() < 2 {
+        if self.table.cached_ratatui_constraints.len() < 2 {
             return;
         }
 
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(self.cached_ratatui_constraints.clone())
+            .constraints(self.table.cached_ratatui_constraints.clone())
             .spacing(3)
             .split(area);
 
@@ -433,6 +462,7 @@ impl App {
 
         // Ensure we're in absolute mode
         let is_absolute = self
+            .table
             .column_widths_absolute
             .get(section_idx)
             .copied()
@@ -449,27 +479,31 @@ impl App {
             return;
         }
 
-        if let Some(widths) = self.column_widths.get_mut(section_idx)
+        if let Some(widths) = self.table.column_widths.get_mut(section_idx)
             && let Some(lw) = widths.get_mut(col_idx)
         {
             *lw = new_width;
         }
 
-        self.focused_column = col_idx;
+        self.table.focused_column = col_idx;
         self.save_column_widths_to_persistent(section_idx);
     }
 
     /// Handle dragging the divider to resize tree pane
     fn handle_divider_drag(&mut self, column: u16) {
         // Get the total width of main area (tree + detail)
-        let total_width = self.tree_area.width.saturating_add(self.detail_area.width);
+        let total_width = self
+            .layout
+            .tree_area
+            .width
+            .saturating_add(self.layout.detail_area.width);
         if total_width == 0 {
             return;
         }
 
         // Calculate the new tree width based on mouse position
         // The column is relative to the start of tree_area
-        let new_tree_width = column.saturating_sub(self.tree_area.x);
+        let new_tree_width = column.saturating_sub(self.layout.tree_area.x);
 
         // Calculate percentage (clamped between 20% and 80%)
         let percentage_f32 = (f32::from(new_tree_width) / f32::from(total_width)) * 100.0;
@@ -477,12 +511,12 @@ impl App {
         // clamped percentage (20..=80) always fits in u16
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let percentage = clamped.round().clamp(0.0, 100.0) as u16;
-        self.tree_width_percentage = percentage;
+        self.layout.tree_width_percentage = percentage;
     }
 
     /// Check if the mouse is in the tree scrollbar area
     fn is_in_tree_scrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.tree_scrollbar_area {
+        if let Some(area) = self.layout.tree_scrollbar_area {
             column >= area.x
                 && column < area.x.saturating_add(area.width)
                 && row >= area.y
@@ -494,7 +528,7 @@ impl App {
 
     /// Check if the mouse is in the detail scrollbar area
     fn is_in_detail_scrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.detail_scrollbar_area {
+        if let Some(area) = self.layout.detail_scrollbar_area {
             column >= area.x
                 && column < area.x.saturating_add(area.width)
                 && row >= area.y
@@ -506,7 +540,7 @@ impl App {
 
     /// Check if the mouse is in the horizontal scrollbar area
     fn is_in_detail_hscrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.detail_hscrollbar_area {
+        if let Some(area) = self.layout.detail_hscrollbar_area {
             column >= area.x
                 && column < area.x.saturating_add(area.width)
                 && row >= area.y
@@ -518,10 +552,10 @@ impl App {
 
     /// Handle dragging on the horizontal scrollbar
     fn handle_hscrollbar_drag(&mut self, column: u16) {
-        let Some(area) = self.detail_hscrollbar_area else {
+        let Some(area) = self.layout.detail_hscrollbar_area else {
             return;
         };
-        let total_width = self.cached_total_table_width;
+        let total_width = self.table.cached_total_table_width;
         let viewport_width = area.width;
         if total_width <= viewport_width {
             return;
@@ -538,10 +572,10 @@ impl App {
             0
         };
         let section_idx = self.get_section_index();
-        while self.horizontal_scroll.len() <= section_idx {
-            self.horizontal_scroll.push(0);
+        while self.table.horizontal_scroll.len() <= section_idx {
+            self.table.horizontal_scroll.push(0);
         }
-        if let Some(hs) = self.horizontal_scroll.get_mut(section_idx) {
+        if let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx) {
             *hs = new_scroll;
         }
     }
@@ -549,16 +583,16 @@ impl App {
     /// Handle dragging on a scrollbar to scroll
     fn handle_scrollbar_drag(&mut self, row: u16) {
         if !matches!(
-            self.drag_state,
+            self.mouse.drag_state,
             DragState::TreeScrollbar | DragState::DetailScrollbar
         ) {
             return;
         }
 
-        if self.drag_state == DragState::TreeScrollbar {
+        if self.mouse.drag_state == DragState::TreeScrollbar {
             // Dragging tree scrollbar
-            if let Some(area) = self.tree_scrollbar_area {
-                let visible_count = self.visible.len();
+            if let Some(area) = self.layout.tree_scrollbar_area {
+                let visible_count = self.tree.visible.len();
                 let viewport_height = area.height as usize;
 
                 if visible_count <= viewport_height {
@@ -579,25 +613,25 @@ impl App {
                     0
                 };
 
-                self.cursor = new_cursor.min(max_cursor);
+                self.tree.cursor = new_cursor.min(max_cursor);
 
                 // Adjust scroll_offset to keep cursor centered in view
                 let half_viewport = viewport_height.saturating_div(2);
-                self.scroll_offset = self.cursor.saturating_sub(half_viewport);
+                self.tree.scroll_offset = self.tree.cursor.saturating_sub(half_viewport);
                 let max_scroll = visible_count.saturating_sub(viewport_height);
-                self.scroll_offset = self.scroll_offset.min(max_scroll);
+                self.tree.scroll_offset = self.tree.scroll_offset.min(max_scroll);
             }
         } else {
             // Dragging detail scrollbar
-            if let Some(area) = self.detail_scrollbar_area {
+            if let Some(area) = self.layout.detail_scrollbar_area {
                 let section_idx = self.get_section_index();
 
                 // Handle composite sections — map drag to composite_scroll
                 if self.is_current_section_composite() {
                     let relative_y = usize::from(row.saturating_sub(area.y));
-                    let max_scroll = self.composite_max_scroll;
-                    while self.composite_scroll.len() <= section_idx {
-                        self.composite_scroll.push(0);
+                    let max_scroll = self.detail.composite_max_scroll;
+                    while self.detail.composite_scroll.len() <= section_idx {
+                        self.detail.composite_scroll.push(0);
                     }
                     let new_scroll = if area.height > 1 {
                         let divisor = usize::from(area.height.saturating_sub(1));
@@ -609,30 +643,30 @@ impl App {
                     } else {
                         0
                     };
-                    if let Some(scroll) = self.composite_scroll.get_mut(section_idx) {
+                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                         *scroll = new_scroll;
                     }
                     return;
                 }
 
-                if self.focused_section >= self.section_scrolls.len() {
+                if self.detail.focused_section >= self.detail.section_scrolls.len() {
                     return;
                 }
 
                 // Get the current section's details
-                let Some(&node_idx) = self.visible.get(self.cursor) else {
+                let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
                     return;
                 };
 
-                let Some(node) = self.all_nodes.get(node_idx) else {
+                let Some(node) = self.tree.all_nodes.get(node_idx) else {
                     return;
                 };
                 let sections = &node.detail_sections;
-                if self.focused_section >= sections.len() {
+                if self.detail.focused_section >= sections.len() {
                     return;
                 }
 
-                let Some(section) = sections.get(self.focused_section) else {
+                let Some(section) = sections.get(self.detail.focused_section) else {
                     return;
                 };
                 let row_count = match &section.content {
@@ -663,7 +697,10 @@ impl App {
                     0
                 };
 
-                let Some(section_cursor) = self.section_cursors.get_mut(self.focused_section)
+                let Some(section_cursor) = self
+                    .detail
+                    .section_cursors
+                    .get_mut(self.detail.focused_section)
                 else {
                     return;
                 };
@@ -671,12 +708,17 @@ impl App {
 
                 // Adjust scroll to keep cursor centered
                 let half_viewport = viewport_height.saturating_div(2);
-                let Some(&cursor_val) = self.section_cursors.get(self.focused_section) else {
+                let Some(&cursor_val) =
+                    self.detail.section_cursors.get(self.detail.focused_section)
+                else {
                     return;
                 };
                 let new_scroll = cursor_val.saturating_sub(half_viewport);
                 let max_scroll = row_count.saturating_sub(viewport_height);
-                let Some(section_scroll) = self.section_scrolls.get_mut(self.focused_section)
+                let Some(section_scroll) = self
+                    .detail
+                    .section_scrolls
+                    .get_mut(self.detail.focused_section)
                 else {
                     return;
                 };
@@ -687,11 +729,11 @@ impl App {
 
     fn handle_tab_click(&mut self, column: u16, row: u16) {
         // Early exits for invalid states
-        if self.tab_titles.is_empty() {
+        if self.layout.tab_titles.is_empty() {
             return;
         }
 
-        let Some(tab_area) = self.tab_area else {
+        let Some(tab_area) = self.layout.tab_area else {
             return;
         };
 
@@ -708,6 +750,7 @@ impl App {
 
         // Build tab strings with decorators to match rendering logic
         let tab_strings: Vec<String> = self
+            .layout
             .tab_titles
             .iter()
             .map(|title| format!(" {title} "))
@@ -771,19 +814,19 @@ impl App {
     fn handle_table_click(&mut self, column: u16, row: u16) {
         const HEADER_HEIGHT: usize = 3;
 
-        let Some(area) = self.table_content_area else {
+        let Some(area) = self.layout.table_content_area else {
             return;
         };
 
         // Validate cursor position
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
 
@@ -810,11 +853,11 @@ impl App {
         }
 
         // Ensure section cursors and scrolls are properly sized
-        while self.section_scrolls.len() <= section_idx {
-            self.section_scrolls.push(0);
+        while self.detail.section_scrolls.len() <= section_idx {
+            self.detail.section_scrolls.push(0);
         }
-        while self.section_cursors.len() <= section_idx {
-            self.section_cursors.push(0);
+        while self.detail.section_cursors.len() <= section_idx {
+            self.detail.section_cursors.push(0);
         }
 
         // Calculate clicked row (skip header which is 3 lines tall)
@@ -824,13 +867,13 @@ impl App {
             // Clicked on header - trigger column sort
             let relative_col = column.saturating_sub(area.x);
             if let Some(col_idx) = self.calculate_clicked_column(relative_col) {
-                self.focused_column = col_idx;
+                self.table.focused_column = col_idx;
                 self.toggle_table_column_sort();
             }
             return;
         }
 
-        let Some(&section_scroll) = self.section_scrolls.get(section_idx) else {
+        let Some(&section_scroll) = self.detail.section_scrolls.get(section_idx) else {
             return;
         };
         let clicked_row_idx = relative_row
@@ -842,7 +885,7 @@ impl App {
         }
 
         // Update the row cursor
-        let Some(section_cursor) = self.section_cursors.get_mut(section_idx) else {
+        let Some(section_cursor) = self.detail.section_cursors.get_mut(section_idx) else {
             return;
         };
         *section_cursor = clicked_row_idx;
@@ -852,7 +895,7 @@ impl App {
         if !use_row_selection {
             let relative_col = column.saturating_sub(area.x);
             if let Some(col_idx) = self.calculate_clicked_column(relative_col) {
-                self.focused_column = col_idx;
+                self.table.focused_column = col_idx;
             }
         }
     }
@@ -860,9 +903,9 @@ impl App {
     fn calculate_clicked_column(&self, relative_col: u16) -> Option<usize> {
         use ratatui::layout::{Direction, Layout};
 
-        let area = self.table_content_area?;
+        let area = self.layout.table_content_area?;
 
-        if self.cached_ratatui_constraints.is_empty() {
+        if self.table.cached_ratatui_constraints.is_empty() {
             return None;
         }
 
@@ -871,7 +914,7 @@ impl App {
         // Split the area using ratatui's layout - this matches what Table does internally
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(self.cached_ratatui_constraints.clone())
+            .constraints(self.table.cached_ratatui_constraints.clone())
             .spacing(3) // Match the column_spacing(3) from Table
             .split(area);
 
@@ -904,54 +947,58 @@ impl App {
     fn handle_tree_click(&mut self, row: u16) {
         // Calculate which tree item was clicked
         // Account for border (1 line) and title
-        let inner_y = self.tree_area.y.saturating_add(1);
+        let inner_y = self.layout.tree_area.y.saturating_add(1);
         if row < inner_y
             || row
                 >= self
+                    .layout
                     .tree_area
                     .y
-                    .saturating_add(self.tree_area.height)
+                    .saturating_add(self.layout.tree_area.height)
                     .saturating_sub(1)
         {
             return; // Clicked on border or help text area
         }
 
         let clicked_line = row.saturating_sub(inner_y) as usize;
-        let target_cursor = self.scroll_offset.saturating_add(clicked_line);
+        let target_cursor = self.tree.scroll_offset.saturating_add(clicked_line);
 
-        if target_cursor >= self.visible.len() {
+        if target_cursor >= self.tree.visible.len() {
             return;
         }
 
         // If clicking on the same item, toggle expand/collapse
-        if target_cursor == self.cursor {
+        if target_cursor == self.tree.cursor {
             self.toggle_expand();
         } else {
             self.push_to_history(); // Store old position before jumping
-            self.cursor = target_cursor;
+            self.tree.cursor = target_cursor;
             self.reset_detail_state();
         }
     }
 
     fn is_in_breadcrumb_area(&self, column: u16, row: u16) -> bool {
-        column >= self.breadcrumb_area.x
+        column >= self.layout.breadcrumb_area.x
             && column
                 < self
+                    .layout
                     .breadcrumb_area
                     .x
-                    .saturating_add(self.breadcrumb_area.width)
-            && row >= self.breadcrumb_area.y
+                    .saturating_add(self.layout.breadcrumb_area.width)
+            && row >= self.layout.breadcrumb_area.y
             && row
                 < self
+                    .layout
                     .breadcrumb_area
                     .y
-                    .saturating_add(self.breadcrumb_area.height)
+                    .saturating_add(self.layout.breadcrumb_area.height)
     }
 
     fn handle_breadcrumb_click(&mut self, column: u16) {
         // Find which breadcrumb segment was clicked
         // Clone the data we need to avoid borrow checker issues
         let clicked_segment = self
+            .layout
             .breadcrumb_segments
             .iter()
             .find(|(_, _, start_col, end_col)| column >= *start_col && column < *end_col)
@@ -967,36 +1014,51 @@ impl App {
     /// Navigate to a specific node by its index in `all_nodes`
     pub(crate) fn navigate_to_node(&mut self, target_node_idx: usize) {
         // Find the position of this node in visible
-        if let Some(_visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+        if let Some(_visible_pos) = self
+            .tree
+            .visible
+            .iter()
+            .position(|&idx| idx == target_node_idx)
+        {
             // Ensure the target node is expanded if needed
             self.ensure_node_visible(target_node_idx);
 
             // Find the updated position after expanding
-            if let Some(new_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+            if let Some(new_pos) = self
+                .tree
+                .visible
+                .iter()
+                .position(|&idx| idx == target_node_idx)
+            {
                 self.push_to_history(); // Store old position before jumping
                 self.focus_state = FocusState::Tree;
-                self.cursor = new_pos;
+                self.tree.cursor = new_pos;
                 self.reset_detail_state();
-                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+                self.tree.scroll_offset = self.tree.cursor.saturating_sub(5); // Center the view
             }
         } else {
             // Node is not currently visible (might be collapsed), try to make it visible
             self.ensure_node_visible(target_node_idx);
 
             // Try to find it again after expanding parents
-            if let Some(visible_pos) = self.visible.iter().position(|&idx| idx == target_node_idx) {
+            if let Some(visible_pos) = self
+                .tree
+                .visible
+                .iter()
+                .position(|&idx| idx == target_node_idx)
+            {
                 self.push_to_history(); // Store old position before jumping
                 self.focus_state = FocusState::Tree;
-                self.cursor = visible_pos;
+                self.tree.cursor = visible_pos;
                 self.reset_detail_state();
-                self.scroll_offset = self.cursor.saturating_sub(5); // Center the view
+                self.tree.scroll_offset = self.tree.cursor.saturating_sub(5); // Center the view
             }
         }
     }
 
     /// Ensure a node is visible by expanding only its direct ancestors
     pub(crate) fn ensure_node_visible(&mut self, target_node_idx: usize) {
-        let Some(target_node) = self.all_nodes.get(target_node_idx) else {
+        let Some(target_node) = self.tree.all_nodes.get(target_node_idx) else {
             return;
         };
 
@@ -1004,7 +1066,7 @@ impl App {
 
         // Walk backwards, expanding only the direct ancestor at each level
         for i in (0..target_node_idx).rev() {
-            let Some(node) = self.all_nodes.get_mut(i) else {
+            let Some(node) = self.tree.all_nodes.get_mut(i) else {
                 continue;
             };
             let node_depth = node.depth;

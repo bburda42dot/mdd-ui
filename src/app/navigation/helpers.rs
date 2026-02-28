@@ -11,19 +11,19 @@ use crate::{
 impl App {
     /// Expand section and update cursor position
     pub(super) fn expand_and_update_cursor(&mut self, node_idx: usize) {
-        if let Some(node_mut) = self.all_nodes.get_mut(node_idx) {
+        if let Some(node_mut) = self.tree.all_nodes.get_mut(node_idx) {
             node_mut.expanded = true;
         }
         self.rebuild_visible();
 
-        if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == node_idx) {
-            self.cursor = new_cursor;
+        if let Some(new_cursor) = self.tree.visible.iter().position(|&idx| idx == node_idx) {
+            self.tree.cursor = new_cursor;
         }
     }
 
     /// Expand all ancestors of a node
     pub(super) fn expand_node_ancestors(&mut self, node_idx: usize) {
-        let Some(target_node) = self.all_nodes.get(node_idx) else {
+        let Some(target_node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let target_depth = target_node.depth;
@@ -33,10 +33,10 @@ impl App {
         }
 
         for i in 0..node_idx {
-            if let Some(node) = self.all_nodes.get(i)
+            if let Some(node) = self.tree.all_nodes.get(i)
                 && node.depth < target_depth
                 && node.has_children
-                && let Some(node_mut) = self.all_nodes.get_mut(i)
+                && let Some(node_mut) = self.tree.all_nodes.get_mut(i)
             {
                 node_mut.expanded = true;
             }
@@ -45,18 +45,18 @@ impl App {
 
     /// Navigate to a node by its index in `all_nodes`
     pub(super) fn navigate_to_node_by_idx(&mut self, target_idx: usize) {
-        if let Some(new_cursor) = self.visible.iter().position(|&idx| idx == target_idx) {
+        if let Some(new_cursor) = self.tree.visible.iter().position(|&idx| idx == target_idx) {
             self.push_to_history();
             self.focus_state = FocusState::Tree;
-            self.cursor = new_cursor;
+            self.tree.cursor = new_cursor;
             self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
         }
     }
 
     /// Find a container (variant/functional group) by name
     pub(super) fn find_container_by_name(&self, name: &str) -> Option<usize> {
-        self.all_nodes.iter().position(|node| {
+        self.tree.all_nodes.iter().position(|node| {
             if !matches!(node.node_type, NodeType::Container) {
                 return false;
             }
@@ -73,7 +73,7 @@ impl App {
     /// Find the containing depth-1 Container node for a given node index
     /// by walking backwards from the node to its nearest Container ancestor.
     pub(super) fn find_current_container(&self, from_node_idx: usize) -> Option<usize> {
-        let from_node = self.all_nodes.get(from_node_idx)?;
+        let from_node = self.tree.all_nodes.get(from_node_idx)?;
 
         // If already a depth-1 container, return it
         if from_node.depth == 1 && matches!(from_node.node_type, NodeType::Container) {
@@ -82,7 +82,8 @@ impl App {
 
         // Walk backwards to find the nearest depth-1 Container ancestor
         (0..from_node_idx).rev().find(|&i| {
-            self.all_nodes
+            self.tree
+                .all_nodes
                 .get(i)
                 .is_some_and(|n| n.depth == 1 && matches!(n.node_type, NodeType::Container))
         })
@@ -92,18 +93,19 @@ impl App {
     /// for a given node. The subtree includes the node itself and all
     /// children with deeper depth.
     pub(super) fn subtree_range(&self, node_idx: usize) -> (usize, usize) {
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return (node_idx, node_idx);
         };
         let node_depth = node.depth;
 
         let end = self
+            .tree
             .all_nodes
             .iter()
             .enumerate()
             .skip(node_idx.saturating_add(1))
             .find(|(_, n)| n.depth <= node_depth)
-            .map_or(self.all_nodes.len(), |(i, _)| i);
+            .map_or(self.tree.all_nodes.len(), |(i, _)| i);
 
         (node_idx, end)
     }
@@ -115,7 +117,8 @@ impl App {
         end: usize,
         predicate: impl Fn(&TreeNode) -> bool,
     ) -> Option<usize> {
-        self.all_nodes
+        self.tree
+            .all_nodes
             .iter()
             .enumerate()
             .skip(start)
@@ -130,7 +133,7 @@ impl App {
     ///    and search within each
     /// 3. Returns `None` if not found (caller should fall back to global search)
     pub(super) fn find_in_hierarchy(&self, predicate: impl Fn(&TreeNode) -> bool) -> Option<usize> {
-        let current_node_idx = self.visible.get(self.cursor).copied()?;
+        let current_node_idx = self.tree.visible.get(self.tree.cursor).copied()?;
         let container_idx = self.find_current_container(current_node_idx)?;
 
         // 1. Search within current container's subtree
@@ -142,6 +145,7 @@ impl App {
         // 2. Walk parent ref containers
         // Find the "Parent Refs" child section of this container
         let parent_refs_names: Vec<String> = self
+            .tree
             .all_nodes
             .iter()
             .enumerate()
@@ -151,7 +155,8 @@ impl App {
             .flat_map(|(pr_idx, pr_node)| {
                 // Collect the names of parent ref children (depth = pr_node.depth + 1)
                 let pr_depth = pr_node.depth;
-                self.all_nodes
+                self.tree
+                    .all_nodes
                     .iter()
                     .skip(pr_idx.saturating_add(1))
                     .take_while(move |n| n.depth > pr_depth)
@@ -166,7 +171,7 @@ impl App {
 
         for parent_name in &parent_refs_names {
             // Find the container node for this parent ref
-            let parent_container_idx = self.all_nodes.iter().enumerate().find(|(_, n)| {
+            let parent_container_idx = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
                 matches!(n.node_type, NodeType::Container) && {
                     let name = n
                         .text
@@ -198,6 +203,7 @@ impl App {
         let target_depth = parent_depth.saturating_add(1);
 
         let target_idx = self
+            .tree
             .all_nodes
             .iter()
             .enumerate()
@@ -213,21 +219,26 @@ impl App {
 
         self.ensure_node_visible(target_node_idx);
 
-        let Some(new_cursor) = self.visible.iter().position(|&idx| idx == target_node_idx) else {
+        let Some(new_cursor) = self
+            .tree
+            .visible
+            .iter()
+            .position(|&idx| idx == target_node_idx)
+        else {
             return;
         };
 
         self.push_to_history();
         self.focus_state = FocusState::Tree;
-        self.cursor = new_cursor;
+        self.tree.cursor = new_cursor;
         self.reset_detail_state();
-        self.scroll_offset = self.cursor.saturating_sub(5);
+        self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
         self.status = format!("Navigated to: {}", element_type.display_name());
     }
 
     /// Navigate to a Container node matching the given short name
     pub(super) fn navigate_to_container_by_name(&mut self, target_short_name: &str) {
-        let found = self.all_nodes.iter().enumerate().find(|(_, n)| {
+        let found = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
             matches!(n.node_type, NodeType::Container) && {
                 let name = n
                     .text

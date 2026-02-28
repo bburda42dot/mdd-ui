@@ -8,31 +8,31 @@ use crate::tree::TreeNode;
 
 impl App {
     pub(crate) fn toggle_expand(&mut self) {
-        let Some(&idx) = self.visible.get(self.cursor) else {
+        let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(idx) else {
+        let Some(node) = self.tree.all_nodes.get(idx) else {
             return;
         };
         if !node.has_children {
             return;
         }
-        if let Some(node_mut) = self.all_nodes.get_mut(idx) {
+        if let Some(node_mut) = self.tree.all_nodes.get_mut(idx) {
             node_mut.expanded = !node_mut.expanded;
         }
-        let old = self.cursor;
+        let old = self.tree.cursor;
         self.rebuild_visible();
-        self.cursor = old.min(self.visible.len().saturating_sub(1));
+        self.tree.cursor = old.min(self.tree.visible.len().saturating_sub(1));
     }
 
     pub(crate) fn try_expand(&mut self) {
         if self.focus_state == FocusState::Detail {
             return;
         }
-        let Some(&idx) = self.visible.get(self.cursor) else {
+        let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(idx) else {
+        let Some(node) = self.tree.all_nodes.get(idx) else {
             return;
         };
         if node.has_children && !node.expanded {
@@ -44,10 +44,10 @@ impl App {
         if self.focus_state == FocusState::Detail {
             return;
         }
-        let Some(&idx) = self.visible.get(self.cursor) else {
+        let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(idx) else {
+        let Some(node) = self.tree.all_nodes.get(idx) else {
             return;
         };
 
@@ -60,19 +60,19 @@ impl App {
         if my_depth == 0 {
             return;
         }
-        for i in (0..self.cursor).rev() {
-            if let Some(&visible_idx) = self.visible.get(i)
-                && let Some(visible_node) = self.all_nodes.get(visible_idx)
+        for i in (0..self.tree.cursor).rev() {
+            if let Some(&visible_idx) = self.tree.visible.get(i)
+                && let Some(visible_node) = self.tree.all_nodes.get(visible_idx)
                 && visible_node.depth < my_depth
             {
-                self.cursor = i;
+                self.tree.cursor = i;
                 break;
             }
         }
     }
 
     pub(crate) fn expand_all(&mut self) {
-        for n in &mut self.all_nodes {
+        for n in &mut self.tree.all_nodes {
             if n.has_children {
                 n.expanded = true;
             }
@@ -81,27 +81,27 @@ impl App {
     }
 
     pub(crate) fn collapse_all(&mut self) {
-        for (i, n) in self.all_nodes.iter_mut().enumerate() {
+        for (i, n) in self.tree.all_nodes.iter_mut().enumerate() {
             if n.has_children {
                 n.expanded = i == 0;
             }
         }
         self.rebuild_visible();
-        self.cursor = 0;
-        self.scroll_offset = 0;
+        self.tree.cursor = 0;
+        self.tree.scroll_offset = 0;
         self.reset_detail_state();
     }
 
     pub(crate) fn toggle_diagcomm_sort(&mut self) {
         // Get the currently selected node
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
 
         // Find the nearest parent that has children (a sortable section)
         let sort_idx = self.find_sortable_parent(node_idx);
 
-        let Some(sort_node) = self.all_nodes.get(sort_idx) else {
+        let Some(sort_node) = self.tree.all_nodes.get(sort_idx) else {
             return;
         };
 
@@ -109,10 +109,10 @@ impl App {
 
         if is_service_list {
             // DiagComm/Request/Response sections: cycle ID/Name sort
-            self.diagcomm_sort_by_id = !self.diagcomm_sort_by_id;
+            self.tree.diagcomm_sort_by_id = !self.tree.diagcomm_sort_by_id;
             self.sort_diagcomm_nodes_in_place();
             self.rebuild_visible();
-            if self.diagcomm_sort_by_id {
+            if self.tree.diagcomm_sort_by_id {
                 "Sort: by ID".clone_into(&mut self.status);
             } else {
                 "Sort: by Name".clone_into(&mut self.status);
@@ -129,14 +129,14 @@ impl App {
     /// Find the nearest parent (or self) that is a sortable section header
     fn find_sortable_parent(&self, node_idx: usize) -> usize {
         // If the node itself has children, sort it
-        if let Some(node) = self.all_nodes.get(node_idx) {
+        if let Some(node) = self.tree.all_nodes.get(node_idx) {
             if node.has_children {
                 return node_idx;
             }
             // Walk up to find parent with children
             let current_depth = node.depth;
             for i in (0..node_idx).rev() {
-                if let Some(parent) = self.all_nodes.get(i)
+                if let Some(parent) = self.tree.all_nodes.get(i)
                     && parent.depth < current_depth
                     && parent.has_children
                 {
@@ -149,7 +149,7 @@ impl App {
 
     /// Sort children of a node by name (ascending/descending toggle)
     fn sort_children_by_name(&mut self, parent_idx: usize) {
-        let Some(parent) = self.all_nodes.get(parent_idx) else {
+        let Some(parent) = self.tree.all_nodes.get(parent_idx) else {
             return;
         };
         let parent_depth = parent.depth;
@@ -157,8 +157,8 @@ impl App {
 
         // Find end of children
         let mut children_end = children_start;
-        while children_end < self.all_nodes.len() {
-            if let Some(node) = self.all_nodes.get(children_end) {
+        while children_end < self.tree.all_nodes.len() {
+            if let Some(node) = self.tree.all_nodes.get(children_end) {
                 if node.depth > parent_depth {
                     children_end = children_end.saturating_add(1);
                 } else {
@@ -177,8 +177,11 @@ impl App {
         // Extract only direct children (depth == parent_depth + 1) with their subtrees
         let direct_child_depth = parent_depth.saturating_add(1);
         let mut child_groups: Vec<Vec<TreeNode>> = Vec::new();
-        let all_children: Vec<TreeNode> =
-            self.all_nodes.drain(children_start..children_end).collect();
+        let all_children: Vec<TreeNode> = self
+            .tree
+            .all_nodes
+            .drain(children_start..children_end)
+            .collect();
 
         let mut current_group: Vec<TreeNode> = Vec::new();
         for node in all_children {
@@ -222,15 +225,16 @@ impl App {
 
         // Re-insert sorted children
         let sorted: Vec<TreeNode> = child_groups.into_iter().flatten().collect();
-        self.all_nodes
+        self.tree
+            .all_nodes
             .splice(children_start..children_start, sorted);
     }
 
     pub(crate) fn sort_diagcomm_nodes_in_place(&mut self) {
         // Find all "Diag-Comms" section headers and sort their children
         let mut i = 0;
-        while i < self.all_nodes.len() {
-            let Some(node) = self.all_nodes.get(i) else {
+        while i < self.tree.all_nodes.len() {
+            let Some(node) = self.tree.all_nodes.get(i) else {
                 break;
             };
 
@@ -245,8 +249,8 @@ impl App {
 
             // Find all children (services) of this section
             let mut section_end = section_start;
-            while section_end < self.all_nodes.len() {
-                if let Some(node_at_end) = self.all_nodes.get(section_end) {
+            while section_end < self.tree.all_nodes.len() {
+                if let Some(node_at_end) = self.tree.all_nodes.get(section_end) {
                     if node_at_end.depth > section_depth {
                         section_end = section_end.saturating_add(1);
                     } else {
@@ -264,11 +268,14 @@ impl App {
             }
 
             // Extract and sort the service nodes
-            let mut services: Vec<TreeNode> =
-                self.all_nodes.drain(section_start..section_end).collect();
+            let mut services: Vec<TreeNode> = self
+                .tree
+                .all_nodes
+                .drain(section_start..section_end)
+                .collect();
 
             // Sort services based on current sort order
-            if self.diagcomm_sort_by_id {
+            if self.tree.diagcomm_sort_by_id {
                 services.sort_by(|a, b| {
                     let a_id = extract_service_id(&a.text);
                     let b_id = extract_service_id(&b.text);
@@ -291,7 +298,7 @@ impl App {
 
             // Update the count in the section header
             let new_count = services.len();
-            if let Some(header_node) = self.all_nodes.get_mut(i) {
+            if let Some(header_node) = self.tree.all_nodes.get_mut(i) {
                 // Update "Diag-Comms (X)" to reflect filtered count
                 if header_node.text.find('(').is_some() {
                     header_node.text = format!("Diag-Comms ({new_count})");
@@ -299,7 +306,8 @@ impl App {
             }
 
             // Re-insert sorted and deduplicated services
-            self.all_nodes
+            self.tree
+                .all_nodes
                 .splice(section_start..section_start, services);
 
             // Skip past the sorted section
@@ -316,15 +324,15 @@ impl App {
         let section_idx = self.get_table_section_idx();
 
         // Ensure we have enough entries in table_sort_state
-        while self.table_sort_state.len() <= section_idx {
-            self.table_sort_state.push(None);
+        while self.table.sort_state.len() <= section_idx {
+            self.table.sort_state.push(None);
         }
 
-        let column = self.focused_column;
+        let column = self.table.focused_column;
 
         // Toggle sort state: if already sorting by this column, toggle direction,
         // otherwise sort ascending by this column
-        if let Some(sort_state) = self.table_sort_state.get_mut(section_idx) {
+        if let Some(sort_state) = self.table.sort_state.get_mut(section_idx) {
             *sort_state = match *sort_state {
                 Some(state) if state.column == column => {
                     let new_direction = match state.direction {
@@ -347,7 +355,8 @@ impl App {
 
         // Update status message
         if let Some(&state) = self
-            .table_sort_state
+            .table
+            .sort_state
             .get(section_idx)
             .and_then(|s| s.as_ref())
         {

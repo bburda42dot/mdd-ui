@@ -31,9 +31,10 @@ use crate::tree::{DetailRow, DetailSectionType, NodeType, TreeNode};
 // Application state
 // -----------------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub(crate) enum SearchScope {
-    All,              // Search everywhere
+    #[default]
+    All, // Search everywhere
     Variants,         // Search only in variant names
     FunctionalGroups, // Search only in functional group names
     EcuSharedData,    // Search only in ECU shared data names
@@ -125,8 +126,9 @@ pub(crate) struct TableSortState {
     pub secondary_column: Option<usize>,
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-enum DragState {
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Default)]
+pub(crate) enum DragState {
+    #[default]
     None,
     Divider,
     TreeScrollbar,
@@ -150,65 +152,105 @@ pub enum FocusState {
     HelpPopup,
 }
 
+// -----------------------------------------------------------------------
+// State sub-structs
+// -----------------------------------------------------------------------
+
+/// Tree navigation and node state
+#[derive(Default)]
+pub(crate) struct TreeState {
+    pub all_nodes: Vec<TreeNode>,
+    pub visible: Vec<usize>,
+    pub cursor: usize,
+    pub scroll_offset: usize,
+    pub diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
+}
+
+/// Search-related state
+#[derive(Default)]
+pub(crate) struct SearchState {
+    pub query: String,
+    pub active: bool,
+    pub stack: Vec<(String, SearchScope)>, // Stack of (search_term, scope) pairs
+    pub scope: SearchScope,
+    pub matches: Vec<usize>,
+    pub match_cursor: usize,
+}
+
+/// Detail pane state
+#[derive(Default)]
+pub(crate) struct DetailState {
+    pub selected_tab: usize,
+    pub focused_section: usize,
+    pub section_scrolls: Vec<usize>,
+    pub section_cursors: Vec<usize>,
+    pub popup: Option<PopupData>,
+    pub composite_scroll: Vec<usize>,
+    pub composite_max_scroll: usize,
+    pub last_diagcomm_tab: usize,
+    pub last_section_tabs: HashMap<DetailSectionType, usize>,
+    pub last_selected_section_type: Option<DetailSectionType>,
+    pub last_selected_section_title: Option<String>,
+}
+
+/// Table column and scrolling state
+#[derive(Default)]
+pub(crate) struct TableState {
+    pub column_widths: Vec<Vec<u16>>,
+    pub column_widths_absolute: Vec<bool>,
+    pub horizontal_scroll: Vec<u16>,
+    pub persisted_column_widths: HashMap<ColumnWidthCacheKey, Vec<u16>>,
+    pub focused_column: usize,
+    pub sort_state: Vec<Option<TableSortState>>,
+    pub cached_ratatui_constraints: Vec<ratatui::layout::Constraint>,
+    pub cached_total_table_width: u16,
+    pub jump_buffer: String,
+    pub jump_buffer_time: Option<Instant>,
+}
+
+/// Mouse interaction state
+#[derive(Default)]
+pub(crate) struct MouseState {
+    pub drag_state: DragState,
+    pub last_click_time: Option<Instant>,
+    pub last_click_pos: (u16, u16),
+    pub enabled: bool,
+}
+
+/// Navigation history state
+#[derive(Default)]
+pub(crate) struct HistoryState {
+    pub entries: Vec<HistoryEntry>,
+    pub position: usize,
+}
+
+/// Cached layout areas for mouse handling
+#[derive(Default)]
+pub(crate) struct LayoutCache {
+    pub tree_area: Rect,
+    pub detail_area: Rect,
+    pub tab_area: Option<Rect>,
+    pub tab_titles: Vec<String>,
+    pub table_content_area: Option<Rect>,
+    pub breadcrumb_area: Rect,
+    pub breadcrumb_segments: Vec<(String, usize, u16, u16)>,
+    pub tree_scrollbar_area: Option<Rect>,
+    pub detail_scrollbar_area: Option<Rect>,
+    pub detail_hscrollbar_area: Option<Rect>,
+    pub tree_width_percentage: u16,
+}
+
 pub struct App {
-    all_nodes: Vec<TreeNode>,
-    visible: Vec<usize>,
-    cursor: usize,
-    scroll_offset: usize,
-    pub(crate) search: String,
-    pub(crate) searching: bool,
-    pub(crate) search_stack: Vec<(String, SearchScope)>, // Stack of (search_term, scope) pairs
-    pub(crate) search_scope: SearchScope,
-    pub(crate) search_matches: Vec<usize>,
-    search_match_cursor: usize,
+    pub(crate) tree: TreeState,
+    pub(crate) search: SearchState,
+    pub(crate) detail: DetailState,
+    pub(crate) table: TableState,
+    pub(crate) mouse: MouseState,
+    pub(crate) history: HistoryState,
+    pub(crate) layout: LayoutCache,
     pub(crate) status: String,
-    focus_state: FocusState,
-    pub(crate) selected_tab: usize, // Currently selected tab in detail pane
-    pub(crate) focused_section: usize, // Which detail pane section is focused (0 = first)
-    pub(crate) section_scrolls: Vec<usize>, // Scroll position for each section
-    pub(crate) section_cursors: Vec<usize>, // Selected row in each section
-    pub(crate) column_widths: Vec<Vec<u16>>, // Column widths for each section
-    // Whether each section uses absolute (pixel) widths
-    pub(crate) column_widths_absolute: Vec<bool>,
-    pub(crate) horizontal_scroll: Vec<u16>, // Horizontal scroll offset (pixels) per section
-    persisted_column_widths: HashMap<ColumnWidthCacheKey, Vec<u16>>, // Persistent absolute widths
-    pub(crate) focused_column: usize,       // Currently focused column for resizing
-    pub(crate) detail_popup: Option<PopupData>, // Generic popup state
-    pub(crate) tree_width_percentage: u16,  // Tree pane width (0-100)
-    pub(crate) diagcomm_sort_by_id: bool,   // true = sort by ID (default), false = sort by name
-    // Sort state for each table section (None = default order)
-    pub(crate) table_sort_state: Vec<Option<TableSortState>>,
-    tree_area: Rect,                    // Cached tree area for mouse handling
-    detail_area: Rect,                  // Cached detail area for mouse handling
-    pub(crate) tab_area: Option<Rect>,  // Cached tab area for mouse handling
-    pub(crate) tab_titles: Vec<String>, // Cached tab titles for click detection
-    pub(crate) table_content_area: Option<Rect>, // Cached table content area
-    // Exact constraints used in Table
-    pub(crate) cached_ratatui_constraints: Vec<ratatui::layout::Constraint>,
-    last_click_time: Option<Instant>, // Time of last click for double-click detection
-    last_click_pos: (u16, u16),       // Position of last click (column, row)
-    pub(crate) mouse_enabled: bool,   // Whether mouse input is enabled
-    // History of navigation entries (stable across expand/collapse)
-    navigation_history: Vec<HistoryEntry>,
-    history_position: usize, // Current position in history (for potential forward navigation)
-    breadcrumb_area: Rect,   // Cached breadcrumb area for mouse handling
-    breadcrumb_segments: Vec<(String, usize, u16, u16)>, // (text, node_idx, start_col, end_col)
-    drag_state: DragState,   // Drag state for dividers and scrollbars
-    tree_scrollbar_area: Option<Rect>, // Cached tree scrollbar area for mouse handling
-    detail_scrollbar_area: Option<Rect>, // Cached detail scrollbar area for mouse handling
-    detail_hscrollbar_area: Option<Rect>, // Cached horizontal scrollbar area for mouse handling
-    cached_total_table_width: u16, // Total table width for horizontal scrollbar drag
-    last_diagcomm_tab: usize, // Last selected tab when viewing service/job nodes (for persistence)
-    last_section_tabs: HashMap<DetailSectionType, usize>, // Last selected tab per section type
-    last_selected_section_type: Option<DetailSectionType>,
-    last_selected_section_title: Option<String>,
-    jump_buffer: String, // Characters typed for type-to-jump in table views
-    jump_buffer_time: Option<Instant>, // Timestamp of last type-to-jump character for auto-reset
-    pub(crate) theme: ResolvedTheme, // Resolved colour theme
-    // Vertical scroll offset per section for Composite content
-    pub(crate) composite_scroll: Vec<usize>,
-    // Cached max scroll value from last composite render
-    pub(crate) composite_max_scroll: usize,
+    pub(crate) focus_state: FocusState,
+    pub(crate) theme: ResolvedTheme,
 }
 
 #[derive(Clone)]
@@ -221,7 +263,7 @@ pub struct PopupData {
 /// full path from root so that the target can be found even after
 /// expand/collapse changes.
 #[derive(Clone)]
-struct HistoryEntry {
+pub(crate) struct HistoryEntry {
     node_idx: usize,
     /// Path from root to target: `(depth, text)` pairs.
     node_path: Vec<(usize, String)>,
@@ -230,58 +272,72 @@ struct HistoryEntry {
 impl App {
     pub fn new(nodes: Vec<TreeNode>, theme: ResolvedTheme) -> Self {
         let mut app = Self {
-            all_nodes: nodes,
-            visible: Vec::new(),
-            cursor: 0,
-            scroll_offset: 0,
-            search: String::new(),
-            searching: false,
-            search_stack: Vec::new(),
-            search_scope: SearchScope::All,
-            search_matches: Vec::new(),
-            search_match_cursor: 0,
+            tree: TreeState {
+                all_nodes: nodes,
+                visible: Vec::new(),
+                cursor: 0,
+                scroll_offset: 0,
+                diagcomm_sort_by_id: true,
+            },
+            search: SearchState {
+                query: String::new(),
+                active: false,
+                stack: Vec::new(),
+                scope: SearchScope::All,
+                matches: Vec::new(),
+                match_cursor: 0,
+            },
+            detail: DetailState {
+                selected_tab: 0,
+                focused_section: 0,
+                section_scrolls: Vec::new(),
+                section_cursors: Vec::new(),
+                popup: None,
+                composite_scroll: Vec::new(),
+                composite_max_scroll: 0,
+                last_diagcomm_tab: 0,
+                last_section_tabs: HashMap::new(),
+                last_selected_section_type: None,
+                last_selected_section_title: None,
+            },
+            table: TableState {
+                column_widths: Vec::new(),
+                column_widths_absolute: Vec::new(),
+                horizontal_scroll: Vec::new(),
+                persisted_column_widths: HashMap::new(),
+                focused_column: 0,
+                sort_state: Vec::new(),
+                cached_ratatui_constraints: Vec::new(),
+                cached_total_table_width: 0,
+                jump_buffer: String::new(),
+                jump_buffer_time: None,
+            },
+            mouse: MouseState {
+                drag_state: DragState::None,
+                last_click_time: None,
+                last_click_pos: (0, 0),
+                enabled: true,
+            },
+            history: HistoryState {
+                entries: Vec::new(),
+                position: 0,
+            },
+            layout: LayoutCache {
+                tree_area: Rect::default(),
+                detail_area: Rect::default(),
+                tab_area: None,
+                tab_titles: Vec::new(),
+                table_content_area: None,
+                breadcrumb_area: Rect::default(),
+                breadcrumb_segments: Vec::new(),
+                tree_scrollbar_area: None,
+                detail_scrollbar_area: None,
+                detail_hscrollbar_area: None,
+                tree_width_percentage: 35,
+            },
             status: String::new(),
             focus_state: FocusState::Tree,
-            selected_tab: 0,
-            focused_section: 0,
-            section_scrolls: Vec::new(),
-            section_cursors: Vec::new(),
-            column_widths: Vec::new(),
-            column_widths_absolute: Vec::new(),
-            horizontal_scroll: Vec::new(),
-            persisted_column_widths: HashMap::new(),
-            focused_column: 0,
-            detail_popup: None,
-            tree_width_percentage: 35,
-            diagcomm_sort_by_id: true,    // Default: sort by ID
-            table_sort_state: Vec::new(), // No sorting by default
-            tree_area: Rect::default(),
-            detail_area: Rect::default(),
-            tab_area: None,
-            tab_titles: Vec::new(),
-            table_content_area: None,
-            cached_ratatui_constraints: Vec::new(),
-            last_click_time: None,
-            last_click_pos: (0, 0),
-            mouse_enabled: true, // Mouse enabled by default
-            navigation_history: Vec::new(),
-            history_position: 0,
-            breadcrumb_area: Rect::default(),
-            breadcrumb_segments: Vec::new(),
-            drag_state: DragState::None,
-            tree_scrollbar_area: None,
-            detail_scrollbar_area: None,
-            detail_hscrollbar_area: None,
-            cached_total_table_width: 0,
-            last_diagcomm_tab: 0,
-            last_section_tabs: HashMap::new(),
-            last_selected_section_type: None,
-            last_selected_section_title: None,
-            jump_buffer: String::new(),
-            jump_buffer_time: None,
             theme,
-            composite_scroll: Vec::new(),
-            composite_max_scroll: 0,
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();
@@ -301,7 +357,7 @@ impl App {
 
     /// Check if a node is a DOP category node (child of DIAG-DATA-DICTIONARY-SPEC)
     fn is_dop_category_node(&self, node_idx: usize) -> bool {
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return false;
         };
         if !node.has_children || node.depth == 0 {
@@ -309,7 +365,7 @@ impl App {
         }
         // Walk backwards to find the parent (first node with depth - 1)
         for i in (0..node_idx).rev() {
-            let Some(candidate) = self.all_nodes.get(i) else {
+            let Some(candidate) = self.tree.all_nodes.get(i) else {
                 continue;
             };
             if candidate.depth < node.depth {
@@ -322,7 +378,7 @@ impl App {
     /// Check if a node is an individual DOP with children (e.g. a DTC-DOP under DTC-DOPS).
     /// These nodes should navigate to their children instead of showing a popup.
     fn is_individual_dop_node(&self, node_idx: usize) -> bool {
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return false;
         };
         if !node.has_children || node.depth < 2 {
@@ -330,7 +386,7 @@ impl App {
         }
         // Walk backwards to find the parent
         for i in (0..node_idx).rev() {
-            let Some(candidate) = self.all_nodes.get(i) else {
+            let Some(candidate) = self.tree.all_nodes.get(i) else {
                 continue;
             };
             if candidate.depth < node.depth {
@@ -343,9 +399,9 @@ impl App {
     /// Get the actual section index accounting for header section offset
     fn get_section_index(&self) -> usize {
         // Check if current node has a header section (rendered above tabs)
-        if let Some(&idx) = self.visible.get(self.cursor) {
-            let Some(node) = self.all_nodes.get(idx) else {
-                return self.selected_tab;
+        if let Some(&idx) = self.tree.visible.get(self.tree.cursor) {
+            let Some(node) = self.tree.all_nodes.get(idx) else {
+                return self.detail.selected_tab;
             };
             let sections = &node.detail_sections;
             if sections.len() > 1
@@ -357,16 +413,16 @@ impl App {
                 )
             {
                 // Has header section, so selected_tab needs offset of 1
-                return self.selected_tab.saturating_add(1);
+                return self.detail.selected_tab.saturating_add(1);
             }
         }
-        self.selected_tab
+        self.detail.selected_tab
     }
 
     /// Get the section offset for rendering (0 or 1 if there's a header section)
     fn get_section_offset(&self) -> usize {
-        if let Some(&idx) = self.visible.get(self.cursor) {
-            let Some(node) = self.all_nodes.get(idx) else {
+        if let Some(&idx) = self.tree.visible.get(self.tree.cursor) {
+            let Some(node) = self.tree.all_nodes.get(idx) else {
                 return 0;
             };
             let sections = &node.detail_sections;
@@ -386,15 +442,17 @@ impl App {
 
     /// Get the actual table section index for storing/retrieving sort state
     fn get_table_section_idx(&self) -> usize {
-        self.selected_tab.saturating_add(self.get_section_offset())
+        self.detail
+            .selected_tab
+            .saturating_add(self.get_section_offset())
     }
 
     /// Returns true if the currently selected detail section is a Composite
     fn is_current_section_composite(&self) -> bool {
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return false;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return false;
         };
         let section_idx = self.get_section_index();
@@ -405,21 +463,21 @@ impl App {
 
     /// Update the selected tab and persist it generically for the current section type
     fn set_selected_tab(&mut self, new_tab: usize) {
-        self.selected_tab = new_tab;
-        self.jump_buffer.clear();
-        self.jump_buffer_time = None;
+        self.detail.selected_tab = new_tab;
+        self.table.jump_buffer.clear();
+        self.table.jump_buffer_time = None;
 
         // Save tab selection for the current section type
-        if self.cursor < self.visible.len()
-            && let Some(&node_idx) = self.visible.get(self.cursor)
-            && let Some(node) = self.all_nodes.get(node_idx)
+        if self.tree.cursor < self.tree.visible.len()
+            && let Some(&node_idx) = self.tree.visible.get(self.tree.cursor)
+            && let Some(node) = self.tree.all_nodes.get(node_idx)
         {
             // For backward compatibility, still save diagcomm tab
             if matches!(
                 node.node_type,
                 NodeType::Service | NodeType::ParentRefService | NodeType::Job
             ) {
-                self.last_diagcomm_tab = new_tab;
+                self.detail.last_diagcomm_tab = new_tab;
             }
 
             // Save tab for any node with detail sections that have a section type
@@ -427,9 +485,11 @@ impl App {
                 let section_offset = self.get_section_offset();
                 let section_idx = new_tab.saturating_add(section_offset);
                 if let Some(section) = node.detail_sections.get(section_idx) {
-                    self.last_section_tabs.insert(section.section_type, new_tab);
-                    self.last_selected_section_type = Some(section.section_type);
-                    self.last_selected_section_title = Some(section.title.clone());
+                    self.detail
+                        .last_section_tabs
+                        .insert(section.section_type, new_tab);
+                    self.detail.last_selected_section_type = Some(section.section_type);
+                    self.detail.last_selected_section_title = Some(section.title.clone());
                 }
             }
         }
@@ -437,14 +497,14 @@ impl App {
 
     /// Jump to the first table row whose first cell starts with the `jump_buffer` text
     fn jump_to_matching_row(&mut self) {
-        if self.jump_buffer.is_empty() || self.cursor >= self.visible.len() {
+        if self.table.jump_buffer.is_empty() || self.tree.cursor >= self.tree.visible.len() {
             return;
         }
 
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         let section_idx = self.get_section_index();
@@ -459,57 +519,59 @@ impl App {
         };
         let rows = self.apply_table_sort(rows, section_idx);
 
-        let buffer_lower = self.jump_buffer.to_lowercase();
+        let buffer_lower = self.table.jump_buffer.to_lowercase();
 
         // Find first row where the focused column starts with the buffer (case-insensitive)
         for (i, row) in rows.iter().enumerate() {
-            if let Some(cell) = row.cells.get(self.focused_column)
+            if let Some(cell) = row.cells.get(self.table.focused_column)
                 && cell.to_lowercase().starts_with(&buffer_lower)
             {
-                if let Some(cursor) = self.section_cursors.get_mut(section_idx) {
+                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
                     *cursor = i;
                 }
-                self.status = format!("Jump: \"{}\"", self.jump_buffer);
+                self.status = format!("Jump: \"{}\"", self.table.jump_buffer);
                 return;
             }
         }
 
-        self.status = format!("Jump: \"{}\" (no match)", self.jump_buffer);
+        self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);
     }
 
     /// Jump to the first visible tree node whose text starts with the `jump_buffer`
     fn jump_to_matching_tree_node(&mut self) {
-        if self.jump_buffer.is_empty() {
+        if self.table.jump_buffer.is_empty() {
             return;
         }
 
-        let buffer_lower = self.jump_buffer.to_lowercase();
+        let buffer_lower = self.table.jump_buffer.to_lowercase();
 
         // Search from current cursor position forward, then wrap around
-        let len = self.visible.len();
-        let start = self.cursor.saturating_add(1).min(len);
+        let len = self.tree.visible.len();
+        let start = self.tree.cursor.saturating_add(1).min(len);
 
         let found = (start..len).chain(0..start).find(|&vis_idx| {
-            self.visible
+            self.tree
+                .visible
                 .get(vis_idx)
-                .and_then(|&node_idx| self.all_nodes.get(node_idx))
+                .and_then(|&node_idx| self.tree.all_nodes.get(node_idx))
                 .is_some_and(|node| node.text.to_lowercase().contains(&buffer_lower))
         });
 
         if let Some(target) = found {
-            self.cursor = target;
+            self.tree.cursor = target;
             self.reset_detail_state();
-            self.scroll_offset = self.cursor.saturating_sub(5);
-            self.status = format!("Jump: \"{}\"", self.jump_buffer);
+            self.tree.scroll_offset = self.tree.cursor.saturating_sub(5);
+            self.status = format!("Jump: \"{}\"", self.table.jump_buffer);
         } else {
-            self.status = format!("Jump: \"{}\" (no match)", self.jump_buffer);
+            self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);
         }
     }
 
     /// Apply sorting to rows if a sort state exists for the given section
     fn apply_table_sort(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
         let Some(sort_state) = self
-            .table_sort_state
+            .table
+            .sort_state
             .get(section_idx)
             .and_then(|s| s.as_ref())
         else {
@@ -565,14 +627,14 @@ impl App {
                         continue;
                     }
                     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-                    if self.searching {
+                    if self.search.active {
                         self.handle_search_key(key.code)
                     } else {
                         self.handle_normal_key(key.code, ctrl)
                     }
                 }
                 Event::Mouse(mouse) => {
-                    if self.mouse_enabled {
+                    if self.mouse.enabled {
                         self.handle_mouse_event(mouse.kind, mouse.column, mouse.row)
                     } else {
                         Action::Continue
@@ -600,15 +662,15 @@ impl App {
         let [tree_area, detail_area] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(self.tree_width_percentage),
-                Constraint::Percentage(100u16.saturating_sub(self.tree_width_percentage)),
+                Constraint::Percentage(self.layout.tree_width_percentage),
+                Constraint::Percentage(100u16.saturating_sub(self.layout.tree_width_percentage)),
             ])
             .areas(main);
 
         // Cache areas for mouse handling
-        self.tree_area = tree_area;
-        self.detail_area = detail_area;
-        self.breadcrumb_area = breadcrumb_bar;
+        self.layout.tree_area = tree_area;
+        self.layout.detail_area = detail_area;
+        self.layout.breadcrumb_area = breadcrumb_bar;
 
         self.draw_tree(frame, tree_area);
         self.draw_detail(frame, detail_area);
@@ -616,7 +678,7 @@ impl App {
         self.draw_status(frame, status_bar);
 
         // Draw popups if open (order matters - last drawn is on top)
-        if self.detail_popup.is_some() {
+        if self.detail.popup.is_some() {
             self.draw_detail_popup(frame);
         }
         if self.focus_state == FocusState::HelpPopup {

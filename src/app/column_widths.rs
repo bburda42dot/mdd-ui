@@ -14,9 +14,10 @@ impl App {
         column_count: usize,
     ) -> ColumnWidthCacheKey {
         let (section_type, title) = self
+            .tree
             .visible
-            .get(self.cursor)
-            .and_then(|&node_idx| self.all_nodes.get(node_idx))
+            .get(self.tree.cursor)
+            .and_then(|&node_idx| self.tree.all_nodes.get(node_idx))
             .and_then(|node| node.detail_sections.get(section_idx))
             .map_or((DetailSectionType::Custom, String::new()), |s| {
                 (s.section_type, s.title.clone())
@@ -31,10 +32,10 @@ impl App {
 
     /// Convert percentage-based column widths to absolute pixel widths
     pub(crate) fn convert_to_absolute_widths(&mut self, section_idx: usize) {
-        let table_width = self.table_content_area.map_or(100, |a| a.width);
+        let table_width = self.layout.table_content_area.map_or(100, |a| a.width);
         let column_spacing = 3u16;
 
-        let Some(widths) = self.column_widths.get(section_idx) else {
+        let Some(widths) = self.table.column_widths.get(section_idx) else {
             return;
         };
         let num_cols = widths.len();
@@ -52,39 +53,42 @@ impl App {
             })
             .collect();
 
-        if let Some(w) = self.column_widths.get_mut(section_idx) {
+        if let Some(w) = self.table.column_widths.get_mut(section_idx) {
             *w = pixel_widths;
         }
 
-        while self.column_widths_absolute.len() <= section_idx {
-            self.column_widths_absolute.push(false);
+        while self.table.column_widths_absolute.len() <= section_idx {
+            self.table.column_widths_absolute.push(false);
         }
-        if let Some(abs) = self.column_widths_absolute.get_mut(section_idx) {
+        if let Some(abs) = self.table.column_widths_absolute.get_mut(section_idx) {
             *abs = true;
         }
     }
 
     /// Save current column widths to the persistent store
     pub(crate) fn save_column_widths_to_persistent(&mut self, section_idx: usize) {
-        let Some(widths) = self.column_widths.get(section_idx) else {
+        let Some(widths) = self.table.column_widths.get(section_idx) else {
             return;
         };
         if widths.is_empty() {
             return;
         }
         let key = self.make_column_width_key(section_idx, widths.len());
-        self.persisted_column_widths.insert(key, widths.clone());
+        self.table
+            .persisted_column_widths
+            .insert(key, widths.clone());
     }
 
     /// Scroll the table horizontally by the given pixel delta
     pub(crate) fn scroll_horizontal(&mut self, delta: i16) {
         let section_idx = self.get_section_index();
 
-        while self.horizontal_scroll.len() <= section_idx {
-            self.horizontal_scroll.push(0);
+        while self.table.horizontal_scroll.len() <= section_idx {
+            self.table.horizontal_scroll.push(0);
         }
 
         let current = self
+            .table
             .horizontal_scroll
             .get(section_idx)
             .copied()
@@ -98,7 +102,7 @@ impl App {
             current.saturating_add(abs_delta)
         };
 
-        if let Some(hs) = self.horizontal_scroll.get_mut(section_idx) {
+        if let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx) {
             *hs = new_offset;
         }
     }
@@ -107,10 +111,11 @@ impl App {
     pub(crate) fn ensure_focused_column_visible(&mut self, section_idx: usize) {
         let column_spacing = 3u16;
 
-        let Some(widths) = self.column_widths.get(section_idx) else {
+        let Some(widths) = self.table.column_widths.get(section_idx) else {
             return;
         };
         if !self
+            .table
             .column_widths_absolute
             .get(section_idx)
             .copied()
@@ -119,18 +124,19 @@ impl App {
             return;
         }
 
-        let viewport_width = self.table_content_area.map_or(100, |a| a.width);
+        let viewport_width = self.layout.table_content_area.map_or(100, |a| a.width);
 
         // Calculate start/end pixel of focused column
         let mut col_start = 0u16;
         for (i, &w) in widths.iter().enumerate() {
-            if i == self.focused_column {
+            if i == self.table.focused_column {
                 let col_end = col_start.saturating_add(w);
 
-                while self.horizontal_scroll.len() <= section_idx {
-                    self.horizontal_scroll.push(0);
+                while self.table.horizontal_scroll.len() <= section_idx {
+                    self.table.horizontal_scroll.push(0);
                 }
                 let h_scroll = self
+                    .table
                     .horizontal_scroll
                     .get(section_idx)
                     .copied()
@@ -138,13 +144,13 @@ impl App {
 
                 // Scroll right if column end is past viewport
                 if col_end > h_scroll.saturating_add(viewport_width)
-                    && let Some(hs) = self.horizontal_scroll.get_mut(section_idx)
+                    && let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx)
                 {
                     *hs = col_end.saturating_sub(viewport_width);
                 }
                 // Scroll left if column start is before viewport
                 if col_start < h_scroll
-                    && let Some(hs) = self.horizontal_scroll.get_mut(section_idx)
+                    && let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx)
                 {
                     *hs = col_start;
                 }
@@ -171,7 +177,7 @@ impl App {
 
         Self::normalize_column_widths(&mut widths);
 
-        let Some(section_widths) = self.column_widths.get_mut(section_idx) else {
+        let Some(section_widths) = self.table.column_widths.get_mut(section_idx) else {
             return;
         };
         *section_widths = widths;
@@ -208,20 +214,20 @@ impl App {
     pub(crate) fn resize_column(&mut self, delta: i16) {
         let section_idx = self.get_section_index();
 
-        while self.column_widths.len() <= section_idx {
-            self.column_widths.push(Vec::new());
+        while self.table.column_widths.len() <= section_idx {
+            self.table.column_widths.push(Vec::new());
         }
-        while self.column_widths_absolute.len() <= section_idx {
-            self.column_widths_absolute.push(false);
+        while self.table.column_widths_absolute.len() <= section_idx {
+            self.table.column_widths_absolute.push(false);
         }
 
-        if self.cursor >= self.visible.len() {
+        if self.tree.cursor >= self.tree.visible.len() {
             return;
         }
-        let Some(&node_idx) = self.visible.get(self.cursor) else {
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
         if section_idx >= node.detail_sections.len() {
@@ -235,7 +241,7 @@ impl App {
             return;
         };
 
-        let Some(current_widths) = self.column_widths.get(section_idx) else {
+        let Some(current_widths) = self.table.column_widths.get(section_idx) else {
             return;
         };
         if current_widths.is_empty() {
@@ -245,6 +251,7 @@ impl App {
 
         // Switch to absolute pixel widths on first resize
         let is_absolute = self
+            .table
             .column_widths_absolute
             .get(section_idx)
             .copied()
@@ -253,15 +260,15 @@ impl App {
             self.convert_to_absolute_widths(section_idx);
         }
 
-        let Some(section_widths) = self.column_widths.get(section_idx) else {
+        let Some(section_widths) = self.table.column_widths.get(section_idx) else {
             return;
         };
         let num_cols = section_widths.len();
-        if num_cols == 0 || self.focused_column >= num_cols {
+        if num_cols == 0 || self.table.focused_column >= num_cols {
             return;
         }
 
-        let Some(&focused_w) = section_widths.get(self.focused_column) else {
+        let Some(&focused_w) = section_widths.get(self.table.focused_column) else {
             return;
         };
 
@@ -274,8 +281,8 @@ impl App {
             return;
         }
 
-        if let Some(widths) = self.column_widths.get_mut(section_idx)
-            && let Some(fw) = widths.get_mut(self.focused_column)
+        if let Some(widths) = self.table.column_widths.get_mut(section_idx)
+            && let Some(fw) = widths.get_mut(self.table.focused_column)
         {
             *fw = new_width_u16;
         }
@@ -283,6 +290,9 @@ impl App {
         self.save_column_widths_to_persistent(section_idx);
         self.ensure_focused_column_visible(section_idx);
 
-        self.status = format!("Column {} width: {}px", self.focused_column, new_width_u16,);
+        self.status = format!(
+            "Column {} width: {}px",
+            self.table.focused_column, new_width_u16,
+        );
     }
 }

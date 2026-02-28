@@ -17,14 +17,14 @@ impl App {
             return false;
         }
 
-        let Some(node) = self.all_nodes.get(node_idx) else {
+        let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return false;
         };
         let node_depth = node.depth;
 
         // Search backwards from node_idx to find parent section
         for i in (0..node_idx).rev() {
-            let Some(parent) = self.all_nodes.get(i) else {
+            let Some(parent) = self.tree.all_nodes.get(i) else {
                 continue;
             };
 
@@ -44,9 +44,9 @@ impl App {
     }
 
     pub(crate) fn rebuild_visible(&mut self) {
-        self.visible.clear();
+        self.tree.visible.clear();
 
-        if self.search_stack.is_empty() {
+        if self.search.stack.is_empty() {
             self.rebuild_visible_no_search();
         } else {
             self.rebuild_visible_with_search();
@@ -57,7 +57,7 @@ impl App {
     fn rebuild_visible_no_search(&mut self) {
         let mut collapsed_below: Option<usize> = None;
 
-        for (i, node) in self.all_nodes.iter().enumerate() {
+        for (i, node) in self.tree.all_nodes.iter().enumerate() {
             // Skip nodes under collapsed parent
             if let Some(cd) = collapsed_below {
                 if node.depth > cd {
@@ -66,7 +66,7 @@ impl App {
                 collapsed_below = None;
             }
 
-            self.visible.push(i);
+            self.tree.visible.push(i);
 
             // Mark as collapsed if node has unexpanded children
             if node.has_children && !node.expanded {
@@ -78,10 +78,10 @@ impl App {
     /// Rebuild visible list with active search stack
     fn rebuild_visible_with_search(&mut self) {
         // Start with all nodes included, then filter by each search
-        let mut include = vec![true; self.all_nodes.len()];
+        let mut include = vec![true; self.tree.all_nodes.len()];
 
         // Apply each search filter cumulatively
-        for (query, scope) in &self.search_stack {
+        for (query, scope) in &self.search.stack {
             include = self.apply_search_filter(&include, query, scope);
         }
 
@@ -92,13 +92,13 @@ impl App {
     /// Apply a single search filter to the include vector
     fn apply_search_filter(&self, include: &[bool], query: &str, scope: &SearchScope) -> Vec<bool> {
         let q = query.to_lowercase();
-        let len = self.all_nodes.len();
+        let len = self.tree.all_nodes.len();
         let mut new_include = vec![false; len];
 
         // Pass 1: Mark matching nodes and all their children
         let mut skip_below: Option<usize> = None; // depth of matched parent
         for (i, &included) in include.iter().enumerate().take(len) {
-            let Some(node) = self.all_nodes.get(i) else {
+            let Some(node) = self.tree.all_nodes.get(i) else {
                 continue;
             };
 
@@ -126,10 +126,16 @@ impl App {
         }
 
         // Pass 2: Include parents using a depth-indexed stack for O(N) total
-        let max_depth = self.all_nodes.iter().map(|n| n.depth).max().unwrap_or(0);
+        let max_depth = self
+            .tree
+            .all_nodes
+            .iter()
+            .map(|n| n.depth)
+            .max()
+            .unwrap_or(0);
         let mut parent_at_depth = vec![0usize; max_depth.saturating_add(1)];
 
-        for (i, node) in self.all_nodes.iter().enumerate() {
+        for (i, node) in self.tree.all_nodes.iter().enumerate() {
             if let Some(slot) = parent_at_depth.get_mut(node.depth) {
                 *slot = i;
             }
@@ -232,7 +238,7 @@ impl App {
                 continue;
             }
 
-            let Some(node) = self.all_nodes.get(i) else {
+            let Some(node) = self.tree.all_nodes.get(i) else {
                 continue;
             };
 
@@ -244,7 +250,7 @@ impl App {
                 collapsed_below = None;
             }
 
-            self.visible.push(i);
+            self.tree.visible.push(i);
 
             // If this node is collapsed, hide its children
             if node.has_children && !node.expanded {

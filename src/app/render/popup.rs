@@ -96,7 +96,7 @@ impl App {
     }
 
     pub(in crate::app) fn draw_detail_popup(&self, frame: &mut Frame) {
-        let Some(popup_data) = &self.detail_popup else {
+        let Some(popup_data) = &self.detail.popup else {
             return;
         };
 

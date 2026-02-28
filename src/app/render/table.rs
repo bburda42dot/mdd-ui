@@ -60,7 +60,7 @@ impl App {
         sorted
     }
 
-    pub(super) fn compare_cells(a: &DetailRow, b: &DetailRow, col: usize) -> std::cmp::Ordering {
+    pub(crate) fn compare_cells(a: &DetailRow, b: &DetailRow, col: usize) -> std::cmp::Ordering {
         let a_cell = a.cells.get(col).map_or("", String::as_str);
         let b_cell = b.cells.get(col).map_or("", String::as_str);
 

@@ -583,10 +583,10 @@ impl App {
         let dir = sort_state.direction;
         let secondary = sort_state.secondary_column;
         sorted.sort_by(|a, b| {
-            let cmp = Self::compare_cells_by_column(a, b, col);
+            let cmp = Self::compare_cells(a, b, col);
             let cmp = match cmp {
                 std::cmp::Ordering::Equal => secondary.map_or(std::cmp::Ordering::Equal, |sec| {
-                    Self::compare_cells_by_column(a, b, sec)
+                    Self::compare_cells(a, b, sec)
                 }),
                 other => other,
             };
@@ -597,18 +597,6 @@ impl App {
             }
         });
         sorted
-    }
-
-    fn compare_cells_by_column(a: &DetailRow, b: &DetailRow, col: usize) -> std::cmp::Ordering {
-        let a_cell = a.cells.get(col).map_or("", String::as_str);
-        let b_cell = b.cells.get(col).map_or("", String::as_str);
-
-        match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
-            (Ok(a_num), Ok(b_num)) => a_num
-                .partial_cmp(&b_num)
-                .unwrap_or(std::cmp::Ordering::Equal),
-            _ => a_cell.cmp(b_cell),
-        }
     }
 
     // -------------------------------------------------------------------

@@ -393,104 +393,6 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     }
 }
 
-/// Extract address-related values from a `DiagLayer`'s communication parameters.
-/// Looks for common address parameter names: IP address, functional address, logical address.
-fn extract_address_info(layer: &DiagLayer<'_>) -> Vec<(String, String)> {
-    let Some(cp_refs) = layer.com_param_refs() else {
-        return vec![];
-    };
-
-    // Parameter names to look for (case-insensitive matching)
-    let address_patterns = [
-        ("CP_IPAddress", "IP Address"),
-        ("CP_IpAddress", "IP Address"),
-        ("CP_IP_Address", "IP Address"),
-        ("CP_UniqueRespIdTable", "IP Address"),
-        ("CP_FunctionalReqId", "Functional Address"),
-        ("CP_FunctionalAddress", "Functional Address"),
-        ("CP_FA", "Functional Address"),
-        ("CP_LogicalAddress", "Logical Address"),
-        ("CP_ECUAddress", "Logical Address"),
-        ("CP_SA", "Logical Address"),
-        ("CP_SourceAddress", "Logical Address"),
-        ("CP_PhysicalReqId", "Physical Address"),
-        ("CP_PhysicalAddress", "Physical Address"),
-        ("CP_PA", "Physical Address"),
-        ("CP_TA", "Tester Address"),
-        ("CP_TesterAddress", "Tester Address"),
-    ];
-
-    let mut addresses: Vec<(String, String)> = Vec::new();
-    let mut seen_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    for cpr in cp_refs {
-        let Some(cp) = cpr.com_param() else { continue };
-        let Some(cp_name) = cp.short_name() else {
-            continue;
-        };
-
-        for (pattern, label) in &address_patterns {
-            if cp_name.eq_ignore_ascii_case(pattern) {
-                // Skip if we already have this label (avoid duplicates)
-                if seen_labels.contains(*label) {
-                    continue;
-                }
-
-                // Try to get the value from simple_value first
-                let value = cpr
-                    .simple_value()
-                    .and_then(|sv| sv.value())
-                    .map(str::to_owned)
-                    .or_else(|| {
-                        // Fall back to physical_default_value from the com_param
-                        cp.specific_data_as_regular_com_param()
-                            .and_then(|rcp| rcp.physical_default_value())
-                            .map(str::to_owned)
-                    });
-
-                if let Some(val) = value {
-                    addresses.push(((*label).to_owned(), val));
-                    seen_labels.insert((*label).to_owned());
-                }
-                break;
-            }
-        }
-    }
-
-    addresses
-}
-
-/// Append address information rows to the info rows list
-fn append_address_info_rows(layer: &DiagLayer<'_>, info_rows: &mut Vec<DetailRow>) {
-    let addresses = extract_address_info(layer);
-    if addresses.is_empty() {
-        return;
-    }
-
-    // Add a separator row
-    info_rows.push(DetailRow::normal(
-        vec![String::new(), String::new()],
-        vec![CellType::Text, CellType::Text],
-        0,
-    ));
-
-    // Add address header
-    info_rows.push(DetailRow::normal(
-        vec!["Addresses".to_owned(), String::new()],
-        vec![CellType::Text, CellType::Text],
-        0,
-    ));
-
-    // Add each address
-    for (label, value) in addresses {
-        info_rows.push(DetailRow::normal(
-            vec![label, value],
-            vec![CellType::Text, CellType::Text],
-            0,
-        ));
-    }
-}
-
 /// Build variant summary section with info and children table
 fn build_variant_summary_section(vw: &VariantWrap<'_>, name: &str) -> Vec<DetailSectionData> {
     let mut sections = vec![];
@@ -516,8 +418,6 @@ fn build_variant_summary_section(vw: &VariantWrap<'_>, name: &str) -> Vec<Detail
 
     if let Some(dl) = vw.diag_layer() {
         let layer = DiagLayer(dl);
-        // Add address information before layer info
-        append_address_info_rows(&layer, &mut info_rows);
         append_layer_info_rows(&layer, &mut info_rows);
     }
 

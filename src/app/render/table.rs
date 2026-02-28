@@ -3,6 +3,8 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+use std::borrow::Cow;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
@@ -66,14 +68,18 @@ struct HScrollParams<'a> {
 }
 
 impl App {
-    pub(super) fn sort_rows(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
+    pub(super) fn sort_rows<'a>(
+        &self,
+        rows: &'a [DetailRow],
+        section_idx: usize,
+    ) -> Cow<'a, [DetailRow]> {
         let Some(sort_state) = self
             .table
             .sort_state
             .get(section_idx)
             .and_then(|s| s.as_ref())
         else {
-            return rows.to_vec();
+            return Cow::Borrowed(rows);
         };
 
         let mut sorted = rows.to_vec();
@@ -94,7 +100,7 @@ impl App {
                 SortDirection::Descending => cmp.reverse(),
             }
         });
-        sorted
+        Cow::Owned(sorted)
     }
 
     pub(crate) fn compare_cells(a: &DetailRow, b: &DetailRow, col: usize) -> std::cmp::Ordering {
@@ -156,7 +162,7 @@ impl App {
         let viewport_height = (inner.height.saturating_sub(header_height)).max(1) as usize;
 
         // Apply sorting based on table_sort_state if set
-        let sorted_rows: Vec<DetailRow> = self.sort_rows(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let max_columns = sorted_rows
             .iter()

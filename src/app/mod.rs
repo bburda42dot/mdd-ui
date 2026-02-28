@@ -589,7 +589,7 @@ impl App {
         }
     }
 
-    /// Apply sorting to rows if a sort state exists for the given section
+    /// Apply sorting to rows if a sort state exists for the given section.
     fn apply_table_sort(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
         let Some(sort_state) = self
             .table

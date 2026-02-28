@@ -13,81 +13,96 @@ use crate::tree::{
     builder::TreeBuilder,
     types::{
         CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType,
+        NodeType, ServiceListType,
     },
 };
 
-/// Build Pos-Response sections - this is the core rendering logic for Pos-Response data
-/// `DiagComm` module should import and use this function to render the Pos-Response tabs
-/// Always returns at least one section (empty table if no response data)
+/// Configuration for building response sections, capturing the difference
+/// between positive and negative responses.
+struct ResponseKind {
+    label: &'static str,
+    section_type: DetailSectionType,
+    node_type: NodeType,
+    service_list_type: ServiceListType,
+}
+
+const POS_RESPONSE: ResponseKind = ResponseKind {
+    label: "Pos-Response",
+    section_type: DetailSectionType::PosResponses,
+    node_type: NodeType::PosResponse,
+    service_list_type: ServiceListType::PosResponses,
+};
+
+const NEG_RESPONSE: ResponseKind = ResponseKind {
+    label: "Neg-Response",
+    section_type: DetailSectionType::NegResponses,
+    node_type: NodeType::NegResponse,
+    service_list_type: ServiceListType::NegResponses,
+};
+
+/// Dispatch to the correct response accessor based on `section_type`.
+/// This avoids spelling out the unnameable flatbuffers return type.
+macro_rules! responses_of {
+    ($ds:expr, $kind:expr) => {
+        match $kind.section_type {
+            DetailSectionType::PosResponses => $ds.pos_responses(),
+            DetailSectionType::NegResponses => $ds.neg_responses(),
+            _ => None,
+        }
+    };
+}
+
+/// Build response sections for a given kind (pos or neg).
+/// Always returns at least one section (empty table if no response data).
+fn build_responses_sections(ds: &DiagService<'_>, kind: &ResponseKind) -> Vec<DetailSectionData> {
+    let sections: Vec<DetailSectionData> = responses_of!(ds, kind)
+        .into_iter()
+        .flat_map(|responses| responses.iter().enumerate())
+        .map(|(i, resp)| {
+            let params = resp.params().into_iter().flatten().map(Parameter);
+            build_response_param_section(
+                &format!("{} {}", kind.label, i.saturating_add(1)),
+                params,
+                kind.section_type,
+            )
+        })
+        .collect();
+
+    if sections.is_empty() {
+        vec![build_response_param_section(
+            kind.label,
+            std::iter::empty(),
+            kind.section_type,
+        )]
+    } else {
+        sections
+    }
+}
+
+/// Build Pos-Response sections
 pub fn build_pos_responses_sections(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
-    let sections: Vec<DetailSectionData> = ds
-        .pos_responses()
-        .into_iter()
-        .flat_map(|pos| pos.iter().enumerate())
-        .map(|(i, resp)| {
-            let params = resp.params().into_iter().flatten().map(Parameter);
-            build_response_param_section(
-                &format!("Pos-Response {}", i.saturating_add(1)),
-                params,
-                DetailSectionType::PosResponses,
-            )
-        })
-        .collect();
-
-    if sections.is_empty() {
-        vec![build_response_param_section(
-            "Pos-Response",
-            std::iter::empty(),
-            DetailSectionType::PosResponses,
-        )]
-    } else {
-        sections
-    }
+    build_responses_sections(ds, &POS_RESPONSE)
 }
 
-/// Build Neg-Response sections - this is the core rendering logic for Neg-Response data
-/// `DiagComm` module should import and use this function to render the Neg-Response tabs
-/// Always returns at least one section (empty table if no response data)
+/// Build Neg-Response sections
 pub fn build_neg_responses_sections(ds: &DiagService<'_>) -> Vec<DetailSectionData> {
-    let sections: Vec<DetailSectionData> = ds
-        .neg_responses()
-        .into_iter()
-        .flat_map(|neg| neg.iter().enumerate())
-        .map(|(i, resp)| {
-            let params = resp.params().into_iter().flatten().map(Parameter);
-            build_response_param_section(
-                &format!("Neg-Response {}", i.saturating_add(1)),
-                params,
-                DetailSectionType::NegResponses,
-            )
-        })
-        .collect();
-
-    if sections.is_empty() {
-        vec![build_response_param_section(
-            "Neg-Response",
-            std::iter::empty(),
-            DetailSectionType::NegResponses,
-        )]
-    } else {
-        sections
-    }
+    build_responses_sections(ds, &NEG_RESPONSE)
 }
 
-/// Add a single service with positive responses to the tree
-fn add_pos_response_service(
+/// Add a single service with responses to the tree
+fn add_response_service(
     b: &mut TreeBuilder,
     ds: &DiagService<'_>,
     depth: usize,
     source_layer: Option<String>,
+    kind: &ResponseKind,
 ) {
     let Some(display_name) = format_service_display_name(ds) else {
         return;
     };
 
-    let sections = build_pos_response_view_sections(ds, source_layer);
-    let has_params = ds.pos_responses().is_some_and(|r| {
+    let sections = build_response_view_sections(ds, source_layer, kind);
+    let has_params = responses_of!(ds, kind).is_some_and(|r| {
         r.iter()
             .any(|resp| resp.params().is_some_and(|p| !p.is_empty()))
     });
@@ -98,12 +113,11 @@ fn add_pos_response_service(
         false,
         has_params,
         sections,
-        NodeType::PosResponse,
+        kind.node_type.clone(),
     );
 
-    let response_count = ds.pos_responses().map_or(0, |r| r.len());
-    for (resp_idx, resp) in ds
-        .pos_responses()
+    let response_count = responses_of!(ds, kind).map_or(0, |r| r.len());
+    for (resp_idx, resp) in responses_of!(ds, kind)
         .into_iter()
         .flat_map(|r| r.iter().enumerate())
     {
@@ -135,6 +149,62 @@ fn add_pos_response_service(
                 NodeType::Default,
                 param.id(),
             );
+        }
+    }
+}
+
+/// Add a responses section (pos or neg) to the tree
+fn add_responses_section<'a>(
+    b: &mut TreeBuilder,
+    layer: &DiagLayer<'a>,
+    depth: usize,
+    variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
+    kind: &ResponseKind,
+) {
+    let has_responses =
+        |ds: &DiagService<'_>| -> bool { responses_of!(ds, kind).is_some_and(|r| !r.is_empty()) };
+
+    let own_services: Vec<DiagService<'_>> = layer
+        .diag_services()
+        .map(|services| {
+            services
+                .iter()
+                .map(DiagService)
+                .filter(|ds| has_responses(ds))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let parent_services: Vec<(DiagService<'_>, String)> =
+        if let Some(parent_refs) = variant_parent_refs {
+            get_parent_ref_services_recursive(parent_refs)
+                .into_iter()
+                .filter(|(ds, _)| has_responses(ds))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+    let total_count = own_services.len().saturating_add(parent_services.len());
+
+    if total_count > 0 {
+        let detail_section = build_responses_table_section(&own_services, &parent_services, kind);
+
+        b.push_service_list_header(
+            depth,
+            format!("{}s ({total_count})", kind.label),
+            false,
+            true,
+            vec![detail_section],
+            kind.service_list_type,
+        );
+
+        for ds in &own_services {
+            add_response_service(b, ds, depth, None, kind);
+        }
+
+        for (ds, source_layer_name) in &parent_services {
+            add_response_service(b, ds, depth, Some(source_layer_name.clone()), kind);
         }
     }
 }
@@ -146,113 +216,7 @@ pub fn add_pos_responses_section<'a>(
     depth: usize,
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
-    let own_services: Vec<DiagService<'_>> = layer
-        .diag_services()
-        .map(|services| {
-            services
-                .iter()
-                .map(DiagService)
-                .filter(|ds| ds.pos_responses().is_some_and(|r| !r.is_empty()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let parent_services: Vec<(DiagService<'_>, String)> =
-        if let Some(parent_refs) = variant_parent_refs {
-            get_parent_ref_services_recursive(parent_refs)
-                .into_iter()
-                .filter(|(ds, _)| ds.pos_responses().is_some_and(|r| !r.is_empty()))
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-    let total_count = own_services.len().saturating_add(parent_services.len());
-
-    if total_count > 0 {
-        let detail_section = build_pos_responses_table_section(&own_services, &parent_services);
-
-        b.push_service_list_header(
-            depth,
-            format!("Pos-Responses ({total_count})"),
-            false,
-            true,
-            vec![detail_section],
-            crate::tree::ServiceListType::PosResponses,
-        );
-
-        for ds in &own_services {
-            add_pos_response_service(b, ds, depth, None);
-        }
-
-        for (ds, source_layer_name) in &parent_services {
-            add_pos_response_service(b, ds, depth, Some(source_layer_name.clone()));
-        }
-    }
-}
-
-/// Add a single service with negative responses to the tree
-fn add_neg_response_service(
-    b: &mut TreeBuilder,
-    ds: &DiagService<'_>,
-    depth: usize,
-    source_layer: Option<String>,
-) {
-    let Some(display_name) = format_service_display_name(ds) else {
-        return;
-    };
-
-    let sections = build_neg_response_view_sections(ds, source_layer);
-    let has_params = ds.neg_responses().is_some_and(|r| {
-        r.iter()
-            .any(|resp| resp.params().is_some_and(|p| !p.is_empty()))
-    });
-
-    b.push_details_structured(
-        depth.saturating_add(1),
-        display_name,
-        false,
-        has_params,
-        sections,
-        NodeType::NegResponse,
-    );
-
-    let response_count = ds.neg_responses().map_or(0, |r| r.len());
-    for (resp_idx, resp) in ds
-        .neg_responses()
-        .into_iter()
-        .flat_map(|r| r.iter().enumerate())
-    {
-        let Some(params) = resp.params().filter(|p| !p.is_empty()) else {
-            continue;
-        };
-        if response_count > 1 {
-            b.push_details_structured(
-                depth.saturating_add(2),
-                format!("Response {}", resp_idx.saturating_add(1)),
-                false,
-                true,
-                vec![],
-                NodeType::Default,
-            );
-        }
-        let base_depth = if response_count > 1 {
-            depth.saturating_add(3)
-        } else {
-            depth.saturating_add(2)
-        };
-        for param in params.iter().map(Parameter) {
-            let param_name = param.short_name().unwrap_or("?").to_owned();
-            let param_detail = build_param_detail_sections(&param);
-            b.push_param(
-                base_depth,
-                param_name,
-                param_detail,
-                NodeType::Default,
-                param.id(),
-            );
-        }
-    }
+    add_responses_section(b, layer, depth, variant_parent_refs, &POS_RESPONSE);
 }
 
 /// Add negative responses section to the tree
@@ -262,65 +226,24 @@ pub fn add_neg_responses_section<'a>(
     depth: usize,
     variant_parent_refs: Option<impl Iterator<Item = ParentRef<'a>> + 'a>,
 ) {
-    let own_services: Vec<DiagService<'_>> = layer
-        .diag_services()
-        .map(|services| {
-            services
-                .iter()
-                .map(DiagService)
-                .filter(|ds| ds.neg_responses().is_some_and(|r| !r.is_empty()))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let parent_services: Vec<(DiagService<'_>, String)> =
-        if let Some(parent_refs) = variant_parent_refs {
-            get_parent_ref_services_recursive(parent_refs)
-                .into_iter()
-                .filter(|(ds, _)| ds.neg_responses().is_some_and(|r| !r.is_empty()))
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-    let total_count = own_services.len().saturating_add(parent_services.len());
-
-    if total_count > 0 {
-        let detail_section = build_neg_responses_table_section(&own_services, &parent_services);
-
-        b.push_service_list_header(
-            depth,
-            format!("Neg-Responses ({total_count})"),
-            false,
-            true,
-            vec![detail_section],
-            crate::tree::ServiceListType::NegResponses,
-        );
-
-        for ds in &own_services {
-            add_neg_response_service(b, ds, depth, None);
-        }
-
-        for (ds, source_layer_name) in &parent_services {
-            add_neg_response_service(b, ds, depth, Some(source_layer_name.clone()));
-        }
-    }
+    add_responses_section(b, layer, depth, variant_parent_refs, &NEG_RESPONSE);
 }
 
-/// Build complete service view with Pos-Response tabs (used by Pos-Responses section)
-fn build_pos_response_view_sections(
+/// Build complete service view with response tabs
+fn build_response_view_sections(
     ds: &DiagService<'_>,
     parent_layer_name: Option<String>,
+    kind: &ResponseKind,
 ) -> Vec<DetailSectionData> {
     let mut sections = Vec::new();
 
-    // Add header section
     let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
     let sid = format_service_id(ds);
+    let label = kind.label.replace('-', " ");
     let header_title = if sid.is_empty() {
-        format!("Pos Response - {service_name}")
+        format!("{label} - {service_name}")
     } else {
-        format!("Pos Response - {sid} - {service_name}")
+        format!("{label} - {sid} - {service_name}")
     };
 
     sections.push(DetailSectionData {
@@ -330,43 +253,8 @@ fn build_pos_response_view_sections(
         content: DetailContent::PlainText(vec![]),
     });
 
-    // Overview
     sections.push(build_overview_section(ds, parent_layer_name));
-
-    // Pos-Response tabs - use rendering logic from this module
-    sections.extend(build_pos_responses_sections(ds));
-
-    sections
-}
-
-/// Build complete service view with Neg-Response tabs (used by Neg-Responses section)
-fn build_neg_response_view_sections(
-    ds: &DiagService<'_>,
-    parent_layer_name: Option<String>,
-) -> Vec<DetailSectionData> {
-    let mut sections = Vec::new();
-
-    // Add header section
-    let service_name = ds.diag_comm().and_then(|dc| dc.short_name()).unwrap_or("?");
-    let sid = format_service_id(ds);
-    let header_title = if sid.is_empty() {
-        format!("Neg Response - {service_name}")
-    } else {
-        format!("Neg Response - {sid} - {service_name}")
-    };
-
-    sections.push(DetailSectionData {
-        title: header_title,
-        render_as_header: true,
-        section_type: DetailSectionType::Header,
-        content: DetailContent::PlainText(vec![]),
-    });
-
-    // Overview
-    sections.push(build_overview_section(ds, parent_layer_name));
-
-    // Neg-Response tabs - use rendering logic from this module
-    sections.extend(build_neg_responses_sections(ds));
+    sections.extend(build_responses_sections(ds, kind));
 
     sections
 }
@@ -589,10 +477,11 @@ where
     }
 }
 
-/// Build a table section for the Pos-Responses header showing all services
-fn build_pos_responses_table_section(
+/// Build a table section for a responses header showing all services
+fn build_responses_table_section(
     own_services: &[DiagService<'_>],
     parent_services: &[(DiagService<'_>, String)],
+    kind: &ResponseKind,
 ) -> DetailSectionData {
     let header = DetailRow {
         cells: vec![
@@ -604,8 +493,6 @@ fn build_pos_responses_table_section(
         indent: 0,
         ..Default::default()
     };
-
-    let mut rows = Vec::new();
 
     let build_row = |ds: &DiagService<'_>, inherited: &str| -> Option<DetailRow> {
         let name = ds.diag_comm()?.short_name().unwrap_or("?").to_owned();
@@ -623,66 +510,7 @@ fn build_pos_responses_table_section(
         })
     };
 
-    rows.extend(own_services.iter().filter_map(|ds| build_row(ds, "false")));
-    rows.extend(
-        parent_services
-            .iter()
-            .filter_map(|(ds, _)| build_row(ds, "true")),
-    );
-
-    let total_count = own_services.len().saturating_add(parent_services.len());
-
-    DetailSectionData {
-        title: format!("Pos-Responses ({total_count})"),
-        render_as_header: false,
-        section_type: DetailSectionType::PosResponses,
-        content: DetailContent::Table {
-            header,
-            rows,
-            constraints: vec![
-                ColumnConstraint::Percentage(60),
-                ColumnConstraint::Percentage(20),
-                ColumnConstraint::Percentage(20),
-            ],
-            use_row_selection: true,
-        },
-    }
-}
-
-/// Build a table section for the Neg-Responses header showing all services
-fn build_neg_responses_table_section(
-    own_services: &[DiagService<'_>],
-    parent_services: &[(DiagService<'_>, String)],
-) -> DetailSectionData {
-    let header = DetailRow {
-        cells: vec![
-            "Short Name".to_owned(),
-            "ID".to_owned(),
-            "Inherited".to_owned(),
-        ],
-        cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
-        indent: 0,
-        ..Default::default()
-    };
-
     let mut rows = Vec::new();
-
-    let build_row = |ds: &DiagService<'_>, inherited: &str| -> Option<DetailRow> {
-        let name = ds.diag_comm()?.short_name().unwrap_or("?").to_owned();
-        let id_str = format_service_id(ds);
-        let id = if id_str.is_empty() {
-            "-".to_owned()
-        } else {
-            id_str
-        };
-        Some(DetailRow {
-            cells: vec![name, id, inherited.to_owned()],
-            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
-            indent: 0,
-            ..Default::default()
-        })
-    };
-
     rows.extend(own_services.iter().filter_map(|ds| build_row(ds, "false")));
     rows.extend(
         parent_services
@@ -693,9 +521,9 @@ fn build_neg_responses_table_section(
     let total_count = own_services.len().saturating_add(parent_services.len());
 
     DetailSectionData {
-        title: format!("Neg-Responses ({total_count})"),
+        title: format!("{}s ({total_count})", kind.label),
         render_as_header: false,
-        section_type: DetailSectionType::NegResponses,
+        section_type: kind.section_type,
         content: DetailContent::Table {
             header,
             rows,

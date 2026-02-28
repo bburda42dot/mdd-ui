@@ -28,6 +28,43 @@ pub(super) enum CellHighlight {
     Normal,
 }
 
+/// Parameters for rendering table content.
+#[derive(Clone, Copy)]
+pub(super) struct TableContentParams<'a> {
+    pub inner: Rect,
+    pub header: &'a DetailRow,
+    pub rows: &'a [DetailRow],
+    pub constraints: &'a [crate::tree::ColumnConstraint],
+    pub section_idx: usize,
+    pub use_row_selection: bool,
+}
+
+/// Parameters for rendering a horizontally scrolled table with scrollbar.
+#[derive(Clone, Copy)]
+struct HScrollTableParams<'a> {
+    inner: Rect,
+    table_area: Rect,
+    header: &'a DetailRow,
+    visible_rows: &'a [Row<'static>],
+    column_widths: &'a [u16],
+    column_spacing: u16,
+    h_scroll: u16,
+    total_table_width: u16,
+    section_idx: usize,
+}
+
+/// Parameters for applying horizontal scroll to determine visible columns.
+#[derive(Clone, Copy)]
+struct HScrollParams<'a> {
+    column_widths: &'a [u16],
+    column_spacing: u16,
+    h_scroll: u16,
+    viewport_width: u16,
+    header: &'a DetailRow,
+    visible_rows: &'a [Row<'static>],
+    sort_state: Option<TableSortState>,
+}
+
 impl App {
     pub(super) fn sort_rows(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
         let Some(sort_state) = self
@@ -102,17 +139,17 @@ impl App {
         }
     }
 
-    // render_table_content needs all params to draw sorted, scrollable, selectable tables
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn render_table_content(
         &mut self,
         frame: &mut Frame,
-        inner: Rect,
-        header: &DetailRow,
-        rows: &[DetailRow],
-        constraints: &[crate::tree::ColumnConstraint],
-        section_idx: usize,
-        use_row_selection: bool,
+        TableContentParams {
+            inner,
+            header,
+            rows,
+            constraints,
+            section_idx,
+            use_row_selection,
+        }: TableContentParams<'_>,
     ) {
         // Account for header height (3 lines) when calculating viewport
         let header_height = 3u16;
@@ -209,15 +246,17 @@ impl App {
         if needs_hscroll {
             self.render_hscrolled_table(
                 frame,
-                inner,
-                table_area,
-                header,
-                &visible_rows,
-                &column_widths,
-                column_spacing,
-                h_scroll,
-                total_table_width,
-                section_idx,
+                HScrollTableParams {
+                    inner,
+                    table_area,
+                    header,
+                    visible_rows: &visible_rows,
+                    column_widths: &column_widths,
+                    column_spacing,
+                    h_scroll,
+                    total_table_width,
+                    section_idx,
+                },
             );
         } else {
             self.layout.detail_hscrollbar_area = None;
@@ -271,29 +310,31 @@ impl App {
     }
 
     /// Render table with horizontal scrolling and scrollbar.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn render_hscrolled_table(
+    fn render_hscrolled_table(
         &mut self,
         frame: &mut Frame,
-        inner: Rect,
-        table_area: Rect,
-        header: &DetailRow,
-        visible_rows: &[Row<'static>],
-        column_widths: &[u16],
-        column_spacing: u16,
-        h_scroll: u16,
-        total_table_width: u16,
-        section_idx: usize,
-    ) {
-        let (vis_constraints, vis_header, vis_rows, _first_vis_col) = self.apply_horizontal_scroll(
+        HScrollTableParams {
+            inner,
+            table_area,
+            header,
+            visible_rows,
             column_widths,
             column_spacing,
             h_scroll,
-            table_area.width,
-            header,
-            visible_rows,
-            self.table.sort_state.get(section_idx).and_then(|s| *s),
-        );
+            total_table_width,
+            section_idx,
+        }: HScrollTableParams<'_>,
+    ) {
+        let (vis_constraints, vis_header, vis_rows, _first_vis_col) =
+            self.apply_horizontal_scroll(HScrollParams {
+                column_widths,
+                column_spacing,
+                h_scroll,
+                viewport_width: table_area.width,
+                header,
+                visible_rows,
+                sort_state: self.table.sort_state.get(section_idx).and_then(|s| *s),
+            });
 
         self.table
             .cached_ratatui_constraints
@@ -321,16 +362,17 @@ impl App {
     }
 
     /// Apply horizontal scroll to determine visible columns and build clipped constraints/rows.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn apply_horizontal_scroll(
+    fn apply_horizontal_scroll(
         &self,
-        column_widths: &[u16],
-        column_spacing: u16,
-        h_scroll: u16,
-        viewport_width: u16,
-        header: &DetailRow,
-        visible_rows: &[Row<'static>],
-        sort_state: Option<TableSortState>,
+        HScrollParams {
+            column_widths,
+            column_spacing,
+            h_scroll,
+            viewport_width,
+            header,
+            visible_rows,
+            sort_state,
+        }: HScrollParams<'_>,
     ) -> (Vec<Constraint>, Row<'static>, Vec<Row<'static>>, usize) {
         // Calculate cumulative positions: (start_px, end_px) for each column
         let mut col_positions: Vec<(u16, u16)> = Vec::with_capacity(column_widths.len());
@@ -420,8 +462,6 @@ impl App {
         Row::new(header_cells).height(3)
     }
 
-    // build_visible_rows needs viewport, column, and selection state for row rendering
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_visible_rows(
         &self,
         rows_refs: &[&DetailRow],

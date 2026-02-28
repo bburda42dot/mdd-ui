@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 use super::border_style;
+use super::table::TableContentParams;
 use crate::{
     app::{App, FocusState, TableSortState},
     tree::{DetailContent, DetailSectionData},
@@ -362,12 +363,14 @@ impl App {
             } => {
                 self.render_table_content(
                     frame,
-                    inner,
-                    header,
-                    rows,
-                    constraints,
-                    section_idx,
-                    *use_row_selection,
+                    TableContentParams {
+                        inner,
+                        header,
+                        rows,
+                        constraints,
+                        section_idx,
+                        use_row_selection: *use_row_selection,
+                    },
                 );
             }
             DetailContent::Composite(subsections) => {

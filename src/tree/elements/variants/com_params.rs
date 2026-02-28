@@ -8,10 +8,18 @@ use cda_database::datatypes::DiagLayer;
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType,
+        CellJumpTarget, CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData,
+        DetailSectionType, NodeType,
     },
 };
+
+/// Format a value as hex with decimal in parentheses if it's numeric.
+/// E.g. "255" -> "0xFF (255)", "abc" -> "abc"
+fn format_value_hex_decimal(value: &str) -> String {
+    value
+        .parse::<i64>()
+        .map_or_else(|_| value.to_owned(), |n| format!("0x{n:X} ({n})"))
+}
 
 /// Add `ComParam` refs section to the tree
 pub fn add_com_params(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
@@ -33,13 +41,23 @@ pub fn add_com_params(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) 
         NodeType::SectionHeader,
     );
 
-    for (idx, cpr) in cp_refs.iter().enumerate() {
-        let Some(cp) = cpr.com_param() else { continue };
-        let cp_name = cp.short_name().unwrap_or("?");
+    // Collect and sort by name
+    let mut sorted_refs: Vec<_> = cp_refs
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, cpr)| {
+            let cp = cpr.com_param()?;
+            let name = cp.short_name().unwrap_or("?").to_owned();
+            Some((idx, name))
+        })
+        .collect();
+    sorted_refs.sort_by(|a, b| a.1.cmp(&b.1));
+
+    for (idx, cp_name) in sorted_refs {
         let sections = build_com_param_ref_detail(layer, idx);
         b.push_details_structured(
             depth.saturating_add(1),
-            cp_name.to_owned(),
+            cp_name,
             false,
             false,
             sections,
@@ -58,19 +76,25 @@ fn build_com_params_overview(layer: &DiagLayer<'_>) -> Vec<DetailSectionData> {
         vec![CellType::Text, CellType::Text],
     );
 
-    let rows: Vec<DetailRow> = cp_refs
+    let mut rows: Vec<DetailRow> = cp_refs
         .iter()
         .filter_map(|cpr| {
             let cp = cpr.com_param()?;
             let name = cp.short_name().unwrap_or("?").to_owned();
             let cp_type = format!("{:?}", cp.com_param_type());
-            Some(DetailRow::normal(
+            Some(DetailRow::with_jump_targets(
                 vec![name, cp_type],
                 vec![CellType::Text, CellType::Text],
+                vec![Some(CellJumpTarget::TreeNodeByName), None],
                 0,
             ))
         })
         .collect();
+    rows.sort_by(|a, b| {
+        let a_name = a.cells.first().map_or("", String::as_str);
+        let b_name = b.cells.first().map_or("", String::as_str);
+        a_name.cmp(b_name)
+    });
 
     vec![
         DetailSectionData::new(
@@ -118,14 +142,17 @@ fn build_general_section(layer: &DiagLayer<'_>, idx: usize) -> Option<DetailSect
         if let Some(rcp) = cp.specific_data_as_regular_com_param()
             && let Some(val) = rcp.physical_default_value()
         {
-            general_rows.push(("Physical Default Value".to_owned(), val.to_owned()));
+            general_rows.push((
+                "Physical Default Value".to_owned(),
+                format_value_hex_decimal(val),
+            ));
         }
     }
 
     if let Some(sv) = cpr.simple_value()
         && let Some(val) = sv.value()
     {
-        general_rows.push(("Simple Value".to_owned(), val.to_owned()));
+        general_rows.push(("Simple Value".to_owned(), format_value_hex_decimal(val)));
     }
 
     if let Some(proto) = cpr.protocol()
@@ -184,7 +211,7 @@ fn build_complex_value_section(layer: &DiagLayer<'_>, idx: usize) -> Option<Deta
         .map(|(i, tag)| {
             let value = cv
                 .entries_item_as_simple_value(i)
-                .and_then(|sv| sv.value().map(std::borrow::ToOwned::to_owned))
+                .and_then(|sv| sv.value().map(format_value_hex_decimal))
                 .unwrap_or_else(|| format!("Complex[{i}]"));
             DetailRow::normal(
                 vec![format!("{i}"), format!("{tag:?}"), value],
@@ -250,10 +277,7 @@ fn build_sub_params_section(layer: &DiagLayer<'_>, idx: usize) -> Option<DetailS
             let param_class = sp.param_class().unwrap_or("-").to_owned();
             let default_val = sp
                 .specific_data_as_regular_com_param()
-                .and_then(|r| {
-                    r.physical_default_value()
-                        .map(std::borrow::ToOwned::to_owned)
-                })
+                .and_then(|r| r.physical_default_value().map(format_value_hex_decimal))
                 .unwrap_or_default();
             DetailRow::normal(
                 vec![name, sp_type, param_class, default_val],

@@ -43,6 +43,30 @@ impl App {
         false
     }
 
+    /// Check if `node_idx` is within the subtree rooted at `root_idx`.
+    ///
+    /// Walks forward from `root_idx + 1` until a node at the same or lesser
+    /// depth is found, determining the subtree boundary dynamically.
+    fn is_in_subtree(&self, root_idx: usize, node_idx: usize) -> bool {
+        if node_idx == root_idx {
+            return true;
+        }
+        if node_idx < root_idx {
+            return false;
+        }
+        let Some(root) = self.tree.all_nodes.get(root_idx) else {
+            return false;
+        };
+        let root_depth = root.depth;
+
+        // Every node between root_idx+1 and node_idx (inclusive) must have
+        // depth > root_depth for node_idx to still be inside the subtree.
+        self.tree
+            .all_nodes
+            .get(root_idx.saturating_add(1)..=node_idx)
+            .is_some_and(|slice| slice.iter().all(|n| n.depth > root_depth))
+    }
+
     pub(crate) fn rebuild_visible(&mut self) {
         self.tree.visible.clear();
 
@@ -221,9 +245,7 @@ impl App {
                         NodeType::PosResponse | NodeType::NegResponse
                     )
             }
-            SearchScope::Subtree {
-                start_idx, end_idx, ..
-            } => node_idx >= *start_idx && node_idx <= *end_idx,
+            SearchScope::Subtree { root_idx, .. } => self.is_in_subtree(*root_idx, node_idx),
         };
 
         matches_scope && node.text.to_lowercase().contains(query)

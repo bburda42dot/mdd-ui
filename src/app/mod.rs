@@ -57,8 +57,7 @@ pub(crate) enum SearchScope {
     Requests,         // Search only in Requests
     Responses,        // Search only in Responses (Pos and Neg)
     Subtree {
-        start_idx: usize,
-        end_idx: usize,
+        root_idx: usize,
         root_name: String,
     },
 }

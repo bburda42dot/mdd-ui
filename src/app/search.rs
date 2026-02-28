@@ -97,25 +97,10 @@ impl App {
         let Some(root_node) = self.tree.all_nodes.get(start_idx) else {
             return;
         };
-        let root_depth = root_node.depth;
         let root_name = root_node.text.clone();
 
-        // Walk forward to find the last descendant
-        let end_idx =
-            if let Some(children_slice) = self.tree.all_nodes.get(start_idx.saturating_add(1)..) {
-                children_slice
-                    .iter()
-                    .position(|n| n.depth <= root_depth)
-                    .map_or(self.tree.all_nodes.len().saturating_sub(1), |offset| {
-                        start_idx.saturating_add(offset)
-                    })
-            } else {
-                self.tree.all_nodes.len().saturating_sub(1)
-            };
-
         self.search.scope = SearchScope::Subtree {
-            start_idx,
-            end_idx,
+            root_idx: start_idx,
             root_name: root_name.clone(),
         };
         self.status = format!("Search scope: subtree '{root_name}'");

@@ -83,7 +83,7 @@ impl App {
         };
 
         if !Self::is_service_list_section(node) {
-            "Not a service list section".clone_into(&mut self.status);
+            self.status = "Not a service list section".into();
             return;
         }
 
@@ -109,7 +109,7 @@ impl App {
         let section = node.detail_sections.first()?;
 
         let Some(rows) = section.content.table_rows() else {
-            "Details should be a table".clone_into(&mut self.status);
+            self.status = "Details should be a table".into();
             return None;
         };
 
@@ -374,7 +374,7 @@ impl App {
 
         // Verify we're on a functional class node
         if !matches!(node.node_type, NodeType::FunctionalClass) {
-            "Not a functional class node".clone_into(&mut self.status);
+            self.status = "Not a functional class node".into();
             return;
         }
 
@@ -391,7 +391,7 @@ impl App {
 
         // We should be in a Services section
         if section.section_type != DetailSectionType::Services {
-            "Not in a services section".clone_into(&mut self.status);
+            self.status = "Not in a services section".into();
             return;
         }
 
@@ -420,7 +420,7 @@ impl App {
 
         // ShortName is in column 0
         if selected_row.cells.is_empty() {
-            "Invalid row structure".clone_into(&mut self.status);
+            self.status = "Invalid row structure".into();
             return;
         }
 

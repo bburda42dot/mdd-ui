@@ -67,7 +67,7 @@ impl App {
     pub(crate) fn clear_search_stack(&mut self) {
         self.search.stack.clear();
         self.search.query.clear();
-        "Search cleared".clone_into(&mut self.status);
+        self.status = "Search cleared".into();
         self.rebuild_visible();
         self.tree.cursor = 0;
         self.reset_detail_state();
@@ -141,7 +141,7 @@ impl App {
                 }
             );
         } else {
-            "Failed to toggle mouse mode".clone_into(&mut self.status);
+            self.status = "Failed to toggle mouse mode".into();
         }
     }
 

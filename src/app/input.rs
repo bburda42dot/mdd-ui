@@ -45,7 +45,7 @@ impl App {
                             self.status =
                                 format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
                         } else {
-                            "All searches cleared".clone_into(&mut self.status);
+                            self.status = "All searches cleared".into();
                         }
                     }
                 } else {

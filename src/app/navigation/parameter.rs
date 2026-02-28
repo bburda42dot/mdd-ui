@@ -56,7 +56,7 @@ impl App {
             .map_or("", std::string::String::as_str);
 
         if cell_value.is_empty() {
-            "Empty cell".clone_into(&mut self.status);
+            self.status = "Empty cell".into();
             return;
         }
 
@@ -99,7 +99,7 @@ impl App {
         section_idx: usize,
     ) {
         let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            "Invalid node index".clone_into(&mut self.status);
+            self.status = "Invalid node index".into();
             return;
         };
 
@@ -127,7 +127,7 @@ impl App {
             | DetailSectionType::FunctionalClass
             | DetailSectionType::Custom => None,
         }) else {
-            "Cannot navigate from this section type".clone_into(&mut self.status);
+            self.status = "Cannot navigate from this section type".into();
             return;
         };
 

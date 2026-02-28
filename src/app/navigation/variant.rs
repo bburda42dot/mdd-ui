@@ -34,7 +34,7 @@ impl App {
 
         // Verify we're on a functional class node
         if !matches!(node.node_type, NodeType::FunctionalClass) {
-            "Not a functional class node".clone_into(&mut self.status);
+            self.status = "Not a functional class node".into();
             return;
         }
 
@@ -51,7 +51,7 @@ impl App {
 
         // We should be in a Services section (the table showing services for this functional class)
         if section.section_type != DetailSectionType::Services {
-            "Not in a services section".clone_into(&mut self.status);
+            self.status = "Not in a services section".into();
             return;
         }
 
@@ -83,7 +83,7 @@ impl App {
         let layer_column_index = 5;
 
         if selected_row.cells.len() <= layer_column_index {
-            "Invalid row structure".clone_into(&mut self.status);
+            self.status = "Invalid row structure".into();
             return;
         }
 
@@ -134,7 +134,7 @@ impl App {
 
         // Extract the variant name from the first column
         let Some(target_variant_name) = selected_row.cells.first().cloned() else {
-            "Invalid variant row".clone_into(&mut self.status);
+            self.status = "Invalid variant row".into();
             return;
         };
 

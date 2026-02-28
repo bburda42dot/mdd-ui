@@ -237,7 +237,7 @@ impl App {
             return;
         };
         let Some(constraints) = section.content.table_constraints() else {
-            "Column resizing only available in tables".clone_into(&mut self.status);
+            self.status = "Column resizing only available in tables".into();
             return;
         };
 
@@ -277,7 +277,7 @@ impl App {
         let new_width_u16 = u16::try_from(new_width).unwrap_or(3);
 
         if new_width_u16 == focused_w {
-            "Cannot resize: at min width".clone_into(&mut self.status);
+            self.status = "Cannot resize: at min width".into();
             return;
         }
 

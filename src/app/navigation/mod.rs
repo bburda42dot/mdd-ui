@@ -110,7 +110,7 @@ impl App {
                 self.try_navigate_from_detail_row();
             }
         } else {
-            "No details available".clone_into(&mut self.status);
+            self.status = "No details available".into();
         }
     }
 
@@ -130,7 +130,7 @@ impl App {
         let section_idx = self.get_section_index();
 
         let Some((rows, use_row_selection)) = Self::get_table_rows(node, section_idx) else {
-            "No table data".clone_into(&mut self.status);
+            self.status = "No table data".into();
             return;
         };
 
@@ -180,7 +180,7 @@ impl App {
             .map_or("", std::string::String::as_str);
 
         if cell_value.is_empty() || cell_value == "-" {
-            "Empty cell".clone_into(&mut self.status);
+            self.status = "Empty cell".into();
             return;
         }
 
@@ -196,7 +196,7 @@ impl App {
     /// Execute a cell jump based on the per-cell jump target metadata
     fn execute_cell_jump(&mut self, jump_target: Option<CellJumpTarget>, cell_value: &str) {
         let Some(target) = jump_target else {
-            "This cell is not navigable".clone_into(&mut self.status);
+            self.status = "This cell is not navigable".into();
             return;
         };
 

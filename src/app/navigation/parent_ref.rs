@@ -24,7 +24,7 @@ impl App {
         };
 
         if !Self::is_service_node(node) {
-            "Not a service node".clone_into(&mut self.status);
+            self.status = "Not a service node".into();
             return;
         }
 
@@ -152,7 +152,7 @@ impl App {
         };
 
         if selected_row.cells.len() < 2 {
-            "Invalid parent ref row".clone_into(&mut self.status);
+            self.status = "Invalid parent ref row".into();
             return;
         }
 
@@ -194,7 +194,7 @@ impl App {
             // For now, only services (DiagComms) are navigable
             // TODO: Add navigation for DiagVariables, DOPs,
             // and Tables when they're added to the tree
-            "Navigation not yet supported for this element type".clone_into(&mut self.status);
+            self.status = "Navigation not yet supported for this element type".into();
             return;
         };
 
@@ -223,7 +223,7 @@ impl App {
 
         // Extract the element short name from the first column
         if selected_row.cells.is_empty() {
-            "Invalid row".clone_into(&mut self.status);
+            self.status = "Invalid row".into();
             return;
         }
 

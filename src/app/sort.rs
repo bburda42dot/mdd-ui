@@ -113,16 +113,16 @@ impl App {
             self.sort_diagcomm_nodes_in_place();
             self.rebuild_visible();
             if self.tree.diagcomm_sort_by_id {
-                "Sort: by ID".clone_into(&mut self.status);
+                self.status = "Sort: by ID".into();
             } else {
-                "Sort: by Name".clone_into(&mut self.status);
+                self.status = "Sort: by Name".into();
             }
         } else if sort_node.has_children {
             // Generic sort: toggle name ascending/descending for children
             self.sort_children_by_name(sort_idx);
             self.rebuild_visible();
         } else {
-            "No sortable section found".clone_into(&mut self.status);
+            self.status = "No sortable section found".into();
         }
     }
 
@@ -170,7 +170,7 @@ impl App {
         }
 
         if children_end <= children_start {
-            "No children to sort".clone_into(&mut self.status);
+            self.status = "No children to sort".into();
             return;
         }
 
@@ -213,14 +213,14 @@ impl App {
                 let b_text = b.first().map(|n| n.text.to_lowercase());
                 b_text.cmp(&a_text)
             });
-            "Sort: by Name ▼".clone_into(&mut self.status);
+            self.status = "Sort: by Name ▼".into();
         } else {
             child_groups.sort_by(|a, b| {
                 let a_text = a.first().map(|n| n.text.to_lowercase());
                 let b_text = b.first().map(|n| n.text.to_lowercase());
                 a_text.cmp(&b_text)
             });
-            "Sort: by Name ▲".clone_into(&mut self.status);
+            self.status = "Sort: by Name ▲".into();
         }
 
         // Re-insert sorted children

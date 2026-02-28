@@ -115,18 +115,18 @@ impl App {
     /// Navigate to the previous element in navigation history
     pub(crate) fn navigate_to_previous_in_history(&mut self) {
         if self.history.entries.is_empty() {
-            "No previous element in history".clone_into(&mut self.status);
+            self.status = "No previous element in history".into();
             return;
         }
 
         if self.history.position == 0 {
-            "Already at oldest element in history".clone_into(&mut self.status);
+            self.status = "Already at oldest element in history".into();
             return;
         }
 
         self.history.position = self.history.position.saturating_sub(1);
         let Some(entry) = self.history.entries.get(self.history.position).cloned() else {
-            "History access failed".clone_into(&mut self.status);
+            self.status = "History access failed".into();
             return;
         };
 
@@ -144,7 +144,7 @@ impl App {
         } else {
             // Fall back to path-based resolution
             let Some(idx) = self.resolve_path(&entry.node_path) else {
-                "Previous element no longer reachable".clone_into(&mut self.status);
+                self.status = "Previous element no longer reachable".into();
                 return;
             };
             idx
@@ -156,7 +156,7 @@ impl App {
             .iter()
             .position(|&idx| idx == target_node_idx)
         else {
-            "Previous element no longer reachable".clone_into(&mut self.status);
+            self.status = "Previous element no longer reachable".into();
             return;
         };
 

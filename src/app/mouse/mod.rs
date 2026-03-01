@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use crossterm::event::{MouseButton, MouseEventKind};
 
 use super::{App, DOUBLE_CLICK_MS, DragState, FocusState, SCROLL_CONTEXT_LINES, input::Action};
-use crate::tree::{DetailRowType, DetailSectionType, NodeType};
 
 impl App {
     pub(super) fn handle_mouse_event(
@@ -188,148 +187,12 @@ impl App {
             if let Some(area) = self.layout.table_content_area {
                 let relative_row = (row.saturating_sub(area.y)) as usize;
                 if relative_row < HEADER_HEIGHT {
-                    // Ignore double-clicks on header
                     return;
                 }
             }
 
-            // Check what type of node we're on
-            if self.tree.cursor < self.tree.visible.len() {
-                let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-                    return;
-                };
-                let Some(node) = self.tree.all_nodes.get(node_idx) else {
-                    return;
-                };
-
-                // Check if this is a service list header (generic check)
-                let is_service_list = Self::is_service_list_section(node);
-
-                // Check if this is the Variants overview section
-                let is_variants_section =
-                    matches!(node.section_type, Some(crate::tree::SectionType::Variants))
-                        && node
-                            .detail_sections
-                            .first()
-                            .is_some_and(|s| s.content.has_table());
-
-                // Check if this is any service-related node type (generic check)
-                let is_service_node = matches!(
-                    node.node_type,
-                    NodeType::Service
-                        | NodeType::ParentRefService
-                        | NodeType::Request
-                        | NodeType::PosResponse
-                        | NodeType::NegResponse
-                );
-
-                // Check if this is a functional class node
-                let is_functional_class = matches!(node.node_type, NodeType::FunctionalClass);
-
-                // Check if this is a DOP node (DIAG-DATA-DICTIONARY-SPEC,
-                // DOP category, or individual DOP with children)
-                let is_dop_node = matches!(node.node_type, NodeType::DOP)
-                    || self.is_dop_category_node(node_idx)
-                    || self.is_individual_dop_node(node_idx);
-
-                if is_variants_section {
-                    // Navigate to selected variant from the Variants overview table
-                    self.try_navigate_to_variant();
-                } else if is_service_list {
-                    // Navigate to selected service from service list table
-                    self.try_navigate_to_service();
-                } else if is_functional_class {
-                    // For functional class nodes, check which column is focused
-                    // Column 0 (ShortName): navigate to service/job
-                    // Column 5 (Layer): navigate to variant/layer
-                    if self.table.focused_column == 0 {
-                        self.try_navigate_to_service_from_functional_class();
-                    } else if self.table.focused_column == 5 {
-                        self.try_navigate_to_layer_from_functional_class();
-                    }
-                } else if is_dop_node {
-                    // Navigate to child DOP element instead of showing popup
-                    self.try_navigate_to_dop_child();
-                } else if matches!(node.node_type, NodeType::ParentRefs) {
-                    // Navigate to parent ref target from overview
-                    self.try_navigate_to_parent_ref();
-                } else if is_service_node {
-                    self.handle_service_node_double_click(node_idx);
-                } else {
-                    // Check if we're in a Parent References section
-                    let section_idx = self.get_section_index();
-                    if let Some(section) = node.detail_sections.get(section_idx) {
-                        if section.section_type == DetailSectionType::RelatedRefs
-                            && section.title == "Parent References"
-                        {
-                            self.try_navigate_to_parent_ref();
-                            return;
-                        } else if section.title.starts_with("Not Inherited") {
-                            // Navigate to the selected not-inherited element
-                            self.try_navigate_to_not_inherited_element();
-                            return;
-                        }
-                    }
-
-                    self.try_navigate_from_detail_row();
-                }
-            }
-        }
-    }
-
-    /// Handle double-click on a service-related node type.
-    fn handle_service_node_double_click(&mut self, node_idx: usize) {
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
-
-        // Check if we're on the "Inherited From" row in Overview
-        let mut should_navigate_to_parent = false;
-        let mut should_navigate_from_param_table = false;
-
-        // Get the actual section index accounting for header section offset
-        let section_idx = self.get_section_index();
-
-        if section_idx < node.detail_sections.len() {
-            let Some(section) = node.detail_sections.get(section_idx) else {
-                return;
-            };
-
-            // Check if this is a request/response parameter table
-            if matches!(
-                section.section_type,
-                DetailSectionType::Requests
-                    | DetailSectionType::PosResponses
-                    | DetailSectionType::NegResponses
-            ) {
-                should_navigate_from_param_table = true;
-            } else if section.section_type == DetailSectionType::Overview
-                && let Some(rows) = section.content.table_rows()
-            {
-                let row_cursor = self
-                    .detail
-                    .section_cursors
-                    .get(section_idx)
-                    .copied()
-                    .unwrap_or(0);
-
-                // Apply sorting if active for this section
-                let sorted_rows = self.sort_rows(rows, section_idx);
-
-                if let Some(selected_row) = sorted_rows.get(row_cursor)
-                    && selected_row.row_type == DetailRowType::InheritedFrom
-                {
-                    should_navigate_to_parent = true;
-                }
-            }
-        }
-
-        if should_navigate_from_param_table {
-            self.try_navigate_from_param_table();
-        } else if should_navigate_to_parent {
-            self.try_navigate_to_inherited_parent();
-        } else {
-            self.try_navigate_from_detail_row();
+            // Delegate to the unified Enter-in-detail dispatch
+            self.handle_enter_in_detail_pane();
         }
     }
 

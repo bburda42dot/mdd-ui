@@ -310,15 +310,7 @@ impl DetailContent {
         }
     }
 
-    /// Returns true if this content contains a table (directly or inside a Composite).
-    pub fn has_table(&self) -> bool {
-        match self {
-            DetailContent::Table { .. } => true,
-            DetailContent::Composite(subs) => subs.iter().any(|s| s.content.has_table()),
-            DetailContent::PlainText(_) => false,
-        }
-    }
-
+    /// Returns the table header row, if present.
     /// Get the table header, looking through `Composite` to find the first `Table`.
     pub fn table_header(&self) -> Option<&DetailRow> {
         match self {

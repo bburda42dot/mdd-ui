@@ -58,7 +58,7 @@ pub enum ServiceListType {
 }
 
 /// Type of node for styling and interaction purposes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum NodeType {
     /// Collapsible container without its own detail content.
     Container,
@@ -85,6 +85,7 @@ pub enum NodeType {
     /// A Special Data Group node.
     Sdg,
     /// Fallback node type with default styling.
+    #[default]
     Default,
 }
 

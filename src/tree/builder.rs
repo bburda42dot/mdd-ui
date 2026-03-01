@@ -7,6 +7,21 @@ use std::rc::Rc;
 
 use super::types::{DetailSectionData, NodeType, SectionType, ServiceListType, TreeNode};
 
+/// Configuration for a single tree node, used to avoid repeating the full
+/// `TreeNode` struct literal in every `push_*` method.
+#[derive(Default)]
+struct NodeConfig {
+    depth: usize,
+    text: String,
+    expanded: bool,
+    has_children: bool,
+    sections: Vec<DetailSectionData>,
+    node_type: NodeType,
+    section_type: Option<SectionType>,
+    service_list_type: Option<ServiceListType>,
+    param_id: Option<u32>,
+}
+
 /// Accumulates `TreeNode`s while walking the database model.
 ///
 /// Methods are spread across submodules (`services`, `layers`) via
@@ -20,6 +35,20 @@ impl TreeBuilder {
         Self { nodes: Vec::new() }
     }
 
+    fn push_node(&mut self, cfg: NodeConfig) {
+        self.nodes.push(TreeNode {
+            depth: cfg.depth,
+            text: cfg.text,
+            expanded: cfg.expanded,
+            has_children: cfg.has_children,
+            detail_sections: Rc::from(cfg.sections),
+            node_type: cfg.node_type,
+            section_type: cfg.section_type,
+            service_list_type: cfg.service_list_type,
+            param_id: cfg.param_id,
+        });
+    }
+
     /// Push a node that carries structured detail sections (preferred).
     pub(crate) fn push_details_structured(
         &mut self,
@@ -30,16 +59,14 @@ impl TreeBuilder {
         sections: Vec<DetailSectionData>,
         node_type: NodeType,
     ) {
-        self.nodes.push(TreeNode {
+        self.push_node(NodeConfig {
             depth,
             text,
             expanded,
             has_children,
-            detail_sections: Rc::from(sections), // O(1) clone, not per-access
+            sections,
             node_type,
-            section_type: None,
-            service_list_type: None,
-            param_id: None,
+            ..NodeConfig::default()
         });
     }
 
@@ -52,16 +79,13 @@ impl TreeBuilder {
         node_type: NodeType,
         param_id: u32,
     ) {
-        self.nodes.push(TreeNode {
+        self.push_node(NodeConfig {
             depth,
             text,
-            expanded: false,
-            has_children: false,
-            detail_sections: Rc::from(sections),
+            sections,
             node_type,
-            section_type: None,
-            service_list_type: None,
             param_id: Some(param_id),
+            ..NodeConfig::default()
         });
     }
 
@@ -75,16 +99,15 @@ impl TreeBuilder {
         sections: Vec<DetailSectionData>,
         service_list_type: ServiceListType,
     ) {
-        self.nodes.push(TreeNode {
+        self.push_node(NodeConfig {
             depth,
             text,
             expanded,
             has_children,
-            detail_sections: Rc::from(sections),
+            sections,
             node_type: NodeType::SectionHeader,
-            section_type: None,
             service_list_type: Some(service_list_type),
-            param_id: None,
+            ..NodeConfig::default()
         });
     }
 
@@ -97,16 +120,14 @@ impl TreeBuilder {
         sections: Vec<DetailSectionData>,
         section_type: SectionType,
     ) {
-        self.nodes.push(TreeNode {
-            depth: 0,
+        self.push_node(NodeConfig {
             text,
             expanded,
             has_children,
-            detail_sections: Rc::from(sections),
+            sections,
             node_type: NodeType::SectionHeader,
             section_type: Some(section_type),
-            service_list_type: None,
-            param_id: None,
+            ..NodeConfig::default()
         });
     }
 

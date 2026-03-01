@@ -11,10 +11,6 @@ use crate::{
 impl App {
     /// Handle Enter key for service nodes
     pub(super) fn handle_service_node_enter(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
-
         let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
@@ -22,10 +18,6 @@ impl App {
             return;
         };
         let section_idx = self.get_section_index();
-
-        if section_idx >= node.detail_sections.len() {
-            return;
-        }
 
         let Some(section) = node.detail_sections.get(section_idx) else {
             return;
@@ -68,12 +60,6 @@ impl App {
     /// Navigate to a service in the tree from a service list table
     /// (Diag-Comms, Requests, Responses)
     pub(crate) fn try_navigate_to_service(&mut self) {
-        // Early validation
-        if self.tree.cursor >= self.tree.visible.len() {
-            self.status = "Cursor out of bounds".to_string();
-            return;
-        }
-
         let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };

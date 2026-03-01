@@ -31,7 +31,7 @@ pub(super) enum CompositeBlock<'a> {
         constraints: &'a [crate::tree::ColumnConstraint],
     },
     PlainText {
-        lines: Vec<String>,
+        lines: &'a [String],
     },
 }
 
@@ -65,9 +65,7 @@ pub(super) fn build_composite_blocks(subsections: &[DetailSectionData]) -> Vec<C
                     continue;
                 }
                 // Standalone plain text
-                blocks.push(CompositeBlock::PlainText {
-                    lines: lines.clone(),
-                });
+                blocks.push(CompositeBlock::PlainText { lines });
             }
             DetailContent::Table {
                 header,

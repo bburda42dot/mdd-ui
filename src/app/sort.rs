@@ -11,14 +11,10 @@ impl App {
         let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        let Some(node) = self.tree.all_nodes.get(idx) else {
-            return;
-        };
-        if !node.has_children {
-            return;
-        }
         if let Some(node_mut) = self.tree.all_nodes.get_mut(idx) {
-            node_mut.expanded = !node_mut.expanded;
+            if node_mut.has_children {
+                node_mut.expanded = !node_mut.expanded;
+            }
         }
         let old = self.tree.cursor;
         self.rebuild_visible();

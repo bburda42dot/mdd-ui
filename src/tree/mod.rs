@@ -31,7 +31,7 @@ pub fn build_tree(db: &DiagnosticDatabase) -> Vec<TreeNode> {
     // Add General section with ECU info
     if let Some(ref ecu) = data.ecu {
         let ecu_details = get_ecu_summary(db, ecu_name);
-        let ecu_section = lines_to_single_section("Summary", ecu_details.clone());
+        let ecu_section = lines_to_single_section("Summary", ecu_details);
         b.push_section_header(
             "General".to_string(),
             false,

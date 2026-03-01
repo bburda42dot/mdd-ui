@@ -189,9 +189,7 @@ pub fn add_dops_section<'a>(b: &mut TreeBuilder, layer: &DiagLayer<'a>, depth: u
 
     collect_dops_from_layer(layer, &mut all_dops, &mut seen);
 
-    let unique_dops = all_dops;
-
-    if unique_dops.is_empty() {
+    if all_dops.is_empty() {
         return;
     }
     let mut dtc_dops: Vec<DopInfo> = Vec::new();
@@ -204,7 +202,7 @@ pub fn add_dops_section<'a>(b: &mut TreeBuilder, layer: &DiagLayer<'a>, depth: u
     let mut end_of_pdu_fields: Vec<DopInfo> = Vec::new();
     let mut mux_dops: Vec<DopInfo> = Vec::new();
 
-    for dop_info in unique_dops {
+    for dop_info in all_dops {
         if let Ok(variant) = dop_info.dop.variant() {
             match variant {
                 DataOperationVariant::Dtc(_) => dtc_dops.push(dop_info),
@@ -253,33 +251,31 @@ pub fn add_dops_section<'a>(b: &mut TreeBuilder, layer: &DiagLayer<'a>, depth: u
     );
 
     for (cat, dops) in &categories {
-        if !dops.is_empty() {
-            let cat_detail = cat.build_detail_sections(dops);
+        let cat_detail = cat.build_detail_sections(dops);
 
+        b.push_details_structured(
+            depth.saturating_add(1),
+            format!("{} ({})", cat.label(), dops.len()),
+            false,
+            true,
+            cat_detail,
+            NodeType::Default,
+        );
+
+        let expandable = cat.has_dop_children();
+        for dop_info in *dops {
+            let detail_sections = build_dop_detail_sections(dop_info);
             b.push_details_structured(
-                depth.saturating_add(1),
-                format!("{} ({})", cat.label(), dops.len()),
+                depth.saturating_add(2),
+                dop_info.name.clone(),
                 false,
-                true,
-                cat_detail,
+                expandable,
+                detail_sections,
                 NodeType::Default,
             );
 
-            let expandable = cat.has_dop_children();
-            for dop_info in *dops {
-                let detail_sections = build_dop_detail_sections(dop_info);
-                b.push_details_structured(
-                    depth.saturating_add(2),
-                    dop_info.name.clone(),
-                    false,
-                    expandable,
-                    detail_sections,
-                    NodeType::Default,
-                );
-
-                if expandable {
-                    cat.add_dop_children(b, dop_info, depth.saturating_add(3));
-                }
+            if expandable {
+                cat.add_dop_children(b, dop_info, depth.saturating_add(3));
             }
         }
     }

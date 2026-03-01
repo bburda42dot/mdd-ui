@@ -219,18 +219,20 @@ impl DetailState {
     /// Grow `section_scrolls` and `section_cursors` so that `idx` is a
     /// valid index in both vectors.
     pub fn ensure_section_capacity(&mut self, idx: usize) {
-        while self.section_scrolls.len() <= idx {
-            self.section_scrolls.push(0);
+        let len = idx.saturating_add(1);
+        if self.section_scrolls.len() < len {
+            self.section_scrolls.resize(len, 0);
         }
-        while self.section_cursors.len() <= idx {
-            self.section_cursors.push(0);
+        if self.section_cursors.len() < len {
+            self.section_cursors.resize(len, 0);
         }
     }
 
     /// Grow `composite_scroll` so that `idx` is a valid index.
     pub fn ensure_composite_capacity(&mut self, idx: usize) {
-        while self.composite_scroll.len() <= idx {
-            self.composite_scroll.push(0);
+        let len = idx.saturating_add(1);
+        if self.composite_scroll.len() < len {
+            self.composite_scroll.resize(len, 0);
         }
     }
 }
@@ -253,8 +255,9 @@ pub(crate) struct TableState {
 impl TableState {
     /// Grow `horizontal_scroll` so that `idx` is a valid index.
     pub fn ensure_horizontal_scroll_capacity(&mut self, idx: usize) {
-        while self.horizontal_scroll.len() <= idx {
-            self.horizontal_scroll.push(0);
+        let len = idx.saturating_add(1);
+        if self.horizontal_scroll.len() < len {
+            self.horizontal_scroll.resize(len, 0);
         }
     }
 }

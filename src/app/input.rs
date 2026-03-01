@@ -334,7 +334,7 @@ impl App {
                 }
                 KeyCode::End => {
                     if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = usize::MAX;
+                        *scroll = self.detail.composite_max_scroll;
                     }
                 }
                 KeyCode::Left | KeyCode::Char('H') => {
@@ -379,8 +379,16 @@ impl App {
                 }
             }
             KeyCode::End => {
+                let row_count = self
+                    .tree
+                    .visible
+                    .get(self.tree.cursor)
+                    .and_then(|&node_idx| self.tree.all_nodes.get(node_idx))
+                    .and_then(|node| node.detail_sections.get(section_idx))
+                    .and_then(|s| s.content.table_rows())
+                    .map_or(0, |rows| rows.len());
                 if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = usize::MAX;
+                    *cursor = row_count.saturating_sub(1);
                 }
             }
             KeyCode::Left | KeyCode::Char('H') => {

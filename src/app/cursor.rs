@@ -164,8 +164,16 @@ impl App {
     pub(crate) fn end(&mut self) {
         if self.focus_state == FocusState::Detail {
             let section_idx = self.get_section_index();
+            let row_count = self
+                .tree
+                .visible
+                .get(self.tree.cursor)
+                .and_then(|&node_idx| self.tree.all_nodes.get(node_idx))
+                .and_then(|node| node.detail_sections.get(section_idx))
+                .and_then(|s| s.content.table_rows())
+                .map_or(0, |rows| rows.len());
             if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                *cursor = usize::MAX; // clamped during render
+                *cursor = row_count.saturating_sub(1);
             }
         } else {
             self.set_tree_cursor(self.tree.visible.len().saturating_sub(1));

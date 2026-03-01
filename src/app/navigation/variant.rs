@@ -5,40 +5,15 @@
 
 use crate::{
     app::App,
-    tree::{DetailSectionType, NodeType, RowMetadata},
+    tree::{DetailSectionType, RowMetadata},
 };
 
 impl App {
-    /// Handle Enter key for functional class nodes
+    /// Handle Enter key for functional class nodes.
+    /// Delegates to the generic cell-jump dispatch so navigation is driven
+    /// by per-cell `CellJumpTarget` metadata rather than hard-coded column indices.
     pub(super) fn handle_functional_class_enter(&mut self) {
-        match self.table.focused_column {
-            0 => self.try_navigate_to_service_from_functional_class(),
-            5 => self.try_navigate_to_layer_from_functional_class(),
-            _ => {}
-        }
-    }
-
-    /// Navigate to a layer from functional class detail view
-    pub(crate) fn try_navigate_to_layer_from_functional_class(&mut self) {
-        let layer_name = {
-            let Some(ctx) = self.resolve_selected_row() else {
-                return;
-            };
-            if !matches!(ctx.node.node_type, NodeType::FunctionalClass) {
-                return;
-            }
-            if ctx.section.section_type != DetailSectionType::Services {
-                return;
-            }
-            let Some(selected_row) = ctx.selected_row() else {
-                return;
-            };
-            let Some(name) = selected_row.cells.get(5).cloned() else {
-                return;
-            };
-            name
-        };
-        self.navigate_to_container_by_name(&layer_name);
+        self.try_navigate_from_detail_row();
     }
 
     /// Navigate to a variant from the Variants overview table

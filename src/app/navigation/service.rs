@@ -357,31 +357,4 @@ impl App {
             self.status = format!("Navigated to: {target_short_name}");
         }
     }
-
-    /// Navigate to a service or job from a functional class detail view
-    /// Uses the `ShortName` column (column 0) to find the target
-    pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
-        let target_short_name = {
-            let Some(ctx) = self.resolve_selected_row() else {
-                return;
-            };
-
-            if !matches!(ctx.node.node_type, NodeType::FunctionalClass) {
-                return;
-            }
-            if ctx.section.section_type != DetailSectionType::Services {
-                return;
-            }
-
-            let Some(selected_row) = ctx.selected_row() else {
-                return;
-            };
-            let Some(name) = selected_row.cells.first().cloned() else {
-                return;
-            };
-            name
-        };
-
-        self.navigate_to_service_or_job(&target_short_name);
-    }
 }

@@ -108,10 +108,8 @@ impl App {
         let b_cell = b.cells.get(col).map_or("", String::as_str);
 
         match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
-            (Ok(a_num), Ok(b_num)) => a_num
-                .partial_cmp(&b_num)
-                .unwrap_or(std::cmp::Ordering::Equal),
-            _ => a_cell.cmp(b_cell),
+            (Ok(a_num), Ok(b_num)) => a_num.total_cmp(&b_num),
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) | (Err(_), Err(_)) => a_cell.cmp(b_cell),
         }
     }
 

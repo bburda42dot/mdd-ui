@@ -157,7 +157,7 @@ impl App {
                     .min(outer_inner.height / 4);
                 Some(height)
             }
-            _ => None,
+            DetailContent::Table { .. } | DetailContent::Composite(_) => None,
         }
     }
 
@@ -223,7 +223,7 @@ impl App {
                 direction: crate::app::SortDirection::Ascending,
                 secondary_column: None,
             }),
-            _ => Some(TableSortState {
+            (None, Some(_)) | (None, None) => Some(TableSortState {
                 column: 0,
                 direction: crate::app::SortDirection::Ascending,
                 secondary_column: None,

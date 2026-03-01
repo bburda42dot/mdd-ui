@@ -198,7 +198,6 @@ pub(crate) struct SearchState {
 #[derive(Default)]
 pub(crate) struct DetailState {
     pub selected_tab: usize,
-    pub focused_section: usize,
     pub section_scrolls: Vec<usize>,
     pub section_cursors: Vec<usize>,
     pub popup: Option<PopupData>,
@@ -339,7 +338,6 @@ impl App {
             },
             detail: DetailState {
                 selected_tab: 0,
-                focused_section: 0,
                 section_scrolls: Vec::new(),
                 section_cursors: Vec::new(),
                 popup: None,

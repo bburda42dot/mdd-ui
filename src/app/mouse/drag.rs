@@ -182,7 +182,7 @@ impl App {
                     return;
                 }
 
-                if self.detail.focused_section >= self.detail.section_scrolls.len() {
+                if section_idx >= self.detail.section_scrolls.len() {
                     return;
                 }
 
@@ -195,11 +195,11 @@ impl App {
                     return;
                 };
                 let sections = &node.detail_sections;
-                if self.detail.focused_section >= sections.len() {
+                if section_idx >= sections.len() {
                     return;
                 }
 
-                let Some(section) = sections.get(self.detail.focused_section) else {
+                let Some(section) = sections.get(section_idx) else {
                     return;
                 };
                 let row_count = match &section.content {
@@ -230,29 +230,19 @@ impl App {
                     0
                 };
 
-                let Some(section_cursor) = self
-                    .detail
-                    .section_cursors
-                    .get_mut(self.detail.focused_section)
-                else {
+                let Some(section_cursor) = self.detail.section_cursors.get_mut(section_idx) else {
                     return;
                 };
                 *section_cursor = new_cursor.min(max_cursor);
 
                 // Adjust scroll to keep cursor centered
                 let half_viewport = viewport_height.saturating_div(2);
-                let Some(&cursor_val) =
-                    self.detail.section_cursors.get(self.detail.focused_section)
-                else {
+                let Some(&cursor_val) = self.detail.section_cursors.get(section_idx) else {
                     return;
                 };
                 let new_scroll = cursor_val.saturating_sub(half_viewport);
                 let max_scroll = row_count.saturating_sub(viewport_height);
-                let Some(section_scroll) = self
-                    .detail
-                    .section_scrolls
-                    .get_mut(self.detail.focused_section)
-                else {
+                let Some(section_scroll) = self.detail.section_scrolls.get_mut(section_idx) else {
                     return;
                 };
                 *section_scroll = new_scroll.min(max_scroll);

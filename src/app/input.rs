@@ -133,9 +133,6 @@ impl App {
                 } else {
                     FocusState::Detail
                 };
-                if self.focus_state != FocusState::Detail {
-                    self.detail.focused_section = 0; // Reset when returning to tree
-                }
             }
 
             // Pane resizing

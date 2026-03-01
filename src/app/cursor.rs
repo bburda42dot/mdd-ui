@@ -33,7 +33,6 @@ impl App {
         }
 
         // Reset focus and clear per-section state
-        self.detail.focused_section = 0;
         self.table.focused_column = 0;
         self.detail.section_scrolls.clear();
         self.detail.section_cursors.clear();

@@ -134,14 +134,14 @@ impl App {
             // Dragging tree scrollbar
             if let Some(area) = self.layout.tree_scrollbar_area {
                 let visible_count = self.tree.visible.len();
-                let viewport_height = area.height as usize;
+                let viewport_height = usize::from(area.height);
 
                 if visible_count <= viewport_height {
                     return;
                 }
 
                 // Map mouse position to cursor position in the full list
-                let relative_y = row.saturating_sub(area.y) as usize;
+                let relative_y = usize::from(row.saturating_sub(area.y));
                 let max_cursor = visible_count.saturating_sub(1);
 
                 let new_cursor = if area.height > 1 {
@@ -216,14 +216,14 @@ impl App {
                         .find_map(|s| s.content.table_rows())
                         .map_or(0, <[_]>::len),
                 };
-                let viewport_height = area.height as usize;
+                let viewport_height = usize::from(area.height);
 
                 if row_count <= viewport_height {
                     return;
                 }
 
                 // Map mouse position to cursor position in the section
-                let relative_y = row.saturating_sub(area.y) as usize;
+                let relative_y = usize::from(row.saturating_sub(area.y));
                 let max_cursor = row_count.saturating_sub(1);
 
                 let new_cursor = if area.height > 1 {

@@ -179,7 +179,7 @@ impl App {
 
             // Check if double-click is on table header and ignore it
             if let Some(area) = self.layout.table_content_area {
-                let relative_row = (row.saturating_sub(area.y)) as usize;
+                let relative_row = usize::from(row.saturating_sub(area.y));
                 if relative_row < HEADER_HEIGHT {
                     return;
                 }

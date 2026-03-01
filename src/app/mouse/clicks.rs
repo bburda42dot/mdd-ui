@@ -23,11 +23,11 @@ impl App {
             return;
         }
 
-        let relative_col = column.saturating_sub(tab_area.x) as usize;
-        let relative_row = row.saturating_sub(tab_area.y) as usize;
+        let relative_col = usize::from(column.saturating_sub(tab_area.x));
+        let relative_row = usize::from(row.saturating_sub(tab_area.y));
 
         // Calculate available width for tabs (full width, no borders)
-        let available_width = tab_area.width as usize;
+        let available_width = usize::from(tab_area.width);
 
         // Build tab strings with decorators to match rendering logic
         let tab_strings: Vec<String> = self
@@ -137,7 +137,7 @@ impl App {
         self.detail.ensure_section_capacity(section_idx);
 
         // Calculate clicked row (skip header which is 3 lines tall)
-        let relative_row = (row.saturating_sub(area.y)) as usize;
+        let relative_row = usize::from(row.saturating_sub(area.y));
 
         if relative_row < HEADER_HEIGHT {
             // Clicked on header - trigger column sort
@@ -232,7 +232,7 @@ impl App {
             return; // Clicked on border or help text area
         }
 
-        let clicked_line = row.saturating_sub(inner_y) as usize;
+        let clicked_line = usize::from(row.saturating_sub(inner_y));
         let target_cursor = self.tree.scroll_offset.saturating_add(clicked_line);
 
         if target_cursor >= self.tree.visible.len() {

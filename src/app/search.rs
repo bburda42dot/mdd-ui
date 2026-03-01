@@ -41,11 +41,11 @@ impl App {
     fn populate_search_matches(&mut self) {
         self.search.matches.clear();
 
-        let Some(entry) = self.search.stack.last().cloned() else {
+        let Some(last) = self.search.stack.last() else {
             return;
         };
-        let q = entry.query.to_lowercase();
-        let scope = entry.scope;
+        let q = last.query.to_lowercase();
+        let scope = last.scope.clone();
 
         self.search.matches = self
             .tree

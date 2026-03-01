@@ -184,7 +184,7 @@ impl App {
     }
 
     /// Search for a node at exactly `target_depth` within a range.
-    fn find_at_depth(
+    pub(super) fn find_at_depth(
         &self,
         start: usize,
         end: usize,
@@ -378,15 +378,28 @@ impl App {
         // 3. Global fallback (cross-section parent-ref navigation)
         let global = || self.tree.all_nodes.iter().position(is_target);
 
-        let found = direct_child.or_else(section_scoped).or_else(global);
+        let found = if let Some(idx) = direct_child {
+            Some((idx, false))
+        } else if let Some(idx) = section_scoped() {
+            Some((idx, false))
+        } else {
+            global().map(|idx| (idx, true))
+        };
 
-        let Some(container_node_idx) = found else {
+        let Some((container_node_idx, is_cross_section)) = found else {
             self.status = format!("Element '{target_short_name}' not found in tree");
             return;
         };
 
         self.navigate_to_node(container_node_idx);
-        self.status = format!("Navigated to: {target_short_name}");
+        self.status = format!(
+            "Navigated to: {target_short_name}{}",
+            if is_cross_section {
+                " (cross-section)"
+            } else {
+                ""
+            },
+        );
     }
 
     /// Navigate to a tree node whose text matches the given name.

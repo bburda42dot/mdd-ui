@@ -126,42 +126,15 @@ impl App {
             crate::tree::ServiceListType::FunctionalClasses,
         );
 
-        // Find service in visible nodes after parent
-        let found_idx = self
-            .tree
-            .visible
-            .get(self.tree.cursor.saturating_add(1)..)
-            .and_then(|rest| {
-                rest.iter()
-                    .copied()
-                    .take_while(|&vis_idx| {
-                        self.tree
-                            .all_nodes
-                            .get(vis_idx)
-                            .is_some_and(|n| n.depth > parent_depth)
-                    })
-                    .filter(|&vis_idx| {
-                        self.tree
-                            .all_nodes
-                            .get(vis_idx)
-                            .is_some_and(|n| n.depth == parent_depth.saturating_add(1))
-                    })
-                    .find(|&vis_idx| {
-                        if let Some(node) = self.tree.all_nodes.get(vis_idx) {
-                            Self::node_matches_service_name(node, service_name, is_functional_class)
-                        } else {
-                            false
-                        }
-                    })
-                    .and_then(|vis_idx| self.tree.visible.iter().position(|&idx| idx == vis_idx))
-            });
+        // Search all_nodes in parent's subtree (not just visible) so collapsed
+        // services are found and their ancestors expanded automatically.
+        let (start, end) = self.subtree_range(parent_node_idx);
+        let found_idx = self.find_at_depth(start, end, parent_depth.saturating_add(1), &|node| {
+            Self::node_matches_service_name(node, service_name, is_functional_class)
+        });
 
-        if let Some(target_cursor) = found_idx {
-            self.push_to_history();
-            self.focus_state = FocusState::Tree;
-            self.tree.cursor = target_cursor;
-            self.reset_detail_state();
-            self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
+        if let Some(node_idx) = found_idx {
+            self.navigate_to_node(node_idx);
         } else {
             let item_type = if is_functional_class {
                 "Functional class"

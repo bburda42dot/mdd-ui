@@ -175,92 +175,38 @@ fn build_single_parent_ref_detail(
         .with_type(DetailSectionType::Overview),
     );
 
-    // Not-inherited DiagComms
-    if let Some(names) = parent_ref.not_inherited_diag_comm_short_names() {
-        let rows: Vec<DetailRow> = names
-            .iter()
-            .map(|name| {
-                DetailRow::with_jump_targets(
-                    vec![name.to_owned()],
-                    vec![CellType::ParameterName],
-                    vec![Some(CellJumpTarget::TreeNodeByName)],
-                    0,
-                )
-            })
-            .collect();
+    // Not-inherited sections driven by a config table
+    let not_inherited_configs = [
+        (
+            "Not Inherited DiagComms",
+            parent_ref.not_inherited_diag_comm_short_names(),
+            DetailSectionType::NotInheritedDiagComms,
+            make_tree_node_row as fn(&str) -> DetailRow,
+        ),
+        (
+            "Not Inherited Variables",
+            parent_ref.not_inherited_variables_short_names(),
+            DetailSectionType::NotInheritedVariables,
+            make_tree_node_row as fn(&str) -> DetailRow,
+        ),
+        (
+            "Not Inherited DOPs",
+            parent_ref.not_inherited_dops_short_names(),
+            DetailSectionType::NotInheritedDops,
+            make_dop_row as fn(&str) -> DetailRow,
+        ),
+        (
+            "Not Inherited Tables",
+            parent_ref.not_inherited_tables_short_names(),
+            DetailSectionType::NotInheritedTables,
+            make_tree_node_row as fn(&str) -> DetailRow,
+        ),
+    ];
+    for (title, names_opt, section_type, make_row) in not_inherited_configs {
+        let Some(names) = names_opt else { continue };
+        let rows: Vec<DetailRow> = names.iter().map(make_row).collect();
         if !rows.is_empty() {
-            sections.push(build_not_inherited_section(
-                "Not Inherited DiagComms",
-                rows,
-                DetailSectionType::NotInheritedDiagComms,
-            ));
-        }
-    }
-
-    // Not-inherited DiagVariables
-    if let Some(names) = parent_ref.not_inherited_variables_short_names() {
-        let rows: Vec<DetailRow> = names
-            .iter()
-            .map(|name| {
-                DetailRow::with_jump_targets(
-                    vec![name.to_owned()],
-                    vec![CellType::ParameterName],
-                    vec![Some(CellJumpTarget::TreeNodeByName)],
-                    0,
-                )
-            })
-            .collect();
-        if !rows.is_empty() {
-            sections.push(build_not_inherited_section(
-                "Not Inherited Variables",
-                rows,
-                DetailSectionType::NotInheritedVariables,
-            ));
-        }
-    }
-
-    // Not-inherited DOPs
-    if let Some(names) = parent_ref.not_inherited_dops_short_names() {
-        let rows: Vec<DetailRow> = names
-            .iter()
-            .map(|name| {
-                let dop_name = name.to_owned();
-                DetailRow::with_jump_targets(
-                    vec![dop_name.clone()],
-                    vec![CellType::DopReference],
-                    vec![Some(CellJumpTarget::Dop { name: dop_name })],
-                    0,
-                )
-            })
-            .collect();
-        if !rows.is_empty() {
-            sections.push(build_not_inherited_section(
-                "Not Inherited DOPs",
-                rows,
-                DetailSectionType::NotInheritedDops,
-            ));
-        }
-    }
-
-    // Not-inherited Tables
-    if let Some(names) = parent_ref.not_inherited_tables_short_names() {
-        let rows: Vec<DetailRow> = names
-            .iter()
-            .map(|name| {
-                DetailRow::with_jump_targets(
-                    vec![name.to_owned()],
-                    vec![CellType::ParameterName],
-                    vec![Some(CellJumpTarget::TreeNodeByName)],
-                    0,
-                )
-            })
-            .collect();
-        if !rows.is_empty() {
-            sections.push(build_not_inherited_section(
-                "Not Inherited Tables",
-                rows,
-                DetailSectionType::NotInheritedTables,
-            ));
+            sections.push(build_not_inherited_section(title, rows, section_type));
         }
     }
 
@@ -285,4 +231,23 @@ fn build_not_inherited_section(
         false,
     )
     .with_type(section_type)
+}
+
+fn make_tree_node_row(name: &str) -> DetailRow {
+    DetailRow::with_jump_targets(
+        vec![name.to_owned()],
+        vec![CellType::ParameterName],
+        vec![Some(CellJumpTarget::TreeNodeByName)],
+        0,
+    )
+}
+
+fn make_dop_row(name: &str) -> DetailRow {
+    let dop_name = name.to_owned();
+    DetailRow::with_jump_targets(
+        vec![dop_name.clone()],
+        vec![CellType::DopReference],
+        vec![Some(CellJumpTarget::Dop { name: dop_name })],
+        0,
+    )
 }

@@ -88,7 +88,7 @@ impl App {
         if self
             .history
             .entries
-            .last()
+            .back()
             .is_some_and(|e| e.node_path == path)
         {
             return;
@@ -104,10 +104,10 @@ impl App {
             node_path: path,
         };
 
-        self.history.entries.push(entry);
+        self.history.entries.push_back(entry);
         self.history.position = self.history.entries.len();
         if self.history.entries.len() > MAX_HISTORY {
-            self.history.entries.remove(0);
+            self.history.entries.pop_front();
             self.history.position = self.history.entries.len();
         }
     }

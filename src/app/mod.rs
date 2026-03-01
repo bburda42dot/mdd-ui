@@ -15,7 +15,11 @@ mod search;
 mod sort;
 mod visibility;
 
-use std::{collections::HashMap, io, time::Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    io,
+    time::Instant,
+};
 
 use config::ResolvedTheme;
 use crossterm::event::{self, Event, KeyEventKind, KeyModifiers};
@@ -285,7 +289,7 @@ pub(crate) struct MouseState {
 /// Navigation history state
 #[derive(Default)]
 pub(crate) struct HistoryState {
-    pub entries: Vec<HistoryEntry>,
+    pub entries: VecDeque<HistoryEntry>,
     pub position: usize,
 }
 

@@ -183,6 +183,25 @@ impl App {
             .map(|(idx, _)| idx)
     }
 
+    /// Search for a node at exactly `target_depth` within a range.
+    fn find_at_depth(
+        &self,
+        start: usize,
+        end: usize,
+        target_depth: usize,
+        predicate: &impl Fn(&TreeNode) -> bool,
+    ) -> Option<usize> {
+        self.tree
+            .all_nodes
+            .iter()
+            .enumerate()
+            .skip(start.saturating_add(1))
+            .take(end.saturating_sub(start).saturating_sub(1))
+            .filter(|(_, n)| n.depth == target_depth)
+            .find(|(_, n)| predicate(n))
+            .map(|(i, _)| i)
+    }
+
     /// Search parent-ref container subtrees for a matching node.
     /// `start`/`end` delimit the subtree whose parent-ref children to inspect.
     fn find_in_parent_ref_containers(
@@ -227,39 +246,56 @@ impl App {
             })
     }
 
-    /// Search for a node following the database hierarchy:
-    /// 1. Establish the enclosing section boundary so no lookup ever
-    ///    crosses into a different top-level section.
-    /// 2. Search within the current depth-1 container's subtree
-    ///    (only when the container belongs to the same section).
-    /// 3. Walk parent-ref containers referenced by that container.
-    /// 4. Search the full enclosing section as a final scoped fallback.
+    /// Search for a node following the database hierarchy — never flat-scan
+    /// the tree. The search order mirrors the database structure:
+    /// 1. Direct children of the current node (depth + 1).
+    /// 2. Full subtree of the current node (deeper descendants).
+    /// 3. Enclosing container's subtree (when deeper inside a container).
+    /// 4. Parent-ref containers referenced by that container.
+    ///
+    /// No section-wide or global fallback.
     pub(super) fn find_in_hierarchy(&self, predicate: impl Fn(&TreeNode) -> bool) -> Option<usize> {
         let current_node_idx = self.tree.visible.get(self.tree.cursor).copied()?;
+        let current_node = self.tree.all_nodes.get(current_node_idx)?;
+        let current_depth = current_node.depth;
+        let (node_start, node_end) = self.subtree_range(current_node_idx);
 
-        // Establish the section boundary first
+        // 1. Direct children of the current node (depth + 1)
+        if let Some(found) = self.find_at_depth(
+            node_start,
+            node_end,
+            current_depth.saturating_add(1),
+            &predicate,
+        ) {
+            return Some(found);
+        }
+
+        // 2. Full subtree of the current node (deeper descendants)
+        if let Some(found) =
+            self.find_in_subtree(node_start.saturating_add(1), node_end, &predicate)
+        {
+            return Some(found);
+        }
+
+        // 3. Enclosing container's subtree (when current node is deeper
+        //    than the container). Validate the container belongs to the
+        //    same section — find_current_container walks backwards
+        //    unconditionally and may return one from a preceding section.
         let section_idx = self.find_enclosing_section(current_node_idx)?;
         let (sec_start, sec_end) = self.subtree_range(section_idx);
 
-        // 1. Search within the current container's subtree, only when the
-        //    container is inside the same section (find_current_container
-        //    walks backwards unconditionally so it may return a container
-        //    from a preceding section).
-        if let Some(c_idx) = self.find_current_container(current_node_idx) {
-            if c_idx >= sec_start && c_idx < sec_end {
-                let (start, end) = self.subtree_range(c_idx);
-                if let Some(found) = self.find_in_subtree(start, end, &predicate) {
-                    return Some(found);
-                }
-                // 2. Walk parent-ref containers
-                if let Some(found) = self.find_in_parent_ref_containers(start, end, &predicate) {
-                    return Some(found);
-                }
-            }
+        let c_idx = self.find_current_container(current_node_idx)?;
+        if c_idx < sec_start || c_idx >= sec_end || c_idx == current_node_idx {
+            return None;
         }
 
-        // 3. Search the full enclosing section
-        self.find_in_subtree(sec_start, sec_end, &predicate)
+        let (c_start, c_end) = self.subtree_range(c_idx);
+        if let Some(found) = self.find_in_subtree(c_start, c_end, &predicate) {
+            return Some(found);
+        }
+
+        // 4. Parent-ref containers
+        self.find_in_parent_ref_containers(c_start, c_end, &predicate)
     }
 
     /// Navigate to a child tree node whose text matches the given `ChildElementType`.
@@ -307,8 +343,8 @@ impl App {
     }
 
     /// Navigate to a Container node matching the given short name.
-    /// Prefers containers within the current top-level section before
-    /// falling back to a global search.
+    /// Uses the database hierarchy: direct children first, then section,
+    /// then global (needed for cross-section parent-ref navigation).
     pub(super) fn navigate_to_container_by_name(&mut self, target_short_name: &str) {
         let is_target = |n: &TreeNode| -> bool {
             matches!(n.node_type, NodeType::Container) && {
@@ -321,14 +357,28 @@ impl App {
         };
 
         let current_node_idx = self.tree.visible.get(self.tree.cursor).copied();
-        let section_scoped = current_node_idx
-            .and_then(|idx| self.find_enclosing_section(idx))
-            .and_then(|sec_idx| {
-                let (start, end) = self.subtree_range(sec_idx);
-                self.find_in_subtree(start, end, is_target)
-            });
 
-        let found = section_scoped.or_else(|| self.tree.all_nodes.iter().position(is_target));
+        // 1. Direct children of the current node
+        let direct_child = current_node_idx.and_then(|idx| {
+            let node = self.tree.all_nodes.get(idx)?;
+            let (start, end) = self.subtree_range(idx);
+            self.find_at_depth(start, end, node.depth.saturating_add(1), &is_target)
+        });
+
+        // 2. Section-scoped search
+        let section_scoped = || {
+            current_node_idx
+                .and_then(|idx| self.find_enclosing_section(idx))
+                .and_then(|sec_idx| {
+                    let (start, end) = self.subtree_range(sec_idx);
+                    self.find_in_subtree(start, end, is_target)
+                })
+        };
+
+        // 3. Global fallback (cross-section parent-ref navigation)
+        let global = || self.tree.all_nodes.iter().position(is_target);
+
+        let found = direct_child.or_else(section_scoped).or_else(global);
 
         let Some(container_node_idx) = found else {
             self.status = format!("Element '{target_short_name}' not found in tree");

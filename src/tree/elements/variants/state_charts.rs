@@ -101,12 +101,7 @@ pub fn add_state_charts(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize
 }
 
 fn build_transitions_section(mut transitions: Vec<DetailRow>) -> DetailSectionData {
-    transitions.sort_by(|a, b| {
-        a.cells
-            .first()
-            .map(|s| s.to_lowercase())
-            .cmp(&b.cells.first().map(|s| s.to_lowercase()))
-    });
+    transitions.sort_by_cached_key(|row| row.cells.first().map(|s| s.to_lowercase()));
 
     DetailSectionData {
         title: "State Transitions".to_string(),
@@ -141,12 +136,7 @@ fn build_transitions_section(mut transitions: Vec<DetailRow>) -> DetailSectionDa
 }
 
 fn build_states_section(mut states: Vec<DetailRow>) -> DetailSectionData {
-    states.sort_by(|a, b| {
-        a.cells
-            .first()
-            .map(|s| s.to_lowercase())
-            .cmp(&b.cells.first().map(|s| s.to_lowercase()))
-    });
+    states.sort_by_cached_key(|row| row.cells.first().map(|s| s.to_lowercase()));
 
     DetailSectionData {
         title: "States".to_string(),

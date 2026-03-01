@@ -67,8 +67,8 @@ impl std::fmt::Display for SearchScope {
         match self {
             SearchScope::All => write!(f, "All"),
             SearchScope::Variants => write!(f, "Variants"),
-            SearchScope::FunctionalGroups => write!(f, "functional groups"),
-            SearchScope::EcuSharedData => write!(f, "ECU shared data"),
+            SearchScope::FunctionalGroups => write!(f, "Functional Groups"),
+            SearchScope::EcuSharedData => write!(f, "ECU Shared Data"),
             SearchScope::Services => write!(f, "Services"),
             SearchScope::DiagComms => write!(f, "Diag-Comms"),
             SearchScope::Requests => write!(f, "Requests"),

@@ -3,6 +3,8 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+use std::rc::Rc;
+
 /// Sentinel value for an unset bit position in the database.
 pub(crate) const BIT_POSITION_UNSET: u32 = 255;
 
@@ -82,7 +84,7 @@ pub struct TreeNode {
     /// Whether this node has child nodes that can be expanded.
     pub has_children: bool,
     /// Detail sections displayed when this node is selected.
-    pub detail_sections: Vec<DetailSectionData>,
+    pub detail_sections: Rc<[DetailSectionData]>,
     /// Classification of this node for styling and interaction.
     pub node_type: NodeType,
     /// If this is a `SectionHeader` at depth 0, specifies which top-level section it represents

@@ -3,6 +3,8 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+use std::rc::Rc;
+
 use super::types::{DetailSectionData, NodeType, SectionType, ServiceListType, TreeNode};
 
 /// Accumulates `TreeNode`s while walking the database model.
@@ -33,7 +35,7 @@ impl TreeBuilder {
             text,
             expanded,
             has_children,
-            detail_sections: sections,
+            detail_sections: Rc::from(sections), // O(1) clone, not per-access
             node_type,
             section_type: None,
             service_list_type: None,
@@ -55,7 +57,7 @@ impl TreeBuilder {
             text,
             expanded: false,
             has_children: false,
-            detail_sections: sections,
+            detail_sections: Rc::from(sections),
             node_type,
             section_type: None,
             service_list_type: None,
@@ -78,7 +80,7 @@ impl TreeBuilder {
             text,
             expanded,
             has_children,
-            detail_sections: sections,
+            detail_sections: Rc::from(sections),
             node_type: NodeType::SectionHeader,
             section_type: None,
             service_list_type: Some(service_list_type),
@@ -100,7 +102,7 @@ impl TreeBuilder {
             text,
             expanded,
             has_children,
-            detail_sections: sections,
+            detail_sections: Rc::from(sections),
             node_type: NodeType::SectionHeader,
             section_type: Some(section_type),
             service_list_type: None,

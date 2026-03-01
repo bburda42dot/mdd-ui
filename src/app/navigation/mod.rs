@@ -104,7 +104,13 @@ impl App {
                 && section.title == "Parent References"
             {
                 self.try_navigate_to_parent_ref();
-            } else if section.title.starts_with("Not Inherited") {
+            } else if matches!(
+                section.section_type,
+                DetailSectionType::NotInheritedDiagComms
+                    | DetailSectionType::NotInheritedDops
+                    | DetailSectionType::NotInheritedTables
+                    | DetailSectionType::NotInheritedVariables
+            ) {
                 self.try_navigate_to_not_inherited_element();
             } else {
                 self.try_navigate_from_detail_row();

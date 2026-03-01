@@ -5,7 +5,7 @@
 
 use crate::{
     app::App,
-    tree::{DetailRowType, NodeType, RowMetadata},
+    tree::{DetailRowType, DetailSectionType, NodeType, RowMetadata},
 };
 
 /// Type of not-inherited element, determines navigation strategy
@@ -197,16 +197,16 @@ impl App {
             return;
         };
 
-        // Determine what type of element we're looking for based on the section title
-        let element_type = if section.title.contains("DiagComms") {
-            NotInheritedElementType::DiagComm
-        } else if section.title.contains("DOPs") {
-            NotInheritedElementType::Dop
-        } else if section.title.contains("Tables") || section.title.contains("Variables") {
-            NotInheritedElementType::TreeNode
-        } else {
-            self.status = "Navigation not supported for this element type".into();
-            return;
+        // Determine what type of element we're looking for based on the section type
+        let element_type = match section.section_type {
+            DetailSectionType::NotInheritedDiagComms => NotInheritedElementType::DiagComm,
+            DetailSectionType::NotInheritedDops => NotInheritedElementType::Dop,
+            DetailSectionType::NotInheritedTables
+            | DetailSectionType::NotInheritedVariables => NotInheritedElementType::TreeNode,
+            _ => {
+                self.status = "Navigation not supported for this element type".into();
+                return;
+            }
         };
 
         // Get table rows

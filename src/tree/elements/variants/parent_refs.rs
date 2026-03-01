@@ -188,7 +188,11 @@ fn build_single_parent_ref_detail(
             })
             .collect();
         if !rows.is_empty() {
-            sections.push(build_not_inherited_section("Not Inherited DiagComms", rows));
+            sections.push(build_not_inherited_section(
+                "Not Inherited DiagComms",
+                rows,
+                DetailSectionType::NotInheritedDiagComms,
+            ));
         }
     }
 
@@ -206,7 +210,11 @@ fn build_single_parent_ref_detail(
             })
             .collect();
         if !rows.is_empty() {
-            sections.push(build_not_inherited_section("Not Inherited Variables", rows));
+            sections.push(build_not_inherited_section(
+                "Not Inherited Variables",
+                rows,
+                DetailSectionType::NotInheritedVariables,
+            ));
         }
     }
 
@@ -225,7 +233,11 @@ fn build_single_parent_ref_detail(
             })
             .collect();
         if !rows.is_empty() {
-            sections.push(build_not_inherited_section("Not Inherited DOPs", rows));
+            sections.push(build_not_inherited_section(
+                "Not Inherited DOPs",
+                rows,
+                DetailSectionType::NotInheritedDops,
+            ));
         }
     }
 
@@ -243,14 +255,22 @@ fn build_single_parent_ref_detail(
             })
             .collect();
         if !rows.is_empty() {
-            sections.push(build_not_inherited_section("Not Inherited Tables", rows));
+            sections.push(build_not_inherited_section(
+                "Not Inherited Tables",
+                rows,
+                DetailSectionType::NotInheritedTables,
+            ));
         }
     }
 
     sections
 }
 
-fn build_not_inherited_section(title: &str, rows: Vec<DetailRow>) -> DetailSectionData {
+fn build_not_inherited_section(
+    title: &str,
+    rows: Vec<DetailRow>,
+    section_type: DetailSectionType,
+) -> DetailSectionData {
     let header = DetailRow::header(vec!["Short Name".to_owned()], vec![CellType::Text]);
 
     DetailSectionData::new(
@@ -263,5 +283,5 @@ fn build_not_inherited_section(title: &str, rows: Vec<DetailRow>) -> DetailSecti
         },
         false,
     )
-    .with_type(DetailSectionType::Custom)
+    .with_type(section_type)
 }

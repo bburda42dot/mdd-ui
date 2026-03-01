@@ -127,6 +127,10 @@ impl App {
             | DetailSectionType::States
             | DetailSectionType::RelatedRefs
             | DetailSectionType::FunctionalClass
+            | DetailSectionType::NotInheritedDiagComms
+            | DetailSectionType::NotInheritedDops
+            | DetailSectionType::NotInheritedTables
+            | DetailSectionType::NotInheritedVariables
             | DetailSectionType::Custom => None,
         }) else {
             self.status = "Cannot navigate from this section type".into();

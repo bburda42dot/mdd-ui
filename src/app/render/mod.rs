@@ -145,17 +145,21 @@ impl App {
     }
 
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
-        let segments = self.build_breadcrumb_segments(area.x);
+        let cursor = self.tree.cursor;
+        if self.layout.breadcrumb_cursor != Some(cursor) || self.layout.breadcrumb_area_x != area.x {
+            self.layout.breadcrumb_segments = self.build_breadcrumb_segments(area.x);
+            self.layout.breadcrumb_cursor = Some(cursor);
+            self.layout.breadcrumb_area_x = area.x;
+        }
 
-        // Build display string
-        let breadcrumb_text: String = segments
+        // Build display string from the (possibly cached) segments
+        let breadcrumb_text: String = self
+            .layout
+            .breadcrumb_segments
             .iter()
             .map(|s| s.text.as_str())
             .collect::<Vec<_>>()
             .join(BREADCRUMB_SEPARATOR);
-
-        // Store segments for click handling
-        self.layout.breadcrumb_segments = segments;
 
         let paragraph = Paragraph::new(breadcrumb_text).style(
             Style::default()

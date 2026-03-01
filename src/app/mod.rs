@@ -320,6 +320,10 @@ pub(crate) struct LayoutCache {
     pub table_content_area: Option<Rect>,
     pub breadcrumb_area: Rect,
     pub breadcrumb_segments: Vec<BreadcrumbSegment>,
+    /// Cursor index at the time `breadcrumb_segments` was last computed.
+    pub breadcrumb_cursor: Option<usize>,
+    /// `area.x` at the time `breadcrumb_segments` was last computed.
+    pub breadcrumb_area_x: u16,
     pub tree_scrollbar_area: Option<Rect>,
     pub detail_scrollbar_area: Option<Rect>,
     pub detail_hscrollbar_area: Option<Rect>,

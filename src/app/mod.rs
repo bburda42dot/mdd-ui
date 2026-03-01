@@ -462,11 +462,6 @@ impl App {
         0
     }
 
-    /// Get the actual table section index for storing/retrieving sort state
-    fn get_table_section_idx(&self) -> usize {
-        self.get_section_index()
-    }
-
     /// Returns true if the currently selected detail section is a Composite
     fn is_current_section_composite(&self) -> bool {
         let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {

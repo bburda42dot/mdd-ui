@@ -307,7 +307,7 @@ impl App {
             return;
         }
 
-        let section_idx = self.get_table_section_idx();
+        let section_idx = self.get_section_index();
 
         // Ensure we have enough entries in table_sort_state
         while self.table.sort_state.len() <= section_idx {

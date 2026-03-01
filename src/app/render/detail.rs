@@ -3,6 +3,8 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+use std::rc::Rc;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -160,7 +162,7 @@ impl App {
     }
 
     /// Build layout for detail pane (header + content)
-    pub(super) fn build_detail_layout(outer_inner: Rect, header_height: Option<u16>) -> Vec<Rect> {
+    pub(super) fn build_detail_layout(outer_inner: Rect, header_height: Option<u16>) -> Rc<[Rect]> {
         let mut constraints = vec![];
         if let Some(h) = header_height {
             constraints.push(Constraint::Length(h));
@@ -171,7 +173,6 @@ impl App {
             .direction(Direction::Vertical)
             .constraints(constraints)
             .split(outer_inner)
-            .to_vec()
     }
 
     /// Ensure section state vectors are properly sized

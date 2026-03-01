@@ -71,7 +71,7 @@ pub enum NodeType {
 
 /// A single row in the flat tree view. Depth controls indentation, and
 /// `expanded` / `has_children` drive the collapse/expand behaviour.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TreeNode {
     /// Indentation level in the tree hierarchy (0 = root).
     pub depth: usize,

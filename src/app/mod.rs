@@ -48,18 +48,24 @@ pub(crate) const DEFAULT_TREE_WIDTH_PCT: u16 = 35;
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub(crate) enum SearchScope {
     #[default]
-    All, // Search everywhere
-    Variants,         // Search only in variant names
-    FunctionalGroups, // Search only in functional group names
-    EcuSharedData,    // Search only in ECU shared data names
-    Services,         // Search only in service names
-    DiagComms,        // Search only in Diag-Comms sections
-    Requests,         // Search only in Requests
-    Responses,        // Search only in Responses (Pos and Neg)
-    Subtree {
-        root_idx: usize,
-        root_name: String,
-    },
+    /// Search everywhere.
+    All,
+    /// Search only in variant names.
+    Variants,
+    /// Search only in functional group names.
+    FunctionalGroups,
+    /// Search only in ECU shared data names.
+    EcuSharedData,
+    /// Search only in service names.
+    Services,
+    /// Search only in Diag-Comms sections.
+    DiagComms,
+    /// Search only in Requests.
+    Requests,
+    /// Search only in Responses (Pos and Neg).
+    Responses,
+    /// Search within a specific subtree rooted at `root_idx`.
+    Subtree { root_idx: usize, root_name: String },
 }
 
 impl std::fmt::Display for SearchScope {
@@ -403,6 +409,18 @@ impl App {
         matches!(&node.service_list_type, Some(t) if *t == list_type)
     }
 
+    /// Walk backwards from `node_idx` to find the nearest ancestor (first
+    /// node with a strictly smaller depth) and return its index.
+    fn find_parent_idx(&self, node_idx: usize) -> Option<usize> {
+        let node = self.tree.all_nodes.get(node_idx)?;
+        (0..node_idx).rev().find(|&i| {
+            self.tree
+                .all_nodes
+                .get(i)
+                .is_some_and(|c| c.depth < node.depth)
+        })
+    }
+
     /// Check if a node is a DOP category node (child of DIAG-DATA-DICTIONARY-SPEC)
     fn is_dop_category_node(&self, node_idx: usize) -> bool {
         let Some(node) = self.tree.all_nodes.get(node_idx) else {
@@ -411,16 +429,9 @@ impl App {
         if !node.has_children || node.depth == 0 {
             return false;
         }
-        // Walk backwards to find the parent (first node with depth - 1)
-        for i in (0..node_idx).rev() {
-            let Some(candidate) = self.tree.all_nodes.get(i) else {
-                continue;
-            };
-            if candidate.depth < node.depth {
-                return matches!(candidate.node_type, NodeType::DOP);
-            }
-        }
-        false
+        self.find_parent_idx(node_idx)
+            .and_then(|i| self.tree.all_nodes.get(i))
+            .is_some_and(|parent| matches!(parent.node_type, NodeType::DOP))
     }
 
     /// Check if a node is an individual DOP with children (e.g. a DTC-DOP under DTC-DOPS).
@@ -432,16 +443,8 @@ impl App {
         if !node.has_children || node.depth < 2 {
             return false;
         }
-        // Walk backwards to find the parent
-        for i in (0..node_idx).rev() {
-            let Some(candidate) = self.tree.all_nodes.get(i) else {
-                continue;
-            };
-            if candidate.depth < node.depth {
-                return self.is_dop_category_node(i);
-            }
-        }
-        false
+        self.find_parent_idx(node_idx)
+            .is_some_and(|parent_idx| self.is_dop_category_node(parent_idx))
     }
 
     /// Get the actual section index accounting for header section offset

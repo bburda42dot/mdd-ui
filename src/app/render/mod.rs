@@ -132,7 +132,7 @@ impl App {
 
         for (i, (text, node_idx)) in segments.iter().enumerate() {
             let start_col = col_position;
-            let text_len = u16::try_from(text.len()).unwrap_or(u16::MAX);
+            let text_len = u16::try_from(text.chars().count()).unwrap_or(u16::MAX);
             let end_col = start_col.saturating_add(text_len);
 
             breadcrumb_segments.push(BreadcrumbSegment {

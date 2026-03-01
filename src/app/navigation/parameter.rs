@@ -24,6 +24,7 @@ impl App {
         let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
+        let node_type = node.node_type.clone();
         let section_idx = self.get_section_index();
 
         // Get table data or return early
@@ -37,7 +38,7 @@ impl App {
             .get(section_idx)
             .copied()
             .unwrap_or(0);
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
@@ -53,7 +54,8 @@ impl App {
         let cell_value = selected_row
             .cells
             .get(focused_col)
-            .map_or("", std::string::String::as_str);
+            .cloned()
+            .unwrap_or_default();
 
         if cell_value.is_empty() {
             self.status = "Empty cell".into();
@@ -63,7 +65,7 @@ impl App {
         // DiagComm Service view: ParameterName navigates to the counterpart
         if matches!(cell_type, CellType::ParameterName)
             && matches!(
-                node.node_type,
+                node_type,
                 NodeType::Service | NodeType::ParentRefService
             )
         {
@@ -77,7 +79,7 @@ impl App {
             .get(focused_col)
             .cloned()
             .flatten();
-        self.execute_cell_jump(jump_target, cell_value);
+        self.execute_cell_jump(jump_target, &cell_value);
     }
 
     /// Get table rows from section
@@ -278,7 +280,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         if row_cursor >= sorted_rows.len() {
             return;

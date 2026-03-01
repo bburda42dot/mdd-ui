@@ -68,7 +68,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         if row_cursor >= sorted_rows.len() {
             return;
@@ -126,7 +126,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
@@ -177,7 +177,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
@@ -185,7 +185,9 @@ impl App {
 
         // Check if this row is a child element row with metadata
         if let Some(RowMetadata::ChildElement { element_type }) = &selected_row.metadata {
-            self.navigate_to_child_element(node_idx, node.depth, element_type);
+            let element_type = element_type.clone();
+            let depth = node.depth;
+            self.navigate_to_child_element(node_idx, depth, &element_type);
         }
     }
 }

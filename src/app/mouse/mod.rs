@@ -147,17 +147,13 @@ impl App {
                     }
                 }
             }
-            MouseEventKind::ScrollLeft => {
-                if self.is_in_detail_area(column, row) {
-                    self.focus_state = FocusState::Detail;
-                    self.scroll_horizontal(-5);
-                }
+            MouseEventKind::ScrollLeft if self.is_in_detail_area(column, row) => {
+                self.focus_state = FocusState::Detail;
+                self.scroll_horizontal(-5);
             }
-            MouseEventKind::ScrollRight => {
-                if self.is_in_detail_area(column, row) {
-                    self.focus_state = FocusState::Detail;
-                    self.scroll_horizontal(5);
-                }
+            MouseEventKind::ScrollRight if self.is_in_detail_area(column, row) => {
+                self.focus_state = FocusState::Detail;
+                self.scroll_horizontal(5);
             }
             // Mouse back button not supported by crossterm 0.29 (only Left/Right/Middle)
             _ => {}
@@ -322,7 +318,7 @@ impl App {
                     .unwrap_or(0);
 
                 // Apply sorting if active for this section
-                let sorted_rows = self.apply_table_sort(rows, section_idx);
+                let sorted_rows = self.sort_rows(rows, section_idx);
 
                 if let Some(selected_row) = sorted_rows.get(row_cursor)
                     && selected_row.row_type == DetailRowType::InheritedFrom

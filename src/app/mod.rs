@@ -25,7 +25,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use crate::tree::{DetailRow, DetailSectionType, NodeType, TreeNode};
+use crate::tree::{DetailSectionType, NodeType, TreeNode};
 
 // -----------------------------------------------------------------------
 // Layout & interaction constants
@@ -538,7 +538,7 @@ impl App {
         let Some(rows) = section.content.table_rows() else {
             return;
         };
-        let rows = self.apply_table_sort(rows, section_idx);
+        let rows = self.sort_rows(rows, section_idx);
 
         let buffer_lower = self.table.jump_buffer.to_lowercase();
 
@@ -586,38 +586,6 @@ impl App {
         } else {
             self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);
         }
-    }
-
-    /// Apply sorting to rows if a sort state exists for the given section.
-    fn apply_table_sort(&self, rows: &[DetailRow], section_idx: usize) -> Vec<DetailRow> {
-        let Some(sort_state) = self
-            .table
-            .sort_state
-            .get(section_idx)
-            .and_then(|s| s.as_ref())
-        else {
-            return rows.to_vec();
-        };
-
-        let mut sorted = rows.to_vec();
-        let col = sort_state.column;
-        let dir = sort_state.direction;
-        let secondary = sort_state.secondary_column;
-        sorted.sort_by(|a, b| {
-            let cmp = Self::compare_cells(a, b, col);
-            let cmp = match cmp {
-                std::cmp::Ordering::Equal => secondary.map_or(std::cmp::Ordering::Equal, |sec| {
-                    Self::compare_cells(a, b, sec)
-                }),
-                other => other,
-            };
-
-            match dir {
-                SortDirection::Ascending => cmp,
-                SortDirection::Descending => cmp.reverse(),
-            }
-        });
-        sorted
     }
 
     // -------------------------------------------------------------------

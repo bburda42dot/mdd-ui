@@ -74,7 +74,7 @@ impl App {
             .get(overview_idx)
             .copied()
             .unwrap_or(0);
-        let sorted_rows = self.apply_table_sort(rows, overview_idx);
+        let sorted_rows = self.sort_rows(rows, overview_idx);
         let selected_row = sorted_rows.get(row_cursor)?;
 
         if selected_row.row_type != DetailRowType::InheritedFrom {
@@ -155,7 +155,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
@@ -220,7 +220,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;

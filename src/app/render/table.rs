@@ -68,7 +68,7 @@ struct HScrollParams<'a> {
 }
 
 impl App {
-    pub(super) fn sort_rows<'a>(
+    pub(crate) fn sort_rows<'a>(
         &self,
         rows: &'a [DetailRow],
         section_idx: usize,

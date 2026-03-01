@@ -52,7 +52,7 @@ impl App {
                 .get(section_idx)
                 .copied()
                 .unwrap_or(0);
-            let sorted_rows = self.apply_table_sort(rows, section_idx);
+            let sorted_rows = self.sort_rows(rows, section_idx);
 
             if let Some(selected_row) = sorted_rows.get(row_cursor)
                 && selected_row.row_type == crate::tree::DetailRowType::InheritedFrom
@@ -115,7 +115,7 @@ impl App {
 
         let section_index = self.get_section_index();
         let row_cursor = *self.detail.section_cursors.get(section_index)?;
-        let sorted_rows = self.apply_table_sort(rows, section_index);
+        let sorted_rows = self.sort_rows(rows, section_index);
         let selected_row = sorted_rows.get(row_cursor)?;
 
         // Determine name column index based on node type
@@ -408,7 +408,7 @@ impl App {
         };
 
         // Apply sorting if active for this section
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         if row_cursor >= sorted_rows.len() {
             return;

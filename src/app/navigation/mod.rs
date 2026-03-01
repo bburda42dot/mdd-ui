@@ -127,6 +127,7 @@ impl App {
         let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };
+        let node_depth = node.depth;
         let section_idx = self.get_section_index();
 
         let Some((rows, use_row_selection)) = Self::get_table_rows(node, section_idx) else {
@@ -140,7 +141,7 @@ impl App {
             .get(section_idx)
             .copied()
             .unwrap_or(0);
-        let sorted_rows = self.apply_table_sort(rows, section_idx);
+        let sorted_rows = self.sort_rows(rows, section_idx);
 
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
@@ -150,7 +151,8 @@ impl App {
         // child sections (e.g. "Diag-Comms", "Functional Classes") and
         // navigate to the corresponding tree node.
         if let Some(RowMetadata::ChildElement { element_type }) = &selected_row.metadata {
-            self.navigate_to_child_element(node_idx, node.depth, element_type);
+            let element_type = element_type.clone();
+            self.navigate_to_child_element(node_idx, node_depth, &element_type);
             return;
         }
 
@@ -177,7 +179,8 @@ impl App {
         let cell_value = selected_row
             .cells
             .get(nav_col)
-            .map_or("", std::string::String::as_str);
+            .cloned()
+            .unwrap_or_default();
 
         if cell_value.is_empty() || cell_value == "-" {
             self.status = "Empty cell".into();
@@ -190,7 +193,7 @@ impl App {
             .get(nav_col)
             .cloned()
             .flatten();
-        self.execute_cell_jump(jump_target, cell_value);
+        self.execute_cell_jump(jump_target, &cell_value);
     }
 
     /// Execute a cell jump based on the per-cell jump target metadata

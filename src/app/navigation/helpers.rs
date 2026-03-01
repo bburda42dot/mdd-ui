@@ -133,6 +133,18 @@ impl App {
         })
     }
 
+    /// Find the enclosing top-level section header (depth 0) for a given
+    /// node. Returns the node's own index when it is already at depth 0.
+    pub(super) fn find_enclosing_section(&self, from_node_idx: usize) -> Option<usize> {
+        let from_node = self.tree.all_nodes.get(from_node_idx)?;
+        if from_node.depth == 0 {
+            return Some(from_node_idx);
+        }
+        (0..from_node_idx)
+            .rev()
+            .find(|&i| self.tree.all_nodes.get(i).is_some_and(|n| n.depth == 0))
+    }
+
     /// Get the subtree range (`start_idx` inclusive, `end_idx` exclusive)
     /// for a given node. The subtree includes the node itself and all
     /// children with deeper depth.
@@ -171,24 +183,14 @@ impl App {
             .map(|(idx, _)| idx)
     }
 
-    /// Search for a node following the database hierarchy:
-    /// 1. Search within the current container's subtree
-    /// 2. Look for parent ref containers referenced by the current container
-    ///    and search within each
-    /// 3. Returns `None` if not found (caller should fall back to global search)
-    pub(super) fn find_in_hierarchy(&self, predicate: impl Fn(&TreeNode) -> bool) -> Option<usize> {
-        let current_node_idx = self.tree.visible.get(self.tree.cursor).copied()?;
-        let container_idx = self.find_current_container(current_node_idx)?;
-
-        // 1. Search within current container's subtree
-        let (start, end) = self.subtree_range(container_idx);
-        if let Some(found) = self.find_in_subtree(start, end, &predicate) {
-            return Some(found);
-        }
-
-        // 2. Walk parent ref containers
-        // Find the "Parent Refs" child section of this container, then stream
-        // the names of its children directly into find_map — no intermediate Vec.
+    /// Search parent-ref container subtrees for a matching node.
+    /// `start`/`end` delimit the subtree whose parent-ref children to inspect.
+    fn find_in_parent_ref_containers(
+        &self,
+        start: usize,
+        end: usize,
+        predicate: &impl Fn(&TreeNode) -> bool,
+    ) -> Option<usize> {
         self.tree
             .all_nodes
             .iter()
@@ -197,7 +199,6 @@ impl App {
             .take(end.saturating_sub(start).saturating_sub(1))
             .filter(|(_, n)| n.node_type == NodeType::ParentRefs)
             .flat_map(|(pr_idx, pr_node)| {
-                // Collect the names of parent ref children (depth = pr_node.depth + 1)
                 let pr_depth = pr_node.depth;
                 self.tree
                     .all_nodes
@@ -222,8 +223,43 @@ impl App {
                     }
                 })?;
                 let (pc_start, pc_end) = self.subtree_range(pc_idx);
-                self.find_in_subtree(pc_start, pc_end, &predicate)
+                self.find_in_subtree(pc_start, pc_end, predicate)
             })
+    }
+
+    /// Search for a node following the database hierarchy:
+    /// 1. Establish the enclosing section boundary so no lookup ever
+    ///    crosses into a different top-level section.
+    /// 2. Search within the current depth-1 container's subtree
+    ///    (only when the container belongs to the same section).
+    /// 3. Walk parent-ref containers referenced by that container.
+    /// 4. Search the full enclosing section as a final scoped fallback.
+    pub(super) fn find_in_hierarchy(&self, predicate: impl Fn(&TreeNode) -> bool) -> Option<usize> {
+        let current_node_idx = self.tree.visible.get(self.tree.cursor).copied()?;
+
+        // Establish the section boundary first
+        let section_idx = self.find_enclosing_section(current_node_idx)?;
+        let (sec_start, sec_end) = self.subtree_range(section_idx);
+
+        // 1. Search within the current container's subtree, only when the
+        //    container is inside the same section (find_current_container
+        //    walks backwards unconditionally so it may return a container
+        //    from a preceding section).
+        if let Some(c_idx) = self.find_current_container(current_node_idx) {
+            if c_idx >= sec_start && c_idx < sec_end {
+                let (start, end) = self.subtree_range(c_idx);
+                if let Some(found) = self.find_in_subtree(start, end, &predicate) {
+                    return Some(found);
+                }
+                // 2. Walk parent-ref containers
+                if let Some(found) = self.find_in_parent_ref_containers(start, end, &predicate) {
+                    return Some(found);
+                }
+            }
+        }
+
+        // 3. Search the full enclosing section
+        self.find_in_subtree(sec_start, sec_end, &predicate)
     }
 
     /// Navigate to a child tree node whose text matches the given `ChildElementType`.
@@ -270,9 +306,11 @@ impl App {
         self.status = format!("Navigated to: {element_type}");
     }
 
-    /// Navigate to a Container node matching the given short name
+    /// Navigate to a Container node matching the given short name.
+    /// Prefers containers within the current top-level section before
+    /// falling back to a global search.
     pub(super) fn navigate_to_container_by_name(&mut self, target_short_name: &str) {
-        let found = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
+        let is_target = |n: &TreeNode| -> bool {
             matches!(n.node_type, NodeType::Container) && {
                 let name = n
                     .text
@@ -280,9 +318,19 @@ impl App {
                     .map_or(n.text.as_str(), |idx| &n.text[..idx]);
                 name == target_short_name
             }
-        });
+        };
 
-        let Some((container_node_idx, _)) = found else {
+        let current_node_idx = self.tree.visible.get(self.tree.cursor).copied();
+        let section_scoped = current_node_idx
+            .and_then(|idx| self.find_enclosing_section(idx))
+            .and_then(|sec_idx| {
+                let (start, end) = self.subtree_range(sec_idx);
+                self.find_in_subtree(start, end, is_target)
+            });
+
+        let found = section_scoped.or_else(|| self.tree.all_nodes.iter().position(is_target));
+
+        let Some(container_node_idx) = found else {
             self.status = format!("Element '{target_short_name}' not found in tree");
             return;
         };
@@ -292,26 +340,13 @@ impl App {
     }
 
     /// Navigate to a tree node whose text matches the given name.
-    /// Scopes the search to the current container's hierarchy first,
-    /// then falls back to a global search.
+    /// Scoped to the enclosing section via `find_in_hierarchy`.
     pub(super) fn navigate_to_tree_node_by_text(&mut self, target_name: &str) {
-        let found_idx = self
-            .find_in_hierarchy(|node| node.text == target_name)
-            .or_else(|| {
-                self.tree
-                    .all_nodes
-                    .iter()
-                    .position(|node| node.text == target_name)
-            });
-
-        match found_idx {
-            Some(idx) => {
-                self.navigate_to_node(idx);
-                self.status = format!("Navigated to: {target_name}");
-            }
-            None => {
-                self.status = format!("'{target_name}' not found in tree");
-            }
+        if let Some(idx) = self.find_in_hierarchy(|node| node.text == target_name) {
+            self.navigate_to_node(idx);
+            self.status = format!("Navigated to: {target_name}");
+        } else {
+            self.status = format!("'{target_name}' not found in tree");
         }
     }
 }

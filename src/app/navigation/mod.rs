@@ -191,15 +191,7 @@ impl App {
                 self.navigate_to_dop(name);
             }
             CellJumpTarget::TreeNodeByName => {
-                let found_idx = self
-                    .find_in_hierarchy(|n| n.text == cell_value)
-                    .or_else(|| {
-                        self.tree
-                            .all_nodes
-                            .iter()
-                            .position(|n| n.text == cell_value)
-                    });
-                if let Some(idx) = found_idx {
+                if let Some(idx) = self.find_in_hierarchy(|n| n.text == cell_value) {
                     self.navigate_to_node(idx);
                 } else {
                     self.status = format!("Node \"{cell_value}\" not found in tree");

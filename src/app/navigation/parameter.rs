@@ -104,20 +104,12 @@ impl App {
             return;
         };
 
-        let found = self
-            .find_in_hierarchy(|n| n.node_type == target_node_type && n.text == service_name)
-            .or_else(|| {
-                self.tree
-                    .all_nodes
-                    .iter()
-                    .position(|n| n.node_type == target_node_type && n.text == service_name)
-            });
-
-        match found {
-            Some(idx) => self.navigate_to_node(idx),
-            None => {
-                self.status = format!("No matching node found for {service_name}");
-            }
+        if let Some(idx) =
+            self.find_in_hierarchy(|n| n.node_type == target_node_type && n.text == service_name)
+        {
+            self.navigate_to_node(idx);
+        } else {
+            self.status = format!("No matching node found for {service_name}");
         }
     }
 
@@ -133,23 +125,11 @@ impl App {
     /// walks up through parent ref containers before falling back to a
     /// global search.
     pub(super) fn navigate_to_dop(&mut self, dop_name: &str) {
-        let found_idx = self
-            .find_in_hierarchy(|node| node.text == dop_name)
-            .or_else(|| {
-                self.tree
-                    .all_nodes
-                    .iter()
-                    .position(|node| node.text == dop_name)
-            });
-
-        match found_idx {
-            Some(dop_idx) => {
-                self.navigate_to_node(dop_idx);
-                self.status = format!("Navigated to DOP: {dop_name}");
-            }
-            None => {
-                self.status = format!("DOP '{dop_name}' not found in tree");
-            }
+        if let Some(dop_idx) = self.find_in_hierarchy(|node| node.text == dop_name) {
+            self.navigate_to_node(dop_idx);
+            self.status = format!("Navigated to DOP: {dop_name}");
+        } else {
+            self.status = format!("DOP '{dop_name}' not found in tree");
         }
     }
 

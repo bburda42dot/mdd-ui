@@ -323,11 +323,7 @@ impl App {
             }
         };
 
-        let found_service_idx = self
-            .find_in_hierarchy(matches_service)
-            .or_else(|| self.tree.all_nodes.iter().position(matches_service));
-
-        let Some(service_node_idx) = found_service_idx else {
+        let Some(service_node_idx) = self.find_in_hierarchy(matches_service) else {
             self.status = format!("Service/Job '{target_short_name}' not found in tree");
             return;
         };

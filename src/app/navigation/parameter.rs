@@ -5,7 +5,7 @@
 
 use crate::{
     app::{App, FocusState, SCROLL_CONTEXT_LINES},
-    tree::{CellType, DetailRow, DetailSectionType, NodeType, TreeNode},
+    tree::{CellType, DetailSectionType, NodeType},
 };
 
 impl App {
@@ -13,56 +13,46 @@ impl App {
     /// For `DiagComm` Service nodes: `ParameterName` navigates to the counterpart service.
     /// For Request/Response nodes: uses per-cell jump target metadata.
     pub(crate) fn try_navigate_from_param_table(&mut self) {
-        // Early validation
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
-
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
+        let (node_idx, section_idx, node_type, cell_type, cell_value, jump_target) = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
+            let node_type = ctx.node.node_type.clone();
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
+            let focused_col =
+                self.get_focused_column(ctx.use_row_selection, &selected_row.cell_types);
+            let cell_type = selected_row
+                .cell_types
+                .get(focused_col)
+                .copied()
+                .unwrap_or(CellType::Text);
+            let cell_value = selected_row
+                .cells
+                .get(focused_col)
+                .cloned()
+                .unwrap_or_default();
+            let jump_target = selected_row
+                .cell_jump_targets
+                .get(focused_col)
+                .cloned()
+                .flatten();
+            (
+                ctx.node_idx,
+                ctx.section_idx,
+                node_type,
+                cell_type,
+                cell_value,
+                jump_target,
+            )
         };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
-        let node_type = node.node_type.clone();
-        let section_idx = self.get_section_index();
-
-        // Get table data or return early
-        let Some((rows, use_row_selection)) = Self::get_table_rows(node, section_idx) else {
-            return;
-        };
-
-        let row_cursor = self
-            .detail
-            .section_cursors
-            .get(section_idx)
-            .copied()
-            .unwrap_or(0);
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        // Determine focused column and cell
-        let focused_col = self.get_focused_column(use_row_selection, &selected_row.cell_types);
-        let cell_type = selected_row
-            .cell_types
-            .get(focused_col)
-            .copied()
-            .unwrap_or(CellType::Text);
-        let cell_value = selected_row
-            .cells
-            .get(focused_col)
-            .cloned()
-            .unwrap_or_default();
 
         if cell_value.is_empty() {
             self.status = "Empty cell".into();
             return;
         }
 
-        // DiagComm Service view: ParameterName navigates to the counterpart
         if matches!(cell_type, CellType::ParameterName)
             && matches!(node_type, NodeType::Service | NodeType::ParentRefService)
         {
@@ -70,24 +60,7 @@ impl App {
             return;
         }
 
-        // Use per-cell jump target metadata for everything else
-        let jump_target = selected_row
-            .cell_jump_targets
-            .get(focused_col)
-            .cloned()
-            .flatten();
         self.execute_cell_jump(jump_target, &cell_value);
-    }
-
-    /// Get table rows from section
-    pub(super) fn get_table_rows(
-        node: &TreeNode,
-        section_idx: usize,
-    ) -> Option<(&Vec<DetailRow>, bool)> {
-        let section = node.detail_sections.get(section_idx)?;
-        let rows = section.content.table_rows()?;
-        let use_row_selection = section.content.table_use_row_selection().unwrap_or(false);
-        Some((rows, use_row_selection))
     }
 
     /// Navigate from a `DiagComm` service to the corresponding Request/Response node.
@@ -244,76 +217,37 @@ impl App {
     }
 
     /// Navigate from DIAG-DATA-DICTIONARY-SPEC or DOP category overview to a child node.
-    /// For DIAG-DATA-DICTIONARY-SPEC: rows are categories
-    /// like "DTC-DOPS", navigates to the category child node.
-    /// For DOP category nodes: rows are individual DOPs, navigates to the DOP child node.
     pub(crate) fn try_navigate_to_dop_child(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
+        let (node_idx, current_depth, dop_ref, target_name) = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
 
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
+            let dop_ref = selected_row
+                .cell_types
+                .iter()
+                .zip(selected_row.cells.iter())
+                .find(|(ct, _)| **ct == CellType::DopReference)
+                .map(|(_, cell)| cell.clone());
+
+            let target_name = selected_row.cells.first().cloned().unwrap_or_default();
+
+            (ctx.node_idx, ctx.node.depth, dop_ref, target_name)
         };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
-
-        // Get the actual section index
-        let section_idx = self.get_section_index();
-
-        if section_idx >= node.detail_sections.len() {
-            return;
-        }
-
-        let Some(section) = node.detail_sections.get(section_idx) else {
-            return;
-        };
-
-        // Get table rows
-        let Some(rows) = section.content.table_rows() else {
-            return;
-        };
-
-        // Get the selected row cursor
-        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
-            return;
-        };
-
-        // Apply sorting if active for this section
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        if row_cursor >= sorted_rows.len() {
-            return;
-        }
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        // Check if the selected row has a DopReference cell — navigate to that DOP
-        let dop_ref = selected_row
-            .cell_types
-            .iter()
-            .zip(selected_row.cells.iter())
-            .find(|(ct, _)| **ct == CellType::DopReference)
-            .map(|(_, cell)| cell.clone());
 
         if let Some(dop_name) = dop_ref {
             self.navigate_to_dop(&dop_name);
             return;
         }
 
-        // Get the first cell text (category name or DOP name)
-        let target_name = match selected_row.cells.first() {
-            Some(name) if !name.is_empty() => name.clone(),
-            _ => return,
-        };
+        if target_name.is_empty() {
+            return;
+        }
 
-        // Find the child node that matches the target name
-        let current_depth = node.depth;
         let target_depth = current_depth.saturating_add(1);
-
         let target_idx = self
             .tree
             .all_nodes

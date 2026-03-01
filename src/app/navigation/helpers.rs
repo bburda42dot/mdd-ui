@@ -3,12 +3,63 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
+use std::borrow::Cow;
+
 use crate::{
     app::{App, FocusState, SCROLL_CONTEXT_LINES},
-    tree::{ChildElementType, NodeType, TreeNode},
+    tree::{ChildElementType, DetailRow, DetailSectionData, NodeType, TreeNode},
 };
 
+/// Resolved state of the currently selected detail-table row.
+/// All references borrow from the owning [`App`], so the context must be
+/// dropped before any `&mut self` call.
+pub(super) struct SelectedRowContext<'a> {
+    pub node_idx: usize,
+    pub node: &'a TreeNode,
+    pub section_idx: usize,
+    pub section: &'a DetailSectionData,
+    pub row_cursor: usize,
+    pub sorted_rows: Cow<'a, [DetailRow]>,
+    pub use_row_selection: bool,
+}
+
+impl SelectedRowContext<'_> {
+    /// Access the selected row (bounds already verified by [`App::resolve_selected_row`]).
+    pub fn selected_row(&self) -> Option<&DetailRow> {
+        self.sorted_rows.get(self.row_cursor)
+    }
+}
+
 impl App {
+    /// Resolve the currently selected detail-table row in one step.
+    ///
+    /// Performs cursor bounds check, node lookup, section lookup,
+    /// table-row extraction, row-cursor lookup, and sorting.
+    /// Returns `None` when any step fails (cursor out of bounds, no
+    /// table data, etc.).
+    pub(super) fn resolve_selected_row(&self) -> Option<SelectedRowContext<'_>> {
+        let &node_idx = self.tree.visible.get(self.tree.cursor)?;
+        let node = self.tree.all_nodes.get(node_idx)?;
+        let section_idx = self.get_section_index();
+        let section = node.detail_sections.get(section_idx)?;
+        let rows = section.content.table_rows()?;
+        let use_row_selection = section.content.table_use_row_selection().unwrap_or(false);
+        let &row_cursor = self.detail.section_cursors.get(section_idx)?;
+        let sorted_rows = self.sort_rows(rows, section_idx);
+        if row_cursor >= sorted_rows.len() {
+            return None;
+        }
+        Some(SelectedRowContext {
+            node_idx,
+            node,
+            section_idx,
+            section,
+            row_cursor,
+            sorted_rows,
+            use_row_selection,
+        })
+    }
+
     /// Expand section and update cursor position
     pub(super) fn expand_and_update_cursor(&mut self, node_idx: usize) {
         if let Some(node_mut) = self.tree.all_nodes.get_mut(node_idx) {

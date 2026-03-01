@@ -361,74 +361,27 @@ impl App {
     /// Navigate to a service or job from a functional class detail view
     /// Uses the `ShortName` column (column 0) to find the target
     pub(crate) fn try_navigate_to_service_from_functional_class(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
+        let target_short_name = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
 
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
-        };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
+            if !matches!(ctx.node.node_type, NodeType::FunctionalClass) {
+                return;
+            }
+            if ctx.section.section_type != DetailSectionType::Services {
+                return;
+            }
 
-        // Verify we're on a functional class node
-        if !matches!(node.node_type, NodeType::FunctionalClass) {
-            self.status = "Not a functional class node".into();
-            return;
-        }
-
-        // Get the actual section index
-        let section_idx = self.get_section_index();
-
-        if section_idx >= node.detail_sections.len() {
-            return;
-        }
-
-        let Some(section) = node.detail_sections.get(section_idx) else {
-            return;
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
+            let Some(name) = selected_row.cells.first().cloned() else {
+                return;
+            };
+            name
         };
 
-        // We should be in a Services section
-        if section.section_type != DetailSectionType::Services {
-            self.status = "Not in a services section".into();
-            return;
-        }
-
-        // Get table rows
-        let Some(rows) = section.content.table_rows() else {
-            return;
-        };
-
-        // Get the selected row cursor
-        let row_cursor = if section_idx < self.detail.section_cursors.len() {
-            *self.detail.section_cursors.get(section_idx).unwrap_or(&0)
-        } else {
-            return;
-        };
-
-        // Apply sorting if active for this section
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        if row_cursor >= sorted_rows.len() {
-            return;
-        }
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        // ShortName is in column 0
-        if selected_row.cells.is_empty() {
-            self.status = "Invalid row structure".into();
-            return;
-        }
-
-        let Some(target_short_name) = selected_row.cells.first().cloned() else {
-            return;
-        };
-
-        // Search for the service/job in the tree
         self.navigate_to_service_or_job(&target_short_name);
     }
 }

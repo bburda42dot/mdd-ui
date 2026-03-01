@@ -123,78 +123,63 @@ impl App {
     /// Try to navigate to the item referenced by the currently focused cell.
     /// Falls back to searching the tree for a node matching the cell text.
     pub(crate) fn try_navigate_from_detail_row(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
+        let (node_idx, node_depth, element_type, cell_value, jump_target) = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
+            let node_depth = ctx.node.depth;
+            let node_idx = ctx.node_idx;
 
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
+            // Check for ChildElement metadata first
+            let element_type =
+                if let Some(RowMetadata::ChildElement { element_type }) = &selected_row.metadata {
+                    Some(element_type.clone())
+                } else {
+                    None
+                };
+
+            let focused_col =
+                self.get_focused_column(ctx.use_row_selection, &selected_row.cell_types);
+
+            let nav_col = if ctx.use_row_selection
+                && selected_row
+                    .cell_jump_targets
+                    .get(focused_col)
+                    .and_then(|t| t.as_ref())
+                    .is_none()
+            {
+                selected_row
+                    .cell_jump_targets
+                    .iter()
+                    .position(Option::is_some)
+                    .unwrap_or(focused_col)
+            } else {
+                focused_col
+            };
+
+            let cell_value = selected_row.cells.get(nav_col).cloned().unwrap_or_default();
+            let jump_target = selected_row
+                .cell_jump_targets
+                .get(nav_col)
+                .cloned()
+                .flatten();
+
+            (node_idx, node_depth, element_type, cell_value, jump_target)
         };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
-        let node_depth = node.depth;
-        let section_idx = self.get_section_index();
 
-        let Some((rows, use_row_selection)) = Self::get_table_rows(node, section_idx) else {
-            self.status = "No table data".into();
-            return;
-        };
-
-        let row_cursor = self
-            .detail
-            .section_cursors
-            .get(section_idx)
-            .copied()
-            .unwrap_or(0);
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        // Check for ChildElement metadata first — these rows represent
-        // child sections (e.g. "Diag-Comms", "Functional Classes") and
-        // navigate to the corresponding tree node.
-        if let Some(RowMetadata::ChildElement { element_type }) = &selected_row.metadata {
-            let element_type = element_type.clone();
+        if let Some(element_type) = element_type {
             self.navigate_to_child_element(node_idx, node_depth, &element_type);
             return;
         }
-
-        let focused_col = self.get_focused_column(use_row_selection, &selected_row.cell_types);
-
-        // In row selection mode, if the focused cell has no jump target,
-        // scan the row for the first cell that does.
-        let nav_col = if use_row_selection
-            && selected_row
-                .cell_jump_targets
-                .get(focused_col)
-                .and_then(|t| t.as_ref())
-                .is_none()
-        {
-            selected_row
-                .cell_jump_targets
-                .iter()
-                .position(Option::is_some)
-                .unwrap_or(focused_col)
-        } else {
-            focused_col
-        };
-
-        let cell_value = selected_row.cells.get(nav_col).cloned().unwrap_or_default();
 
         if cell_value.is_empty() || cell_value == "-" {
             self.status = "Empty cell".into();
             return;
         }
 
-        // Use per-cell jump target metadata
-        let jump_target = selected_row
-            .cell_jump_targets
-            .get(nav_col)
-            .cloned()
-            .flatten();
         self.execute_cell_jump(jump_target, &cell_value);
     }
 

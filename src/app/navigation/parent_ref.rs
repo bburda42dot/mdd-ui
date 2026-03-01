@@ -130,114 +130,48 @@ impl App {
 
     /// Navigate to a parent ref element from the Parent References table
     pub(crate) fn try_navigate_to_parent_ref(&mut self) {
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
+        let target = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
+            let Some(name) = selected_row.cells.first().cloned() else {
+                return;
+            };
+            name
         };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
-
-        // Get the actual section index
-        let section_idx = self.get_section_index();
-
-        let Some(section) = node.detail_sections.get(section_idx) else {
-            return;
-        };
-
-        // Get table rows
-        let Some(rows) = section.content.table_rows() else {
-            return;
-        };
-
-        // Get the selected row cursor
-        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
-            return;
-        };
-
-        // Apply sorting if active for this section
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        if selected_row.cells.len() < 2 {
-            self.status = "Invalid parent ref row".into();
-            return;
-        }
-
-        let Some(target_short_name) = selected_row.cells.first().cloned() else {
-            return;
-        };
-
-        self.navigate_to_container_by_name(&target_short_name);
+        self.navigate_to_container_by_name(&target);
     }
 
     /// Navigate to a not-inherited element (`DiagComm`, `DiagVariable`, `Dop`, `Table`)
     pub(crate) fn try_navigate_to_not_inherited_element(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
+        let (element_type, target_short_name) = {
+            let Some(ctx) = self.resolve_selected_row() else {
+                return;
+            };
 
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
-        };
-        let Some(node) = self.tree.all_nodes.get(node_idx) else {
-            return;
-        };
+            let element_type = match ctx.section.section_type {
+                DetailSectionType::NotInheritedDiagComms => NotInheritedElementType::DiagComm,
+                DetailSectionType::NotInheritedDops => NotInheritedElementType::Dop,
+                DetailSectionType::NotInheritedTables
+                | DetailSectionType::NotInheritedVariables => NotInheritedElementType::TreeNode,
+                _ => return,
+            };
 
-        // Get the actual section index
-        let section_idx = self.get_section_index();
-
-        if section_idx >= node.detail_sections.len() {
-            return;
-        }
-
-        let Some(section) = node.detail_sections.get(section_idx) else {
-            return;
-        };
-
-        // Determine what type of element we're looking for based on the section type
-        let element_type = match section.section_type {
-            DetailSectionType::NotInheritedDiagComms => NotInheritedElementType::DiagComm,
-            DetailSectionType::NotInheritedDops => NotInheritedElementType::Dop,
-            DetailSectionType::NotInheritedTables | DetailSectionType::NotInheritedVariables => {
-                NotInheritedElementType::TreeNode
-            }
-            _ => {
-                self.status = "Navigation not supported for this element type".into();
+            let Some(selected_row) = ctx.selected_row() else {
+                return;
+            };
+            let Some(name) = selected_row.cells.first().cloned() else {
+                return;
+            };
+            if name.is_empty() {
                 return;
             }
+            (element_type, name)
         };
 
-        // Get table rows
-        let Some(rows) = section.content.table_rows() else {
-            return;
-        };
-
-        // Get the selected row cursor
-        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
-            return;
-        };
-
-        // Apply sorting if active for this section
-        let sorted_rows = self.sort_rows(rows, section_idx);
-
-        let Some(selected_row) = sorted_rows.get(row_cursor) else {
-            return;
-        };
-
-        // Extract the element short name from the first column
-        let Some(target_short_name) = selected_row.cells.first().cloned() else {
-            return;
-        };
-
-        if target_short_name.is_empty() {
-            self.status = "Invalid row".into();
-            return;
-        }
-
-        // Navigate based on element type
         match element_type {
             NotInheritedElementType::DiagComm => {
                 self.navigate_to_service_or_job(&target_short_name);

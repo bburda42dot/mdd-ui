@@ -178,38 +178,35 @@ impl App {
         *section_widths = widths;
     }
 
-    fn normalize_column_widths(widths: &mut Vec<u16>) {
+    fn normalize_column_widths(widths: &mut [u16]) {
         let total: u16 = widths.iter().sum();
-        if total > 0 && total != 100 {
-            *widths = widths
-                .iter()
-                .map(|&w| {
-                    // Integer-only rounding: (w * 100 + total/2) / total
-                    let total_32 = u32::from(total);
-                    u16::try_from(
-                        u32::from(w)
-                            .saturating_mul(100)
-                            .saturating_add(total_32.saturating_div(2))
-                            .checked_div(total_32)
-                            .unwrap_or(0)
-                            .min(100),
-                    )
-                    .unwrap_or(100)
-                })
-                .collect();
+        if total == 0 || total == 100 {
+            return;
+        }
+        let total_32 = u32::from(total);
+        widths.iter_mut().for_each(|w| {
+            *w = u16::try_from(
+                u32::from(*w)
+                    .saturating_mul(100)
+                    .saturating_add(total_32.saturating_div(2))
+                    .checked_div(total_32)
+                    .unwrap_or(0)
+                    .min(100),
+            )
+            .unwrap_or(100);
+        });
 
-            let new_total: u16 = widths.iter().sum();
-            if new_total != 100 && !widths.is_empty() {
-                let max_idx = widths
-                    .iter()
-                    .enumerate()
-                    .max_by_key(|(_, w)| *w)
-                    .map_or(0, |(idx, _)| idx);
-                let Some(max_width) = widths.get_mut(max_idx) else {
-                    return;
-                };
-                *max_width = max_width.saturating_add(100u16.saturating_sub(new_total));
-            }
+        let new_total: u16 = widths.iter().sum();
+        if new_total != 100 && !widths.is_empty() {
+            let max_idx = widths
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, w)| *w)
+                .map_or(0, |(idx, _)| idx);
+            let Some(max_width) = widths.get_mut(max_idx) else {
+                return;
+            };
+            *max_width = max_width.saturating_add(100u16.saturating_sub(new_total));
         }
     }
 

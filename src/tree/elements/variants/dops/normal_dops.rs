@@ -121,8 +121,13 @@ fn build_constraints_section(
     }
 }
 
-fn build_compu_internal_to_phys_section(
-    normal_dop: &cda_database::datatypes::NormalDop<'_>,
+/// Build a composite `DetailSectionData` for one direction of a Compu-Method.
+/// `category` is the formatted "Category: ..." string to show when present;
+/// `rows` are the pre-built scale rows.
+fn build_compu_direction_section(
+    title: &str,
+    category: Option<String>,
+    rows: Vec<DetailRow>,
 ) -> DetailSectionData {
     let header = DetailRow::header(
         vec![
@@ -139,62 +144,15 @@ fn build_compu_internal_to_phys_section(
         ],
     );
 
-    let mut rows = Vec::new();
     let mut subsections = Vec::new();
 
-    if let Some(compu_method) = normal_dop.compu_method() {
+    if let Some(cat) = category {
         subsections.push(DetailSectionData {
             title: String::new(),
             render_as_header: false,
             section_type: DetailSectionType::Custom,
-            content: DetailContent::PlainText(vec![format!(
-                "Category: {:?}",
-                compu_method.category()
-            )]),
+            content: DetailContent::PlainText(vec![cat]),
         });
-
-        if let Some(i2p) = compu_method.internal_to_phys() {
-            rows.extend(
-                i2p.compu_scales()
-                    .into_iter()
-                    .flat_map(|scales| scales.iter())
-                    .map(|scale| {
-                        let lower = scale
-                            .lower_limit()
-                            .and_then(|l| l.value())
-                            .unwrap_or("-")
-                            .to_owned();
-                        let upper = scale
-                            .upper_limit()
-                            .and_then(|l| l.value())
-                            .unwrap_or("-")
-                            .to_owned();
-                        let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
-                            iv.vt().map_or_else(
-                                || iv.v().map_or("-".to_owned(), |v| v.to_string()),
-                                str::to_owned,
-                            )
-                        });
-                        let consts = scale.consts().map_or("-".to_owned(), |c| {
-                            c.vt().map_or_else(
-                                || c.v().map_or("-".to_owned(), |v| v.to_string()),
-                                str::to_owned,
-                            )
-                        });
-
-                        DetailRow::normal(
-                            vec![lower, upper, inverse, consts],
-                            vec![
-                                CellType::Text,
-                                CellType::Text,
-                                CellType::Text,
-                                CellType::Text,
-                            ],
-                            0,
-                        )
-                    }),
-            );
-        }
     }
 
     subsections.push(DetailSectionData {
@@ -215,112 +173,116 @@ fn build_compu_internal_to_phys_section(
     });
 
     DetailSectionData {
-        title: "Compu-Internal-To-Phys".to_owned(),
+        title: title.to_owned(),
         render_as_header: false,
         section_type: DetailSectionType::Custom,
         content: DetailContent::Composite(subsections),
     }
 }
 
+fn build_compu_internal_to_phys_section(
+    normal_dop: &cda_database::datatypes::NormalDop<'_>,
+) -> DetailSectionData {
+    let compu_method = normal_dop.compu_method();
+    let category = compu_method
+        .as_ref()
+        .map(|cm| format!("Category: {:?}", cm.category()));
+
+    let rows = compu_method
+        .and_then(|cm| cm.internal_to_phys())
+        .and_then(|i2p| i2p.compu_scales())
+        .into_iter()
+        .flat_map(|scales| scales.iter())
+        .map(|scale| {
+            let lower = scale
+                .lower_limit()
+                .and_then(|l| l.value())
+                .unwrap_or("-")
+                .to_owned();
+            let upper = scale
+                .upper_limit()
+                .and_then(|l| l.value())
+                .unwrap_or("-")
+                .to_owned();
+            let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
+                iv.vt().map_or_else(
+                    || iv.v().map_or("-".to_owned(), |v| v.to_string()),
+                    str::to_owned,
+                )
+            });
+            let consts = scale.consts().map_or("-".to_owned(), |c| {
+                c.vt().map_or_else(
+                    || c.v().map_or("-".to_owned(), |v| v.to_string()),
+                    str::to_owned,
+                )
+            });
+            DetailRow::normal(
+                vec![lower, upper, inverse, consts],
+                vec![
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                ],
+                0,
+            )
+        })
+        .collect();
+
+    build_compu_direction_section("Compu-Internal-To-Phys", category, rows)
+}
+
 fn build_compu_phys_to_internal_section(
     normal_dop: &cda_database::datatypes::NormalDop<'_>,
 ) -> DetailSectionData {
-    let header = DetailRow::header(
-        vec![
-            "Lower Limit".to_owned(),
-            "Upper Limit".to_owned(),
-            "Compu Inverse Value".to_owned(),
-            "Compu Const".to_owned(),
-        ],
-        vec![
-            CellType::Text,
-            CellType::Text,
-            CellType::Text,
-            CellType::Text,
-        ],
-    );
+    let compu_method = normal_dop.compu_method();
+    let p2i = compu_method.as_ref().and_then(|cm| cm.phys_to_internal());
+    let category = compu_method
+        .as_ref()
+        .filter(|_| p2i.is_some())
+        .map(|cm| format!("Category: {:?}", cm.category()));
 
-    let mut rows = Vec::new();
-    let mut subsections = Vec::new();
+    let rows = p2i
+        .and_then(|p2i| p2i.compu_scales())
+        .into_iter()
+        .flat_map(|scales| scales.iter())
+        .map(|scale| {
+            let lower = scale
+                .lower_limit()
+                .and_then(|l| l.value())
+                .unwrap_or("-")
+                .to_owned();
+            let upper = scale
+                .upper_limit()
+                .and_then(|l| l.value())
+                .unwrap_or("-")
+                .to_owned();
+            let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
+                iv.vt().map_or_else(
+                    || iv.v().map_or("-".to_owned(), |v| v.to_string()),
+                    str::to_owned,
+                )
+            });
+            let consts = scale.consts().map_or("-".to_owned(), |c| {
+                c.vt().map_or_else(
+                    || c.v().map_or("-".to_owned(), |v| v.to_string()),
+                    str::to_owned,
+                )
+            });
+            DetailRow::normal(
+                vec![lower, upper, inverse, consts],
+                vec![
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                    CellType::Text,
+                ],
+                0,
+            )
+        })
+        .collect();
 
-    if let Some(compu_method) = normal_dop.compu_method()
-        && let Some(p2i) = compu_method.phys_to_internal()
-    {
-        subsections.push(DetailSectionData {
-            title: String::new(),
-            render_as_header: false,
-            section_type: DetailSectionType::Custom,
-            content: DetailContent::PlainText(vec![format!(
-                "Category: {:?}",
-                compu_method.category()
-            )]),
-        });
-
-        rows.extend(
-            p2i.compu_scales()
-                .into_iter()
-                .flat_map(|scales| scales.iter())
-                .map(|scale| {
-                    let lower = scale
-                        .lower_limit()
-                        .and_then(|l| l.value())
-                        .unwrap_or("-")
-                        .to_owned();
-                    let upper = scale
-                        .upper_limit()
-                        .and_then(|l| l.value())
-                        .unwrap_or("-")
-                        .to_owned();
-                    let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
-                        iv.vt().map_or_else(
-                            || iv.v().map_or("-".to_owned(), |v| v.to_string()),
-                            str::to_owned,
-                        )
-                    });
-                    let consts = scale.consts().map_or("-".to_owned(), |c| {
-                        c.vt().map_or_else(
-                            || c.v().map_or("-".to_owned(), |v| v.to_string()),
-                            str::to_owned,
-                        )
-                    });
-
-                    DetailRow::normal(
-                        vec![lower, upper, inverse, consts],
-                        vec![
-                            CellType::Text,
-                            CellType::Text,
-                            CellType::Text,
-                            CellType::Text,
-                        ],
-                        0,
-                    )
-                }),
-        );
-    }
-
-    subsections.push(DetailSectionData {
-        title: String::new(),
-        render_as_header: false,
-        section_type: DetailSectionType::Custom,
-        content: DetailContent::Table {
-            header,
-            rows,
-            constraints: vec![
-                ColumnConstraint::Percentage(15),
-                ColumnConstraint::Percentage(15),
-                ColumnConstraint::Percentage(25),
-                ColumnConstraint::Percentage(25),
-            ],
-            use_row_selection: true,
-        },
-    });
-
-    DetailSectionData {
-        title: "Compu-Phys-To-Internal".to_owned(),
-        render_as_header: false,
-        section_type: DetailSectionType::Custom,
-        content: DetailContent::Composite(subsections),
-    }
+    build_compu_direction_section("Compu-Phys-To-Internal", category, rows)
 }
 
 /// Build tabbed sections for `NormalDOP` with Types, Constraints, and Compu tabs

@@ -36,7 +36,7 @@ impl App {
             return;
         };
         let node_text = selected_node.text.clone();
-        let detail_sections = selected_node.detail_sections.clone();
+        let detail_sections = Rc::clone(&selected_node.detail_sections);
 
         if detail_sections.is_empty() {
             // Draw a default/dummy pane with helpful information

@@ -78,10 +78,16 @@ impl App {
         // The column is relative to the start of tree_area
         let new_tree_width = column.saturating_sub(self.layout.tree_area.x);
 
-        // Calculate percentage (clamped between 20% and 80%)
-        let percentage_f32 = (f32::from(new_tree_width) / f32::from(total_width)) * 100.0;
-        let clamped = percentage_f32.clamp(f32::from(DIVIDER_MIN_PCT), f32::from(DIVIDER_MAX_PCT));
-        let percentage = u16::try_from(clamped.round() as u32).unwrap_or(DIVIDER_MIN_PCT);
+        // Integer percentage: (new_tree_width * 100) / total_width, clamped to [min, max]
+        // total_width is guaranteed non-zero (checked above)
+        let percentage = u16::try_from(
+            u32::from(new_tree_width)
+                .saturating_mul(100)
+                .checked_div(u32::from(total_width))
+                .unwrap_or(0)
+                .clamp(u32::from(DIVIDER_MIN_PCT), u32::from(DIVIDER_MAX_PCT)),
+        )
+        .unwrap_or(DIVIDER_MIN_PCT);
         self.layout.tree_width_percentage = percentage;
     }
 

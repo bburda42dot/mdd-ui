@@ -187,7 +187,9 @@ impl App {
                     // Integer-only rounding: (w * 100 + total/2) / total
                     let total_32 = u32::from(total);
                     u16::try_from(
-                        (u32::from(w) * 100 + total_32 / 2)
+                        u32::from(w)
+                            .saturating_mul(100)
+                            .saturating_add(total_32.saturating_div(2))
                             .checked_div(total_32)
                             .unwrap_or(0)
                             .min(100),

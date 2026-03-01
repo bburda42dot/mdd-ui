@@ -14,29 +14,8 @@ use super::{border_style, expand_icon, render_scrollbar, row_style};
 use crate::app::{App, FocusState};
 
 impl App {
-    /// Extract ECU name from the General node's detail sections
-    fn get_ecu_name(&self) -> &str {
-        self.tree
-            .all_nodes
-            .first()
-            .and_then(|node| {
-                if node.text != "General" {
-                    return None;
-                }
-
-                node.detail_sections.first().and_then(|sec| {
-                    if let crate::tree::DetailContent::PlainText(lines) = &sec.content {
-                        lines.first()?.strip_prefix("ECU Name: ")
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or("Tree")
-    }
-
     pub(in crate::app) fn draw_tree(&mut self, frame: &mut Frame, area: Rect) {
-        let ecu_name = self.get_ecu_name();
+        let ecu_name = self.ecu_name.as_str();
 
         let tree_block = Block::default()
             .borders(Borders::ALL)

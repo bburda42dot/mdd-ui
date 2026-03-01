@@ -327,6 +327,7 @@ pub struct App {
     pub(crate) status: String,
     pub(crate) focus_state: FocusState,
     pub(crate) theme: ResolvedTheme,
+    pub(crate) ecu_name: String,
 }
 
 /// Data for a popup overlay (e.g. DOP reference details).
@@ -349,7 +350,7 @@ pub(crate) struct HistoryEntry {
 }
 
 impl App {
-    pub fn new(nodes: Vec<TreeNode>, theme: ResolvedTheme) -> Self {
+    pub fn new(nodes: Vec<TreeNode>, ecu_name: String, theme: ResolvedTheme) -> Self {
         let mut app = Self {
             tree: TreeState {
                 all_nodes: nodes,
@@ -371,6 +372,7 @@ impl App {
             status: String::new(),
             focus_state: FocusState::Tree,
             theme,
+            ecu_name,
         };
         // Apply initial sort order (default is by ID)
         app.sort_diagcomm_nodes_in_place();

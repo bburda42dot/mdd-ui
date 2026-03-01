@@ -36,14 +36,14 @@ fn main() -> Result<()> {
         .with_context(|| format!("Failed to load: {}", cli.mdd_file))?;
 
     eprintln!("Building tree...");
-    let nodes = tree::build_tree(&db);
+    let (nodes, ecu_name) = tree::build_tree(&db);
     eprintln!("Loaded {} nodes. Starting UI...", nodes.len());
 
     let mut terminal = ratatui::init();
     crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)
         .context("Failed to enable mouse capture")?;
 
-    let result = app::App::new(nodes, theme).run(&mut terminal);
+    let result = app::App::new(nodes, ecu_name, theme).run(&mut terminal);
 
     let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
     ratatui::restore();

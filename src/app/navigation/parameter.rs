@@ -17,7 +17,7 @@ impl App {
             let Some(ctx) = self.resolve_selected_row() else {
                 return;
             };
-            let node_type = ctx.node.node_type.clone();
+            let node_type = ctx.node.node_type;
             let Some(selected_row) = ctx.selected_row() else {
                 return;
             };

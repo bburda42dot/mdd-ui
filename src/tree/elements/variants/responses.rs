@@ -114,7 +114,7 @@ fn add_response_service(
         false,
         has_params,
         sections,
-        kind.node_type.clone(),
+        kind.node_type,
     );
 
     let response_count = responses_of!(ds, kind).map_or(0, |r| r.len());

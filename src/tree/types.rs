@@ -39,7 +39,7 @@ pub enum ServiceListType {
 }
 
 /// Type of node for styling and interaction purposes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum NodeType {
     /// Collapsible container without its own detail content.
     Container,

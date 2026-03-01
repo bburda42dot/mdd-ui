@@ -100,9 +100,7 @@ impl App {
             .filter(|_| section_idx < node.detail_sections.len());
 
         if let Some(section) = section {
-            if section.section_type == DetailSectionType::RelatedRefs
-                && section.title == "Parent References"
-            {
+            if section.section_type == DetailSectionType::RelatedRefs {
                 self.try_navigate_to_parent_ref();
             } else if matches!(
                 section.section_type,

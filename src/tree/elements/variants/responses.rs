@@ -48,7 +48,19 @@ macro_rules! responses_of {
         match $kind.section_type {
             DetailSectionType::PosResponses => $ds.pos_responses(),
             DetailSectionType::NegResponses => $ds.neg_responses(),
-            _ => None,
+            DetailSectionType::Header
+            | DetailSectionType::Overview
+            | DetailSectionType::Services
+            | DetailSectionType::Requests
+            | DetailSectionType::ComParams
+            | DetailSectionType::States
+            | DetailSectionType::RelatedRefs
+            | DetailSectionType::FunctionalClass
+            | DetailSectionType::NotInheritedDiagComms
+            | DetailSectionType::NotInheritedDops
+            | DetailSectionType::NotInheritedTables
+            | DetailSectionType::NotInheritedVariables
+            | DetailSectionType::Custom => None,
         }
     };
 }

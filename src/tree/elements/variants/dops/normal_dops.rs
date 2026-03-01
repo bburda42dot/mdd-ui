@@ -235,52 +235,52 @@ fn build_compu_internal_to_phys_section(
 fn build_compu_phys_to_internal_section(
     normal_dop: &cda_database::datatypes::NormalDop<'_>,
 ) -> DetailSectionData {
-    let compu_method = normal_dop.compu_method();
-    let p2i = compu_method.as_ref().and_then(|cm| cm.phys_to_internal());
-    let category = compu_method
-        .as_ref()
-        .filter(|_| p2i.is_some())
-        .map(|cm| format!("Category: {:?}", cm.category()));
-
-    let rows = p2i
-        .and_then(|p2i| p2i.compu_scales())
-        .into_iter()
-        .flat_map(|scales| scales.iter())
-        .map(|scale| {
-            let lower = scale
-                .lower_limit()
-                .and_then(|l| l.value())
-                .unwrap_or("-")
-                .to_owned();
-            let upper = scale
-                .upper_limit()
-                .and_then(|l| l.value())
-                .unwrap_or("-")
-                .to_owned();
-            let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
-                iv.vt().map_or_else(
-                    || iv.v().map_or("-".to_owned(), |v| v.to_string()),
-                    str::to_owned,
+    let (category, rows) = normal_dop.compu_method().map_or((None, vec![]), |cm| {
+        let p2i = cm.phys_to_internal();
+        let category = p2i
+            .as_ref()
+            .map(|_| format!("Category: {:?}", cm.category()));
+        let rows = p2i
+            .and_then(|p2i| p2i.compu_scales())
+            .into_iter()
+            .flat_map(|scales| scales.iter())
+            .map(|scale| {
+                let lower = scale
+                    .lower_limit()
+                    .and_then(|l| l.value())
+                    .unwrap_or("-")
+                    .to_owned();
+                let upper = scale
+                    .upper_limit()
+                    .and_then(|l| l.value())
+                    .unwrap_or("-")
+                    .to_owned();
+                let inverse = scale.inverse_values().map_or("-".to_owned(), |iv| {
+                    iv.vt().map_or_else(
+                        || iv.v().map_or("-".to_owned(), |v| v.to_string()),
+                        str::to_owned,
+                    )
+                });
+                let consts = scale.consts().map_or("-".to_owned(), |c| {
+                    c.vt().map_or_else(
+                        || c.v().map_or("-".to_owned(), |v| v.to_string()),
+                        str::to_owned,
+                    )
+                });
+                DetailRow::normal(
+                    vec![lower, upper, inverse, consts],
+                    vec![
+                        CellType::Text,
+                        CellType::Text,
+                        CellType::Text,
+                        CellType::Text,
+                    ],
+                    0,
                 )
-            });
-            let consts = scale.consts().map_or("-".to_owned(), |c| {
-                c.vt().map_or_else(
-                    || c.v().map_or("-".to_owned(), |v| v.to_string()),
-                    str::to_owned,
-                )
-            });
-            DetailRow::normal(
-                vec![lower, upper, inverse, consts],
-                vec![
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                    CellType::Text,
-                ],
-                0,
-            )
-        })
-        .collect();
+            })
+            .collect();
+        (category, rows)
+    });
 
     build_compu_direction_section("Compu-Phys-To-Internal", category, rows)
 }

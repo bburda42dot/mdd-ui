@@ -228,7 +228,7 @@ fn collect_parent_ref_layers<'a>(
 /// per layer with its full sub-structure).
 fn add_layer_section(
     b: &mut TreeBuilder,
-    layers: Vec<DiagLayer<'_>>,
+    layers: &[DiagLayer<'_>],
     section_name: &str,
     section_type: SectionType,
     overview_title: &str,
@@ -251,7 +251,7 @@ fn add_layer_section(
         section_type,
     );
 
-    for layer in &layers {
+    for layer in layers {
         let name = layer.short_name().unwrap_or("unnamed");
         let detail_sections = build_layer_summary_section(layer, name);
 
@@ -290,7 +290,7 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     });
     add_layer_section(
         b,
-        layers,
+        &layers,
         "ECU Shared Data",
         SectionType::EcuSharedData,
         "ECU Shared Data Overview",
@@ -314,7 +314,7 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     });
     add_layer_section(
         b,
-        layers,
+        &layers,
         "Protocols",
         SectionType::Protocols,
         "Protocols Overview",

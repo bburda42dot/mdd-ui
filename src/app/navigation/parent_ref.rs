@@ -107,15 +107,9 @@ impl App {
 
         // Walk backwards to find the parent node
         let parent_is_parent_refs = (0..node_idx).rev().any(|i| {
-            self.tree
-                .all_nodes
-                .get(i)
-                .is_some_and(|n| n.depth < node_depth && n.node_type == NodeType::ParentRefs)
-                && self
-                    .tree
-                    .all_nodes
-                    .get(i)
-                    .is_some_and(|n| n.depth == node_depth.saturating_sub(1))
+            self.tree.all_nodes.get(i).is_some_and(|n| {
+                n.node_type == NodeType::ParentRefs && n.depth == node_depth.saturating_sub(1)
+            })
         });
 
         if !parent_is_parent_refs {

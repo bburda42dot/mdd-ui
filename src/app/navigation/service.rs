@@ -254,7 +254,7 @@ impl App {
         // Find Diag-Comms section
         let Some(dc_idx) = self.find_diagcomm_section(container_idx) else {
             self.rebuild_visible();
-            self.navigate_to_node_by_idx(container_idx);
+            self.navigate_to_node(container_idx);
             return;
         };
 
@@ -266,7 +266,7 @@ impl App {
         let target = self
             .find_service_in_diagcomm(dc_idx, service_name)
             .unwrap_or(container_idx);
-        self.navigate_to_node_by_idx(target);
+        self.navigate_to_node(target);
     }
 
     /// Find the Diag-Comms section within a container

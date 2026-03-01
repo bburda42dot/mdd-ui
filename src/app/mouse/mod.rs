@@ -335,47 +335,22 @@ impl App {
 
     /// Navigate to a specific node by its index in `all_nodes`.
     pub(crate) fn navigate_to_node(&mut self, target_node_idx: usize) {
-        // Find the position of this node in visible
-        if let Some(_visible_pos) = self
+        self.ensure_node_visible(target_node_idx);
+
+        let Some(visible_pos) = self
             .tree
             .visible
             .iter()
             .position(|&idx| idx == target_node_idx)
-        {
-            // Ensure the target node is expanded if needed
-            self.ensure_node_visible(target_node_idx);
+        else {
+            return;
+        };
 
-            // Find the updated position after expanding
-            if let Some(new_pos) = self
-                .tree
-                .visible
-                .iter()
-                .position(|&idx| idx == target_node_idx)
-            {
-                self.push_to_history(); // Store old position before jumping
-                self.focus_state = FocusState::Tree;
-                self.tree.cursor = new_pos;
-                self.reset_detail_state();
-                self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
-            }
-        } else {
-            // Node is not currently visible (might be collapsed), try to make it visible
-            self.ensure_node_visible(target_node_idx);
-
-            // Try to find it again after expanding parents
-            if let Some(visible_pos) = self
-                .tree
-                .visible
-                .iter()
-                .position(|&idx| idx == target_node_idx)
-            {
-                self.push_to_history(); // Store old position before jumping
-                self.focus_state = FocusState::Tree;
-                self.tree.cursor = visible_pos;
-                self.reset_detail_state();
-                self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
-            }
-        }
+        self.push_to_history();
+        self.focus_state = FocusState::Tree;
+        self.tree.cursor = visible_pos;
+        self.reset_detail_state();
+        self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
     }
 
     /// Ensure a node is visible by expanding only its direct ancestors.

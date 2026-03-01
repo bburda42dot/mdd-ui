@@ -94,17 +94,6 @@ impl App {
         }
     }
 
-    /// Navigate to a node by its index in `all_nodes`
-    pub(super) fn navigate_to_node_by_idx(&mut self, target_idx: usize) {
-        if let Some(new_cursor) = self.tree.visible.iter().position(|&idx| idx == target_idx) {
-            self.push_to_history();
-            self.focus_state = FocusState::Tree;
-            self.tree.cursor = new_cursor;
-            self.reset_detail_state();
-            self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
-        }
-    }
-
     /// Find a container (variant/functional group) by name
     pub(super) fn find_container_by_name(&self, name: &str) -> Option<usize> {
         self.tree.all_nodes.iter().position(|node| {

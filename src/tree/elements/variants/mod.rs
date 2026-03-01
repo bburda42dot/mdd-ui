@@ -40,14 +40,18 @@ pub(crate) fn format_service_display_name(ds: &DiagService<'_>) -> Option<String
         || name.to_string(),
         |sid| {
             ds.request_sub_function_id().map_or_else(
-                || format!("0x{:6} - {}", format!("{sid:02X}"), name),
+                || {
+                    let sid_hex = format!("{sid:02X}");
+                    format!("0x{sid_hex:6} - {name}")
+                },
                 |(sub_fn, bit_len)| {
                     let sub_fn_str = if bit_len <= 8 {
                         format!("{sub_fn:02X}")
                     } else {
                         format!("{sub_fn:04X}")
                     };
-                    format!("0x{:6} - {}", format!("{sid:02X}{sub_fn_str}"), name)
+                    let full_id = format!("{sid:02X}{sub_fn_str}");
+                    format!("0x{full_id:6} - {name}")
                 },
             )
         },

@@ -346,8 +346,10 @@ pub fn get_parent_ref_services_recursive<'a>(
                         ))
                     }
                     // TableDop refs don't contain services
-                    Ok(cda_database::datatypes::ParentRefType::TableDop)
-                    | Ok(cda_database::datatypes::ParentRefType::NONE)
+                    Ok(
+                        cda_database::datatypes::ParentRefType::TableDop
+                        | cda_database::datatypes::ParentRefType::NONE,
+                    )
                     | Err(_) => None,
                 }
             })

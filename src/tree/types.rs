@@ -116,13 +116,13 @@ pub enum DetailSectionType {
     RelatedRefs,
     /// Functional class details section.
     FunctionalClass,
-    /// Not-inherited DiagComm services list.
+    /// Not-inherited `DiagComm` services list.
     NotInheritedDiagComms,
     /// Not-inherited Data Object Properties list.
     NotInheritedDops,
     /// Not-inherited Tables list.
     NotInheritedTables,
-    /// Not-inherited DiagVariables list.
+    /// Not-inherited `DiagVariables` list.
     NotInheritedVariables,
     /// Dynamic/fallback section type.
     Custom,

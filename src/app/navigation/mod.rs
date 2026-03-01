@@ -182,11 +182,7 @@ impl App {
             focused_col
         };
 
-        let cell_value = selected_row
-            .cells
-            .get(nav_col)
-            .cloned()
-            .unwrap_or_default();
+        let cell_value = selected_row.cells.get(nav_col).cloned().unwrap_or_default();
 
         if cell_value.is_empty() || cell_value == "-" {
             self.status = "Empty cell".into();

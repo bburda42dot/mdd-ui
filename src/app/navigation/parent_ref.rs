@@ -201,8 +201,9 @@ impl App {
         let element_type = match section.section_type {
             DetailSectionType::NotInheritedDiagComms => NotInheritedElementType::DiagComm,
             DetailSectionType::NotInheritedDops => NotInheritedElementType::Dop,
-            DetailSectionType::NotInheritedTables
-            | DetailSectionType::NotInheritedVariables => NotInheritedElementType::TreeNode,
+            DetailSectionType::NotInheritedTables | DetailSectionType::NotInheritedVariables => {
+                NotInheritedElementType::TreeNode
+            }
             _ => {
                 self.status = "Navigation not supported for this element type".into();
                 return;

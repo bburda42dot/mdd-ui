@@ -64,10 +64,7 @@ impl App {
 
         // DiagComm Service view: ParameterName navigates to the counterpart
         if matches!(cell_type, CellType::ParameterName)
-            && matches!(
-                node_type,
-                NodeType::Service | NodeType::ParentRefService
-            )
+            && matches!(node_type, NodeType::Service | NodeType::ParentRefService)
         {
             self.navigate_to_request_response_counterpart(node_idx, section_idx);
             return;

@@ -88,7 +88,7 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
             false,
             false,
             detail_sections,
-            NodeType::SDG,
+            NodeType::Sdg,
         );
     }
 }

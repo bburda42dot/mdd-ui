@@ -56,7 +56,7 @@ impl App {
 
         // DIAG-DATA-DICTIONARY-SPEC, DOP category, and individual DOP nodes with children:
         // navigate to child instead of popup
-        if matches!(node.node_type, NodeType::DOP)
+        if matches!(node.node_type, NodeType::Dop)
             || self.is_dop_category_node(node_idx)
             || self.is_individual_dop_node(node_idx)
         {

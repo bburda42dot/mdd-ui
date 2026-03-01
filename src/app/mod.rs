@@ -431,7 +431,7 @@ impl App {
         }
         self.find_parent_idx(node_idx)
             .and_then(|i| self.tree.all_nodes.get(i))
-            .is_some_and(|parent| matches!(parent.node_type, NodeType::DOP))
+            .is_some_and(|parent| matches!(parent.node_type, NodeType::Dop))
     }
 
     /// Check if a node is an individual DOP with children (e.g. a DTC-DOP under DTC-DOPS).

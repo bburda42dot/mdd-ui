@@ -249,7 +249,7 @@ pub fn add_dops_section<'a>(b: &mut TreeBuilder, layer: &DiagLayer<'a>, depth: u
         false,
         true,
         dops_detail,
-        NodeType::DOP,
+        NodeType::Dop,
     );
 
     for (cat, dops) in &categories {

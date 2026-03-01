@@ -30,7 +30,7 @@ use crate::{
 fn node_style(node: &TreeNode, theme: &ResolvedTheme) -> Style {
     match node.node_type {
         NodeType::Container => styled(theme.tree_container, true),
-        NodeType::SectionHeader | NodeType::ParentRefs | NodeType::DOP => {
+        NodeType::SectionHeader | NodeType::ParentRefs | NodeType::Dop => {
             styled(theme.tree_section_header, true)
         }
         // Gray for inherited services
@@ -41,7 +41,7 @@ fn node_style(node: &TreeNode, theme: &ResolvedTheme) -> Style {
         | NodeType::NegResponse
         | NodeType::FunctionalClass
         | NodeType::Job
-        | NodeType::SDG
+        | NodeType::Sdg
         | NodeType::Default => Style::default().fg(theme.tree_default_node),
     }
 }

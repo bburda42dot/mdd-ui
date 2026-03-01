@@ -40,8 +40,6 @@ pub enum ServiceListType {
 
 /// Type of node for styling and interaction purposes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-// DOP, SDG are standard domain abbreviations
-#[allow(clippy::upper_case_acronyms)]
 pub enum NodeType {
     /// Collapsible container without its own detail content.
     Container,
@@ -64,9 +62,9 @@ pub enum NodeType {
     /// A single ECU job node.
     Job,
     /// A Data Object Property node.
-    DOP,
+    Dop,
     /// A Special Data Group node.
-    SDG,
+    Sdg,
     /// Fallback node type with default styling.
     Default,
 }

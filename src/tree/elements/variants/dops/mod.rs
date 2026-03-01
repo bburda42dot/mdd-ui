@@ -17,8 +17,8 @@ use cda_database::datatypes::{DiagLayer, DiagService, Parameter};
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType, DetailSectionData,
-        DetailSectionType, NodeType,
+        CellJumpTarget, CellType, ColumnConstraint, DetailContent, DetailRow, DetailRowType,
+        DetailSectionData, DetailSectionType, NodeType,
     },
 };
 
@@ -633,8 +633,8 @@ fn build_dops_overview_table(
         .iter()
         .map(|(cat, dops)| DetailRow {
             cells: vec![cat.label().to_owned(), dops.len().to_string()],
-            cell_types: vec![CellType::Text, CellType::NumericValue],
-            cell_jump_targets: vec![None; 2],
+            cell_types: vec![CellType::ParameterName, CellType::NumericValue],
+            cell_jump_targets: vec![Some(CellJumpTarget::TreeNodeByName), None],
             indent: 0,
             row_type: DetailRowType::Normal,
             metadata: None,
@@ -671,8 +671,8 @@ fn build_short_name_only_overview(dops: &[DopInfo<'_>]) -> Vec<DetailSectionData
         .iter()
         .map(|dop_info| DetailRow {
             cells: vec![dop_info.name.clone()],
-            cell_types: vec![CellType::Text],
-            cell_jump_targets: vec![None; 1],
+            cell_types: vec![CellType::ParameterName],
+            cell_jump_targets: vec![Some(CellJumpTarget::TreeNodeByName)],
             indent: 0,
             row_type: DetailRowType::Normal,
             metadata: None,
@@ -735,13 +735,13 @@ fn build_category_overview_table(dops: &[DopInfo<'_>]) -> Vec<DetailSectionData>
                 dop_info.desc_id.as_deref().unwrap_or("").to_owned(),
             ],
             cell_types: vec![
-                CellType::Text,
+                CellType::ParameterName,
                 CellType::Text,
                 CellType::Text,
                 CellType::Text,
                 CellType::Text,
             ],
-            cell_jump_targets: vec![None; 5],
+            cell_jump_targets: vec![Some(CellJumpTarget::TreeNodeByName), None, None, None, None],
             indent: 0,
             row_type: DetailRowType::Normal,
             metadata: None,

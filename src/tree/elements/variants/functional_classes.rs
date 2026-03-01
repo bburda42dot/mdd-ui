@@ -109,9 +109,10 @@ fn build_functional_classes_table_section(items: &[String]) -> DetailSectionData
 
     // Add each functional class definition to the table
     for name in items {
-        rows.push(DetailRow::normal(
+        rows.push(DetailRow::with_jump_targets(
             vec![name.clone()],
-            vec![CellType::Text],
+            vec![CellType::ParameterName],
+            vec![Some(CellJumpTarget::TreeNodeByName)],
             0,
         ));
     }

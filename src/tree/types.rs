@@ -400,8 +400,8 @@ impl DetailRow {
     pub fn inherited_from(layer_name: String) -> Self {
         Self {
             cells: vec!["Inherited From".to_owned(), layer_name.clone()],
-            cell_types: vec![CellType::Text, CellType::Text],
-            cell_jump_targets: vec![None, None],
+            cell_types: vec![CellType::Text, CellType::ParameterName],
+            cell_jump_targets: vec![None, Some(CellJumpTarget::ContainerByName)],
             indent: 0,
             row_type: DetailRowType::InheritedFrom,
             metadata: Some(RowMetadata::InheritedFrom { layer_name }),

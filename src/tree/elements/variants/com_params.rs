@@ -84,7 +84,7 @@ fn build_com_params_overview(layer: &DiagLayer<'_>) -> Vec<DetailSectionData> {
             let cp_type = format!("{:?}", cp.com_param_type());
             Some(DetailRow::with_jump_targets(
                 vec![name, cp_type],
-                vec![CellType::Text, CellType::Text],
+                vec![CellType::ParameterName, CellType::Text],
                 vec![Some(CellJumpTarget::TreeNodeByName), None],
                 0,
             ))

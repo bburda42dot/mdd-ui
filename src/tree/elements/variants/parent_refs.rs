@@ -8,8 +8,8 @@ use cda_database::datatypes::ParentRef;
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType,
+        CellJumpTarget, CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData,
+        DetailSectionType, NodeType,
     },
 };
 
@@ -178,7 +178,14 @@ fn build_single_parent_ref_detail(
     if let Some(names) = parent_ref.not_inherited_diag_comm_short_names() {
         let rows: Vec<DetailRow> = names
             .iter()
-            .map(|name| DetailRow::normal(vec![name.to_owned()], vec![CellType::Text], 0))
+            .map(|name| {
+                DetailRow::with_jump_targets(
+                    vec![name.to_owned()],
+                    vec![CellType::ParameterName],
+                    vec![Some(CellJumpTarget::TreeNodeByName)],
+                    0,
+                )
+            })
             .collect();
         if !rows.is_empty() {
             sections.push(build_not_inherited_section("Not Inherited DiagComms", rows));
@@ -189,7 +196,14 @@ fn build_single_parent_ref_detail(
     if let Some(names) = parent_ref.not_inherited_variables_short_names() {
         let rows: Vec<DetailRow> = names
             .iter()
-            .map(|name| DetailRow::normal(vec![name.to_owned()], vec![CellType::Text], 0))
+            .map(|name| {
+                DetailRow::with_jump_targets(
+                    vec![name.to_owned()],
+                    vec![CellType::ParameterName],
+                    vec![Some(CellJumpTarget::TreeNodeByName)],
+                    0,
+                )
+            })
             .collect();
         if !rows.is_empty() {
             sections.push(build_not_inherited_section("Not Inherited Variables", rows));
@@ -200,7 +214,15 @@ fn build_single_parent_ref_detail(
     if let Some(names) = parent_ref.not_inherited_dops_short_names() {
         let rows: Vec<DetailRow> = names
             .iter()
-            .map(|name| DetailRow::normal(vec![name.to_owned()], vec![CellType::Text], 0))
+            .map(|name| {
+                let dop_name = name.to_owned();
+                DetailRow::with_jump_targets(
+                    vec![dop_name.clone()],
+                    vec![CellType::DopReference],
+                    vec![Some(CellJumpTarget::Dop { name: dop_name })],
+                    0,
+                )
+            })
             .collect();
         if !rows.is_empty() {
             sections.push(build_not_inherited_section("Not Inherited DOPs", rows));
@@ -211,7 +233,14 @@ fn build_single_parent_ref_detail(
     if let Some(names) = parent_ref.not_inherited_tables_short_names() {
         let rows: Vec<DetailRow> = names
             .iter()
-            .map(|name| DetailRow::normal(vec![name.to_owned()], vec![CellType::Text], 0))
+            .map(|name| {
+                DetailRow::with_jump_targets(
+                    vec![name.to_owned()],
+                    vec![CellType::ParameterName],
+                    vec![Some(CellJumpTarget::TreeNodeByName)],
+                    0,
+                )
+            })
             .collect();
         if !rows.is_empty() {
             sections.push(build_not_inherited_section("Not Inherited Tables", rows));

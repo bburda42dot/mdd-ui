@@ -12,7 +12,7 @@ use super::{
 use crate::tree::{
     builder::TreeBuilder,
     types::{
-        BIT_POSITION_UNSET, CellType, ColumnConstraint, DetailContent, DetailRow,
+        BIT_POSITION_UNSET, CellJumpTarget, CellType, ColumnConstraint, DetailContent, DetailRow,
         DetailSectionData, DetailSectionType, NodeType, ServiceListType,
     },
 };
@@ -504,7 +504,8 @@ fn build_responses_table_section(
         };
         Some(DetailRow {
             cells: vec![name, id, inherited.to_owned()],
-            cell_types: vec![CellType::Text, CellType::Text, CellType::Text],
+            cell_types: vec![CellType::ParameterName, CellType::Text, CellType::Text],
+            cell_jump_targets: vec![Some(CellJumpTarget::TreeNodeByName), None, None],
             indent: 0,
             ..Default::default()
         })

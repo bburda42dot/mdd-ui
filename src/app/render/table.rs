@@ -107,6 +107,11 @@ impl App {
         let a_cell = a.cells.get(col).map_or("", String::as_str);
         let b_cell = b.cells.get(col).map_or("", String::as_str);
 
+        // Try integer comparison first to avoid f64 precision loss for large integers
+        // (e.g. CAN IDs, large hex addresses that exceed 2^53).
+        if let (Ok(ai), Ok(bi)) = (a_cell.parse::<i64>(), b_cell.parse::<i64>()) {
+            return ai.cmp(&bi);
+        }
         match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
             (Ok(a_num), Ok(b_num)) => a_num.total_cmp(&b_num),
             (Ok(_), Err(_)) => std::cmp::Ordering::Less,

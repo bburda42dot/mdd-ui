@@ -151,7 +151,17 @@ impl App {
                 DetailSectionType::NotInheritedDops => NotInheritedElementType::Dop,
                 DetailSectionType::NotInheritedTables
                 | DetailSectionType::NotInheritedVariables => NotInheritedElementType::TreeNode,
-                _ => return,
+                DetailSectionType::Header
+                | DetailSectionType::Overview
+                | DetailSectionType::Services
+                | DetailSectionType::Requests
+                | DetailSectionType::PosResponses
+                | DetailSectionType::NegResponses
+                | DetailSectionType::ComParams
+                | DetailSectionType::States
+                | DetailSectionType::RelatedRefs
+                | DetailSectionType::FunctionalClass
+                | DetailSectionType::Custom => return,
             };
 
             let Some(selected_row) = ctx.selected_row() else {

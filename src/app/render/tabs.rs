@@ -50,7 +50,7 @@ impl App {
     ) {
         // No block needed - tabs are rendered directly in the provided area
         // Calculate how to distribute tabs across lines
-        let available_width = area.width as usize;
+        let available_width = usize::from(area.width);
         if available_width < 5 {
             return; // Too narrow to render anything meaningful
         }
@@ -88,7 +88,7 @@ impl App {
         // Render each line of tabs
         let num_tab_lines = lines.len();
         for (line_idx, line_tabs) in lines.iter().enumerate() {
-            if line_idx >= area.height.saturating_sub(1) as usize {
+            if line_idx >= usize::from(area.height.saturating_sub(1)) {
                 break; // Reserve space for separator line
             }
 

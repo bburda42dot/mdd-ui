@@ -50,7 +50,7 @@ impl App {
         frame.render_widget(tree_block, area);
 
         // Draw tree content
-        let viewport_height = tree_inner.height as usize;
+        let viewport_height = usize::from(tree_inner.height);
         self.ensure_cursor_visible(viewport_height);
 
         let lines: Vec<Line> = self

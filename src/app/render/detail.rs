@@ -306,7 +306,8 @@ impl App {
         tab_sections: &[DetailSectionData],
     ) -> Rect {
         let tab_titles: Vec<String> = tab_sections.iter().map(|s| s.title.clone()).collect();
-        let tab_lines_needed = Self::calculate_tab_lines(&tab_titles, block_inner.width as usize);
+        let tab_lines_needed =
+            Self::calculate_tab_lines(&tab_titles, usize::from(block_inner.width));
         let tab_height = u16::try_from(tab_lines_needed).unwrap_or(u16::MAX).max(1);
 
         let tab_chunks = Layout::default()

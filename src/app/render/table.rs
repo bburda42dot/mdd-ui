@@ -157,7 +157,7 @@ impl App {
     ) {
         // Account for header height (3 lines) when calculating viewport
         let header_height = 3u16;
-        let viewport_height = (inner.height.saturating_sub(header_height)).max(1) as usize;
+        let viewport_height = usize::from((inner.height.saturating_sub(header_height)).max(1));
 
         // Apply sorting based on table_sort_state if set
         let sorted_rows = self.sort_rows(rows, section_idx);

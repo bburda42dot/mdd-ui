@@ -23,60 +23,54 @@ pub fn add_tables<'a>(
         return;
     };
 
-    let mut tables: Vec<TableData> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    for pr in parent_refs {
-        let Some(table_dop) = pr.ref__as_table_dop() else {
-            continue;
-        };
-
-        let name = table_dop.short_name().unwrap_or("?").to_owned();
-        if !seen.insert(name.clone()) {
-            continue;
-        }
-
-        let semantic = table_dop.semantic().unwrap_or("-").to_owned();
-        let key_label = table_dop.key_label().unwrap_or("-").to_owned();
-        let struct_label = table_dop.struct_label().unwrap_or("-").to_owned();
-        let key_dop_name = table_dop
-            .key_dop()
-            .and_then(|d| d.short_name())
-            .unwrap_or("-")
-            .to_owned();
-        let has_key_dop = key_dop_name != "-";
-        let row_count = table_dop.rows().map_or(0, |r| r.len());
-
-        let mut rows_data = Vec::new();
-        if let Some(rows) = table_dop.rows() {
-            for row in rows {
-                let row_name = row.short_name().unwrap_or("?").to_owned();
-                let row_key = row.key().unwrap_or("-").to_owned();
-                let row_struct = row
-                    .structure()
-                    .and_then(|s| s.short_name())
-                    .unwrap_or("-")
-                    .to_owned();
-
-                rows_data.push(TableRowData {
-                    short_name: row_name,
-                    key: row_key,
-                    structure: row_struct,
-                });
+    let tables: Vec<TableData> = parent_refs
+        .filter_map(|pr| {
+            let table_dop = pr.ref__as_table_dop()?;
+            let name = table_dop.short_name().unwrap_or("?").to_owned();
+            if !seen.insert(name.clone()) {
+                return None;
             }
-        }
 
-        tables.push(TableData {
-            short_name: name,
-            semantic,
-            key_label,
-            struct_label,
-            key_dop_name,
-            has_key_dop,
-            row_count,
-            rows: rows_data,
-        });
-    }
+            let semantic = table_dop.semantic().unwrap_or("-").to_owned();
+            let key_label = table_dop.key_label().unwrap_or("-").to_owned();
+            let struct_label = table_dop.struct_label().unwrap_or("-").to_owned();
+            let key_dop_name = table_dop
+                .key_dop()
+                .and_then(|d| d.short_name())
+                .unwrap_or("-")
+                .to_owned();
+            let has_key_dop = key_dop_name != "-";
+            let row_count = table_dop.rows().map_or(0, |r| r.len());
+
+            let rows: Vec<TableRowData> = table_dop
+                .rows()
+                .into_iter()
+                .flatten()
+                .map(|row| TableRowData {
+                    short_name: row.short_name().unwrap_or("?").to_owned(),
+                    key: row.key().unwrap_or("-").to_owned(),
+                    structure: row
+                        .structure()
+                        .and_then(|s| s.short_name())
+                        .unwrap_or("-")
+                        .to_owned(),
+                })
+                .collect();
+
+            Some(TableData {
+                short_name: name,
+                semantic,
+                key_label,
+                struct_label,
+                key_dop_name,
+                has_key_dop,
+                row_count,
+                rows,
+            })
+        })
+        .collect();
 
     if tables.is_empty() {
         return;

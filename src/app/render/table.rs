@@ -109,7 +109,7 @@ impl App {
 
         match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
             (Ok(a_num), Ok(b_num)) => a_num.total_cmp(&b_num),
-            (Ok(_), Err(_)) | (Err(_), Ok(_)) | (Err(_), Err(_)) => a_cell.cmp(b_cell),
+            (Ok(_), Err(_)) | (Err(_), Ok(_) | Err(_)) => a_cell.cmp(b_cell),
         }
     }
 

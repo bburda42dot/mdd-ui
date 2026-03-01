@@ -11,10 +11,10 @@ impl App {
         let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
-        if let Some(node_mut) = self.tree.all_nodes.get_mut(idx) {
-            if node_mut.has_children {
-                node_mut.expanded = !node_mut.expanded;
-            }
+        if let Some(node_mut) = self.tree.all_nodes.get_mut(idx)
+            && node_mut.has_children
+        {
+            node_mut.expanded = !node_mut.expanded;
         }
         let old = self.tree.cursor;
         self.rebuild_visible();
@@ -129,13 +129,13 @@ impl App {
             }
             // Walk up to find parent with children
             let current_depth = node.depth;
-            for i in (0..node_idx).rev() {
-                if let Some(parent) = self.tree.all_nodes.get(i)
-                    && parent.depth < current_depth
-                    && parent.has_children
-                {
-                    return i;
-                }
+            if let Some(idx) = (0..node_idx).rev().find(|&i| {
+                self.tree
+                    .all_nodes
+                    .get(i)
+                    .is_some_and(|parent| parent.depth < current_depth && parent.has_children)
+            }) {
+                return idx;
             }
         }
         node_idx
@@ -149,19 +149,15 @@ impl App {
         let parent_depth = parent.depth;
         let children_start = parent_idx.saturating_add(1);
 
-        // Find end of children
-        let mut children_end = children_start;
-        while children_end < self.tree.all_nodes.len() {
-            if let Some(node) = self.tree.all_nodes.get(children_end) {
-                if node.depth > parent_depth {
-                    children_end = children_end.saturating_add(1);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
+        let children_end = self
+            .tree
+            .all_nodes
+            .iter()
+            .skip(children_start)
+            .position(|n| n.depth <= parent_depth)
+            .map_or(self.tree.all_nodes.len(), |pos| {
+                children_start.saturating_add(pos)
+            });
 
         if children_end <= children_start {
             self.status = "No children to sort".into();
@@ -241,19 +237,15 @@ impl App {
             let section_depth = node.depth;
             let section_start = i.saturating_add(1);
 
-            // Find all children (services) of this section
-            let mut section_end = section_start;
-            while section_end < self.tree.all_nodes.len() {
-                if let Some(node_at_end) = self.tree.all_nodes.get(section_end) {
-                    if node_at_end.depth > section_depth {
-                        section_end = section_end.saturating_add(1);
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
+            let section_end = self
+                .tree
+                .all_nodes
+                .iter()
+                .skip(section_start)
+                .position(|n| n.depth <= section_depth)
+                .map_or(self.tree.all_nodes.len(), |pos| {
+                    section_start.saturating_add(pos)
+                });
 
             // Skip if no children to sort
             if section_end <= section_start {

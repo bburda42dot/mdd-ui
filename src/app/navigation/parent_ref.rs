@@ -83,9 +83,9 @@ impl App {
         // Extract from metadata or fallback to cell data
         match &selected_row.metadata {
             Some(RowMetadata::InheritedFrom { layer_name }) => Some(layer_name.clone()),
-            None
-            | Some(RowMetadata::ChildElement { .. })
-            | Some(RowMetadata::ParameterRow { .. }) => selected_row.cells.get(1).cloned(),
+            None | Some(RowMetadata::ChildElement { .. } | RowMetadata::ParameterRow { .. }) => {
+                selected_row.cells.get(1).cloned()
+            }
         }
     }
 

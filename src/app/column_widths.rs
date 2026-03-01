@@ -184,7 +184,7 @@ impl App {
             return;
         }
         let total_32 = u32::from(total);
-        widths.iter_mut().for_each(|w| {
+        for w in widths.iter_mut() {
             *w = u16::try_from(
                 u32::from(*w)
                     .saturating_mul(100)
@@ -194,7 +194,7 @@ impl App {
                     .min(100),
             )
             .unwrap_or(100);
-        });
+        }
 
         let new_total: u16 = widths.iter().sum();
         if new_total != 100 && !widths.is_empty() {

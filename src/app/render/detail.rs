@@ -223,7 +223,7 @@ impl App {
                 direction: crate::app::SortDirection::Ascending,
                 secondary_column: None,
             }),
-            (None, Some(_)) | (None, None) => Some(TableSortState {
+            (None, Some(_) | None) => Some(TableSortState {
                 column: 0,
                 direction: crate::app::SortDirection::Ascending,
                 secondary_column: None,

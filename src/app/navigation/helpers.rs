@@ -91,11 +91,11 @@ impl App {
                     .is_some_and(|n| n.depth < target_depth && n.has_children)
             })
             .collect();
-        to_expand.iter().for_each(|&i| {
+        for &i in &to_expand {
             if let Some(n) = self.tree.all_nodes.get_mut(i) {
                 n.expanded = true;
             }
-        });
+        }
     }
 
     /// Find a container (variant/functional group) by name

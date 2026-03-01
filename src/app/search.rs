@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use super::{App, SearchScope};
+use super::{App, SearchEntry, SearchScope};
 
 impl App {
     pub(crate) fn update_search(&mut self) {
@@ -12,9 +12,10 @@ impl App {
             self.status.clear();
         } else {
             // Add current search with its scope to stack
-            self.search
-                .stack
-                .push((self.search.query.clone(), self.search.scope.clone()));
+            self.search.stack.push(SearchEntry {
+                query: self.search.query.clone(),
+                scope: self.search.scope.clone(),
+            });
             self.search.query.clear(); // Clear for next search
 
             let depth = self.search.stack.len();
@@ -22,7 +23,7 @@ impl App {
                 .search
                 .stack
                 .iter()
-                .map(|(term, scope)| format!("{}{}", term, scope.abbrev()))
+                .map(|e| format!("{}{}", e.query, e.scope.abbrev()))
                 .collect();
             self.status = format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
         }
@@ -40,10 +41,11 @@ impl App {
     fn populate_search_matches(&mut self) {
         self.search.matches.clear();
 
-        let Some((query, scope)) = self.search.stack.last().cloned() else {
+        let Some(entry) = self.search.stack.last().cloned() else {
             return;
         };
-        let q = query.to_lowercase();
+        let q = entry.query.to_lowercase();
+        let scope = entry.scope;
 
         self.search.matches = self
             .tree

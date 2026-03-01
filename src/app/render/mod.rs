@@ -176,7 +176,7 @@ impl App {
                     .search
                     .stack
                     .iter()
-                    .map(|(term, _scope)| term.clone())
+                    .map(|e| e.query.clone())
                     .collect();
                 format!(" [active: {}]", stack_display.join(" → "))
             };
@@ -213,7 +213,7 @@ impl App {
                     .search
                     .stack
                     .iter()
-                    .map(|(term, scope)| format!("{term}{}", scope.abbrev()))
+                    .map(|e| format!("{}{}", e.query, e.scope.abbrev()))
                     .collect();
                 let joined = stack_display.join(" → ");
                 format!(" | searches: {joined}")

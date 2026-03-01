@@ -93,8 +93,8 @@ impl App {
         let mut include = vec![true; self.tree.all_nodes.len()];
 
         // Apply each search filter cumulatively
-        for (query, scope) in &self.search.stack {
-            include = self.apply_search_filter(&include, query, scope);
+        for entry in &self.search.stack {
+            include = self.apply_search_filter(&include, &entry.query, &entry.scope);
         }
 
         // Build visible list from included nodes, respecting collapse state

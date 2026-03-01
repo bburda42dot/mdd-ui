@@ -46,7 +46,7 @@ impl App {
                                 .search
                                 .stack
                                 .iter()
-                                .map(|(term, _scope)| term.clone())
+                                .map(|e| e.query.clone())
                                 .collect();
                             self.status =
                                 format!("Search depth: {} [{}]", depth, stack_display.join(" → "));

@@ -193,12 +193,19 @@ pub(crate) struct TreeState {
     pub diagcomm_sort_by_id: bool, // true = sort by ID (default), false = sort by name
 }
 
+/// A single entry in the incremental search stack.
+#[derive(Clone, Debug)]
+pub(crate) struct SearchEntry {
+    pub query: String,
+    pub scope: SearchScope,
+}
+
 /// Search-related state
 #[derive(Default)]
 pub(crate) struct SearchState {
     pub query: String,
     pub active: bool,
-    pub stack: Vec<(String, SearchScope)>, // Stack of (search_term, scope) pairs
+    pub stack: Vec<SearchEntry>,
     pub scope: SearchScope,
     pub matches: Vec<usize>,
     pub match_cursor: usize,

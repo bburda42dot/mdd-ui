@@ -101,7 +101,8 @@ impl App {
                 let is_selected = *tab_idx == selected;
                 let style = if is_selected {
                     Style::default()
-                        .fg(self.theme.tab_active_bg)
+                        .fg(self.theme.tab_active_fg)
+                        .bg(self.theme.tab_active_bg)
                         .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()

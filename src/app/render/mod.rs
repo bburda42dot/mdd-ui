@@ -146,7 +146,8 @@ impl App {
 
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
         let cursor = self.tree.cursor;
-        if self.layout.breadcrumb_cursor != Some(cursor) || self.layout.breadcrumb_area_x != area.x {
+        if self.layout.breadcrumb_cursor != Some(cursor) || self.layout.breadcrumb_area_x != area.x
+        {
             self.layout.breadcrumb_segments = self.build_breadcrumb_segments(area.x);
             self.layout.breadcrumb_cursor = Some(cursor);
             self.layout.breadcrumb_area_x = area.x;
@@ -174,12 +175,8 @@ impl App {
             let current_search_info = if self.search.stack.is_empty() {
                 String::new()
             } else {
-                let stack_display: Vec<String> = self
-                    .search
-                    .stack
-                    .iter()
-                    .map(|e| e.query.clone())
-                    .collect();
+                let stack_display: Vec<String> =
+                    self.search.stack.iter().map(|e| e.query.clone()).collect();
                 format!(" [active: {}]", stack_display.join(" → "))
             };
 

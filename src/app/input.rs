@@ -42,12 +42,8 @@ impl App {
                         self.rebuild_visible();
                         let depth = self.search.stack.len();
                         if depth > 0 {
-                            let stack_display: Vec<String> = self
-                                .search
-                                .stack
-                                .iter()
-                                .map(|e| e.query.clone())
-                                .collect();
+                            let stack_display: Vec<String> =
+                                self.search.stack.iter().map(|e| e.query.clone()).collect();
                             self.status =
                                 format!("Search depth: {} [{}]", depth, stack_display.join(" → "));
                         } else {

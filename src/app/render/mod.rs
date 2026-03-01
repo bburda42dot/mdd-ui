@@ -89,9 +89,9 @@ fn expand_icon(node: &TreeNode) -> &'static str {
 // -----------------------------------------------------------------------
 
 impl App {
-    /// Build breadcrumb path for the currently selected node
-    /// Returns a vector of (text, `node_idx`) pairs in root-to-leaf order
-    fn build_breadcrumb_segments(&self) -> Vec<(String, usize)> {
+    /// Build breadcrumb path for the currently selected node, including pixel-column
+    /// positions for mouse hit-testing. `area_x` is the left edge of the breadcrumb bar.
+    fn build_breadcrumb_segments(&self, area_x: u16) -> Vec<BreadcrumbSegment> {
         let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return Vec::new();
         };
@@ -120,44 +120,42 @@ impl App {
         }
 
         path_segments.reverse();
+
+        let mut col_position = area_x;
+        let last = path_segments.len().saturating_sub(1);
         path_segments
+            .into_iter()
+            .enumerate()
+            .map(|(i, (text, node_idx))| {
+                let start_col = col_position;
+                let text_len = u16::try_from(text.chars().count()).unwrap_or(u16::MAX);
+                let end_col = start_col.saturating_add(text_len);
+                col_position = end_col;
+                if i < last {
+                    col_position = col_position.saturating_add(BREADCRUMB_SEPARATOR_LEN);
+                }
+                BreadcrumbSegment {
+                    text,
+                    node_idx,
+                    start_col,
+                    end_col,
+                }
+            })
+            .collect()
     }
 
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
-        let segments = self.build_breadcrumb_segments();
-
-        // Build the display text and track segment positions
-        let mut breadcrumb_segments = Vec::new();
-        let mut col_position: u16 = area.x;
-
-        for (i, (text, node_idx)) in segments.iter().enumerate() {
-            let start_col = col_position;
-            let text_len = u16::try_from(text.chars().count()).unwrap_or(u16::MAX);
-            let end_col = start_col.saturating_add(text_len);
-
-            breadcrumb_segments.push(BreadcrumbSegment {
-                text: text.clone(),
-                node_idx: *node_idx,
-                start_col,
-                end_col,
-            });
-            col_position = end_col;
-
-            // Add separator if not the last segment
-            if i < segments.len().saturating_sub(1) {
-                col_position = col_position.saturating_add(BREADCRUMB_SEPARATOR_LEN);
-            }
-        }
-
-        // Store segments for click handling
-        self.layout.breadcrumb_segments = breadcrumb_segments;
+        let segments = self.build_breadcrumb_segments(area.x);
 
         // Build display string
         let breadcrumb_text: String = segments
             .iter()
-            .map(|(text, _)| text.as_str())
+            .map(|s| s.text.as_str())
             .collect::<Vec<_>>()
             .join(BREADCRUMB_SEPARATOR);
+
+        // Store segments for click handling
+        self.layout.breadcrumb_segments = segments;
 
         let paragraph = Paragraph::new(breadcrumb_text).style(
             Style::default()

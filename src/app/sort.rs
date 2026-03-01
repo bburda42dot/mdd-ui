@@ -343,7 +343,7 @@ impl App {
                         secondary_column: None,
                     })
                 }
-                _ => Some(TableSortState {
+                Some(_) | None => Some(TableSortState {
                     column,
                     direction: SortDirection::Ascending,
                     secondary_column: None,

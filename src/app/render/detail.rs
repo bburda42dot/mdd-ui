@@ -151,10 +151,10 @@ impl App {
     ) -> Option<u16> {
         match &header.content {
             DetailContent::PlainText(lines) => {
-                let height = u16::try_from(lines.len())
-                    .unwrap_or(u16::MAX)
-                    .max(1)
-                    .min(outer_inner.height / 4);
+                let cap = outer_inner.height / 4;
+                // clamp min is 0 when the pane is too small to show any header
+                let height =
+                    u16::try_from(lines.len()).map_or(cap, |h| h.clamp(1u16.min(cap), cap));
                 Some(height)
             }
             DetailContent::Table { .. } | DetailContent::Composite(_) => None,

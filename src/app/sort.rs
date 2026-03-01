@@ -365,7 +365,7 @@ fn extract_service_id(text: &str) -> u32 {
         && let Some(dash_pos) = hex_part.find(" - ")
     {
         let id_str = hex_part[..dash_pos].trim();
-        return u32::from_str_radix(id_str, 16).unwrap_or(u32::MAX);
+        return u32::from_str_radix(id_str, 16).map_or(u32::MAX, |id| id);
     }
     u32::MAX
 }

@@ -783,7 +783,14 @@ fn build_names_overview_table(names: &[String], title: &str) -> Vec<DetailSectio
 
     let rows: Vec<DetailRow> = names
         .iter()
-        .map(|name| DetailRow::normal(vec![name.clone()], vec![CellType::Text], 0))
+        .map(|name| DetailRow {
+            cells: vec![name.clone()],
+            cell_types: vec![CellType::ParameterName],
+            cell_jump_targets: vec![Some(CellJumpTarget::TreeNodeByName)],
+            indent: 0,
+            row_type: DetailRowType::Normal,
+            metadata: None,
+        })
         .collect();
 
     vec![

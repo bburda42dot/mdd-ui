@@ -188,13 +188,8 @@ impl App {
                 .push(Self::initialize_table_sort(sections.get(section_idx)));
         }
 
-        while self.table.column_widths.len() < sections.len() {
-            self.table.column_widths.push(Vec::new());
-        }
-
-        while self.table.column_widths_absolute.len() < sections.len() {
-            self.table.column_widths_absolute.push(false);
-        }
+        self.table
+            .ensure_column_width_capacity(sections.len().saturating_sub(1));
 
         self.table
             .ensure_horizontal_scroll_capacity(sections.len().saturating_sub(1));

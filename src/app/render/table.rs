@@ -624,13 +624,7 @@ impl App {
         section_idx: usize,
         constraints: &[crate::tree::ColumnConstraint],
     ) -> Vec<u16> {
-        // Ensure we have enough entries
-        while self.table.column_widths.len() <= section_idx {
-            self.table.column_widths.push(Vec::new());
-        }
-        while self.table.column_widths_absolute.len() <= section_idx {
-            self.table.column_widths_absolute.push(false);
-        }
+        self.table.ensure_column_width_capacity(section_idx);
 
         // If we don't have custom widths for this section, try persistent store or init defaults
         if self

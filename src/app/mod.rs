@@ -260,6 +260,17 @@ impl TableState {
             self.horizontal_scroll.resize(len, 0);
         }
     }
+
+    /// Grow `column_widths` and `column_widths_absolute` so that `idx` is a valid index.
+    pub fn ensure_column_width_capacity(&mut self, idx: usize) {
+        let len = idx.saturating_add(1);
+        if self.column_widths.len() < len {
+            self.column_widths.resize_with(len, Vec::new);
+        }
+        if self.column_widths_absolute.len() < len {
+            self.column_widths_absolute.resize(len, false);
+        }
+    }
 }
 
 /// Mouse interaction state

@@ -216,12 +216,7 @@ impl App {
     pub(crate) fn resize_column(&mut self, delta: i16) {
         let section_idx = self.get_section_index();
 
-        while self.table.column_widths.len() <= section_idx {
-            self.table.column_widths.push(Vec::new());
-        }
-        while self.table.column_widths_absolute.len() <= section_idx {
-            self.table.column_widths_absolute.push(false);
-        }
+        self.table.ensure_column_width_capacity(section_idx);
 
         if self.tree.cursor >= self.tree.visible.len() {
             return;

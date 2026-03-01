@@ -422,9 +422,17 @@ fn build_param_detail_sections(param: &Parameter<'_>) -> Vec<DetailSectionData> 
         use cda_database::datatypes::ParamType;
         let param_type_str = match param_type {
             ParamType::CodedConst => "CodedConst",
+            ParamType::Dynamic => "Dynamic",
+            ParamType::LengthKey => "LengthKey",
+            ParamType::MatchingRequestParam => "MatchingRequestParam",
+            ParamType::NrcConst => "NrcConst",
             ParamType::PhysConst => "PhysConst",
+            ParamType::Reserved => "Reserved",
+            ParamType::System => "System",
+            ParamType::TableEntry => "TableEntry",
+            ParamType::TableKey => "TableKey",
+            ParamType::TableStruct => "TableStruct",
             ParamType::Value => "Value",
-            _ => "Other",
         };
         overview_rows.push(DetailRow::normal(
             vec!["Type".to_owned(), param_type_str.to_owned()],

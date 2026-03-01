@@ -94,7 +94,12 @@ fn extract_parent_ref_info(parent_ref: &ParentRef<'_>) -> (&'static str, String)
                 .to_owned();
             ("Functional Group", short_name)
         }
-        _ => ("Unknown", "?".to_owned()),
+        Ok(cda_database::datatypes::ParentRefType::TableDop) => {
+            ("Table DOP", "?".to_owned())
+        }
+        Ok(cda_database::datatypes::ParentRefType::NONE) | Err(_) => {
+            ("Unknown", "?".to_owned())
+        }
     }
 }
 

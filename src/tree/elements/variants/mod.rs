@@ -212,7 +212,14 @@ pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                             Ok(cda_database::datatypes::ParentRefType::EcuSharedData) => {
                                 parent_ref.ref__as_ecu_shared_data()
                             }
-                            _ => None,
+                            Ok(
+                                cda_database::datatypes::ParentRefType::Variant
+                                | cda_database::datatypes::ParentRefType::Protocol
+                                | cda_database::datatypes::ParentRefType::FunctionalGroup
+                                | cda_database::datatypes::ParentRefType::TableDop
+                                | cda_database::datatypes::ParentRefType::NONE,
+                            )
+                            | Err(_) => None,
                         }
                     })
                     .collect();
@@ -313,7 +320,14 @@ pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                             Ok(cda_database::datatypes::ParentRefType::Protocol) => {
                                 parent_ref.ref__as_protocol()
                             }
-                            _ => None,
+                            Ok(
+                                cda_database::datatypes::ParentRefType::Variant
+                                | cda_database::datatypes::ParentRefType::EcuSharedData
+                                | cda_database::datatypes::ParentRefType::FunctionalGroup
+                                | cda_database::datatypes::ParentRefType::TableDop
+                                | cda_database::datatypes::ParentRefType::NONE,
+                            )
+                            | Err(_) => None,
                         }
                     })
                     .collect();

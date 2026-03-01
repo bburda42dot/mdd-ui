@@ -345,10 +345,10 @@ pub fn get_parent_ref_services_recursive<'a>(
                             &layer_name,
                         ))
                     }
-                    _ => {
-                        // Unsupported parent ref type
-                        None
-                    }
+                    // TableDop refs don't contain services
+                    Ok(cda_database::datatypes::ParentRefType::TableDop)
+                    | Ok(cda_database::datatypes::ParentRefType::NONE)
+                    | Err(_) => None,
                 }
             })
             .flatten()

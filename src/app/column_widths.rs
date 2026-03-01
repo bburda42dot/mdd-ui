@@ -57,9 +57,7 @@ impl App {
             *w = pixel_widths;
         }
 
-        while self.table.column_widths_absolute.len() <= section_idx {
-            self.table.column_widths_absolute.push(false);
-        }
+        self.table.ensure_column_width_capacity(section_idx);
         if let Some(abs) = self.table.column_widths_absolute.get_mut(section_idx) {
             *abs = true;
         }

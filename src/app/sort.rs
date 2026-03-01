@@ -303,12 +303,13 @@ impl App {
             }
 
             // Re-insert sorted and deduplicated services
+            let inserted_count = services.len();
             self.tree
                 .all_nodes
                 .splice(section_start..section_start, services);
 
-            // Skip past the sorted section
-            i = section_start.saturating_add(section_end.saturating_sub(section_start));
+            // Skip past the re-inserted section
+            i = section_start.saturating_add(inserted_count);
         }
     }
 

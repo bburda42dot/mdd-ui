@@ -8,6 +8,16 @@ use crate::{
     tree::{DetailRowType, NodeType, RowMetadata},
 };
 
+/// Type of not-inherited element, determines navigation strategy
+enum NotInheritedElementType {
+    /// `DiagComm` services — navigates to the service/job node
+    DiagComm,
+    /// Data Object Properties — navigates to the DOP node
+    Dop,
+    /// Table structures or `DiagVariables` — navigates to the matching tree node
+    TreeNode,
+}
+
 impl App {
     /// Navigate to an inherited parent layer in the tree
     pub(crate) fn try_navigate_to_inherited_parent(&mut self) {
@@ -189,12 +199,13 @@ impl App {
 
         // Determine what type of element we're looking for based on the section title
         let element_type = if section.title.contains("DiagComms") {
-            "service"
+            NotInheritedElementType::DiagComm
+        } else if section.title.contains("DOPs") {
+            NotInheritedElementType::Dop
+        } else if section.title.contains("Tables") || section.title.contains("Variables") {
+            NotInheritedElementType::TreeNode
         } else {
-            // For now, only services (DiagComms) are navigable
-            // TODO: Add navigation for DiagVariables, DOPs,
-            // and Tables when they're added to the tree
-            self.status = "Navigation not yet supported for this element type".into();
+            self.status = "Navigation not supported for this element type".into();
             return;
         };
 
@@ -204,36 +215,38 @@ impl App {
         };
 
         // Get the selected row cursor
-        let row_cursor = if section_idx < self.detail.section_cursors.len() {
-            *self.detail.section_cursors.get(section_idx).unwrap_or(&0)
-        } else {
+        let Some(&row_cursor) = self.detail.section_cursors.get(section_idx) else {
             return;
         };
 
         // Apply sorting if active for this section
         let sorted_rows = self.apply_table_sort(rows, section_idx);
 
-        if row_cursor >= sorted_rows.len() {
-            return;
-        }
-
         let Some(selected_row) = sorted_rows.get(row_cursor) else {
             return;
         };
 
         // Extract the element short name from the first column
-        if selected_row.cells.is_empty() {
-            self.status = "Invalid row".into();
-            return;
-        }
-
         let Some(target_short_name) = selected_row.cells.first().cloned() else {
             return;
         };
 
-        // Search for the element in the tree based on type
-        if element_type == "service" {
-            self.navigate_to_service_or_job(&target_short_name);
+        if target_short_name.is_empty() {
+            self.status = "Invalid row".into();
+            return;
+        }
+
+        // Navigate based on element type
+        match element_type {
+            NotInheritedElementType::DiagComm => {
+                self.navigate_to_service_or_job(&target_short_name);
+            }
+            NotInheritedElementType::Dop => {
+                self.navigate_to_dop(&target_short_name);
+            }
+            NotInheritedElementType::TreeNode => {
+                self.navigate_to_tree_node_by_text(&target_short_name);
+            }
         }
     }
 }

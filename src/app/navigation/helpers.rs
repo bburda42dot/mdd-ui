@@ -256,4 +256,28 @@ impl App {
         self.navigate_to_node(container_node_idx);
         self.status = format!("Navigated to: {target_short_name}");
     }
+
+    /// Navigate to a tree node whose text matches the given name.
+    /// Scopes the search to the current container's hierarchy first,
+    /// then falls back to a global search.
+    pub(super) fn navigate_to_tree_node_by_text(&mut self, target_name: &str) {
+        let found_idx = self
+            .find_in_hierarchy(|node| node.text == target_name)
+            .or_else(|| {
+                self.tree
+                    .all_nodes
+                    .iter()
+                    .position(|node| node.text == target_name)
+            });
+
+        match found_idx {
+            Some(idx) => {
+                self.navigate_to_node(idx);
+                self.status = format!("Navigated to: {target_name}");
+            }
+            None => {
+                self.status = format!("'{target_name}' not found in tree");
+            }
+        }
+    }
 }

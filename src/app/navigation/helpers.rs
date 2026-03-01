@@ -187,9 +187,9 @@ impl App {
         }
 
         // 2. Walk parent ref containers
-        // Find the "Parent Refs" child section of this container
-        let parent_refs_names: Vec<String> = self
-            .tree
+        // Find the "Parent Refs" child section of this container, then stream
+        // the names of its children directly into find_map — no intermediate Vec.
+        self.tree
             .all_nodes
             .iter()
             .enumerate()
@@ -211,21 +211,19 @@ impl App {
                             .map_or(n.text.clone(), |idx| n.text[..idx].to_string())
                     })
             })
-            .collect();
-
-        parent_refs_names.iter().find_map(|parent_name| {
-            let (pc_idx, _) = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
-                matches!(n.node_type, NodeType::Container) && {
-                    let name = n
-                        .text
-                        .find(" [")
-                        .map_or(n.text.as_str(), |idx| &n.text[..idx]);
-                    name == parent_name
-                }
-            })?;
-            let (pc_start, pc_end) = self.subtree_range(pc_idx);
-            self.find_in_subtree(pc_start, pc_end, &predicate)
-        })
+            .find_map(|parent_name| {
+                let (pc_idx, _) = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
+                    matches!(n.node_type, NodeType::Container) && {
+                        let name = n
+                            .text
+                            .find(" [")
+                            .map_or(n.text.as_str(), |idx| &n.text[..idx]);
+                        name == parent_name
+                    }
+                })?;
+                let (pc_start, pc_end) = self.subtree_range(pc_idx);
+                self.find_in_subtree(pc_start, pc_end, &predicate)
+            })
     }
 
     /// Navigate to a child tree node whose text matches the given `ChildElementType`.

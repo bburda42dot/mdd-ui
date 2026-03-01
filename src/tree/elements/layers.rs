@@ -45,6 +45,7 @@ impl LayerExt for TreeBuilder {
         // Collect parent refs into a vector so we can reuse them for multiple sections
         let parent_refs_vec: Option<Vec<ParentRef<'a>>> =
             variant_parent_refs.map(Iterator::collect);
+        let parent_refs = || parent_refs_vec.as_ref().map(|v| v.iter().cloned());
 
         // Elements are ordered alphabetically for easier navigation
 
@@ -55,12 +56,7 @@ impl LayerExt for TreeBuilder {
         add_com_params(self, layer, depth);
 
         // Diag-Comms
-        add_diag_comms(
-            self,
-            layer,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_diag_comms(self, layer, depth, parent_refs());
 
         // DOPs (Data Object Properties)
         add_dops_section(self, layer, depth);
@@ -69,35 +65,16 @@ impl LayerExt for TreeBuilder {
         add_functional_classes(self, layer, depth, all_variants);
 
         // Neg-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
-        add_neg_responses_section(
-            self,
-            layer,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_neg_responses_section(self, layer, depth, parent_refs());
 
         // Parent Refs
-        add_parent_refs_with_details(
-            self,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_parent_refs_with_details(self, depth, parent_refs());
 
         // Pos-Responses (from diag-comms) - use EXACTLY the same logic as DiagComm
-        add_pos_responses_section(
-            self,
-            layer,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_pos_responses_section(self, layer, depth, parent_refs());
 
         // Requests (from diag-comms) - use EXACTLY the same logic as DiagComm
-        add_requests_section(
-            self,
-            layer,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_requests_section(self, layer, depth, parent_refs());
 
         // SDGs
         add_sdgs(self, layer, depth);
@@ -106,11 +83,7 @@ impl LayerExt for TreeBuilder {
         add_state_charts(self, layer, depth);
 
         // Tables (from parent refs)
-        add_tables(
-            self,
-            depth,
-            parent_refs_vec.as_ref().map(|v| v.iter().cloned()),
-        );
+        add_tables(self, depth, parent_refs());
 
         // Unit Spec (from ComParamRef -> ProtStack -> ComParamSubSet)
         add_unit_spec(self, layer, depth);

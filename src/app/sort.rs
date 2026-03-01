@@ -80,9 +80,8 @@ impl App {
         self.tree
             .all_nodes
             .iter_mut()
-            .enumerate()
-            .filter(|(_, n)| n.has_children)
-            .for_each(|(i, n)| n.expanded = i == 0);
+            .filter(|n| n.has_children)
+            .for_each(|n| n.expanded = n.depth == 0);
         self.rebuild_visible();
         self.tree.cursor = 0;
         self.tree.scroll_offset = 0;

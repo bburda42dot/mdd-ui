@@ -356,18 +356,15 @@ impl App {
 }
 
 // Helper functions for service sorting
-fn extract_service_id(text: &str) -> u32 {
+fn extract_service_id(text: &str) -> Option<u32> {
     // Extract ID from format like "[Service] 0x10 - ServiceName" or "0x22F501 - ServiceName"
     let text = text
         .strip_prefix(NodeTextPrefix::Service.as_str())
         .unwrap_or(text);
-    if let Some(hex_part) = text.strip_prefix("0x")
-        && let Some(dash_pos) = hex_part.find(" - ")
-    {
-        let id_str = hex_part[..dash_pos].trim();
-        return u32::from_str_radix(id_str, 16).map_or(u32::MAX, |id| id);
-    }
-    u32::MAX
+    let hex_part = text.strip_prefix("0x")?;
+    let dash_pos = hex_part.find(" - ")?;
+    let id_str = hex_part[..dash_pos].trim();
+    u32::from_str_radix(id_str, 16).ok()
 }
 
 fn extract_service_name(text: &str) -> &str {

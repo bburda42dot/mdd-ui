@@ -125,9 +125,7 @@ fn build_cases_section(mux_dop: &cda_database::datatypes::MuxDop<'_>) -> DetailS
             let struct_name = case
                 .structure()
                 .and_then(|s| s.short_name())
-                .unwrap_or("-")
-                .to_owned();
-            let has_struct = struct_name != "-";
+                .map(str::to_owned);
             let lower = case
                 .lower_limit()
                 .map(|l| format!("{l:?}"))
@@ -137,19 +135,16 @@ fn build_cases_section(mux_dop: &cda_database::datatypes::MuxDop<'_>) -> DetailS
                 .map(|l| format!("{l:?}"))
                 .unwrap_or_default();
 
-            let dop_jump = if has_struct {
-                Some(crate::tree::CellJumpTarget::Dop {
-                    name: struct_name.clone(),
-                })
-            } else {
-                None
-            };
+            let dop_jump = struct_name
+                .as_ref()
+                .map(|n| crate::tree::CellJumpTarget::Dop { name: n.clone() });
+            let struct_display = struct_name.clone().unwrap_or_else(|| "-".to_owned());
 
             DetailRow {
-                cells: vec![name, struct_name, lower, upper],
+                cells: vec![name, struct_display, lower, upper],
                 cell_types: vec![
                     CellType::Text,
-                    if has_struct {
+                    if struct_name.is_some() {
                         CellType::DopReference
                     } else {
                         CellType::Text

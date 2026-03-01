@@ -39,9 +39,7 @@ pub fn add_tables<'a>(
             let key_dop_name = table_dop
                 .key_dop()
                 .and_then(|d| d.short_name())
-                .unwrap_or("-")
-                .to_owned();
-            let has_key_dop = key_dop_name != "-";
+                .map(str::to_owned);
             let row_count = table_dop.rows().map_or(0, |r| r.len());
 
             let rows: Vec<TableRowData> = table_dop
@@ -54,8 +52,7 @@ pub fn add_tables<'a>(
                     structure: row
                         .structure()
                         .and_then(|s| s.short_name())
-                        .unwrap_or("-")
-                        .to_owned(),
+                        .map(str::to_owned),
                 })
                 .collect();
 
@@ -65,7 +62,6 @@ pub fn add_tables<'a>(
                 key_label,
                 struct_label,
                 key_dop_name,
-                has_key_dop,
                 row_count,
                 rows,
             })
@@ -105,8 +101,7 @@ struct TableData {
     semantic: String,
     key_label: String,
     struct_label: String,
-    key_dop_name: String,
-    has_key_dop: bool,
+    key_dop_name: Option<String>,
     row_count: usize,
     rows: Vec<TableRowData>,
 }
@@ -114,7 +109,7 @@ struct TableData {
 struct TableRowData {
     short_name: String,
     key: String,
-    structure: String,
+    structure: Option<String>,
 }
 
 fn build_tables_overview(tables: &[TableData]) -> DetailSectionData {
@@ -169,13 +164,16 @@ fn build_table_detail(table: &TableData) -> Vec<DetailSectionData> {
         ),
     ];
 
-    let key_cell_type = if table.has_key_dop {
+    let key_cell_type = if table.key_dop_name.is_some() {
         CellType::DopReference
     } else {
         CellType::Text
     };
     overview_rows.push(DetailRow::normal(
-        vec!["Key DOP".to_owned(), table.key_dop_name.clone()],
+        vec![
+            "Key DOP".to_owned(),
+            table.key_dop_name.clone().unwrap_or_else(|| "-".to_owned()),
+        ],
         vec![CellType::Text, key_cell_type],
         0,
     ));
@@ -216,13 +214,16 @@ fn build_table_detail(table: &TableData) -> Vec<DetailSectionData> {
             .rows
             .iter()
             .map(|r| {
-                let has_struct = r.structure != "-";
                 DetailRow::normal(
-                    vec![r.short_name.clone(), r.key.clone(), r.structure.clone()],
+                    vec![
+                        r.short_name.clone(),
+                        r.key.clone(),
+                        r.structure.clone().unwrap_or_else(|| "-".to_owned()),
+                    ],
                     vec![
                         CellType::Text,
                         CellType::Text,
-                        if has_struct {
+                        if r.structure.is_some() {
                             CellType::DopReference
                         } else {
                             CellType::Text

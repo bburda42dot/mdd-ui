@@ -208,7 +208,7 @@ impl App {
                     DetailContent::Composite(subs) => subs
                         .iter()
                         .find_map(|s| s.content.table_rows())
-                        .map_or(0, Vec::len),
+                        .map_or(0, <[_]>::len),
                 };
                 let viewport_height = area.height as usize;
 

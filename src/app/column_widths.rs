@@ -245,7 +245,7 @@ impl App {
             return;
         };
         if current_widths.is_empty() {
-            let constraints = (*constraints).clone();
+            let constraints = constraints.to_vec();
             self.initialize_column_widths(&constraints, section_idx);
         }
 

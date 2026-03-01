@@ -278,7 +278,7 @@ pub enum DetailContent {
 
 impl DetailContent {
     /// Get a reference to the table rows, looking through `Composite` to find the first `Table`.
-    pub fn table_rows(&self) -> Option<&Vec<DetailRow>> {
+    pub fn table_rows(&self) -> Option<&[DetailRow]> {
         match self {
             DetailContent::Table { rows, .. } => Some(rows),
             DetailContent::Composite(subs) => subs.iter().find_map(|s| s.content.table_rows()),
@@ -287,7 +287,7 @@ impl DetailContent {
     }
 
     /// Get the table constraints, looking through `Composite` to find the first `Table`.
-    pub fn table_constraints(&self) -> Option<&Vec<ColumnConstraint>> {
+    pub fn table_constraints(&self) -> Option<&[ColumnConstraint]> {
         match self {
             DetailContent::Table { constraints, .. } => Some(constraints),
             DetailContent::Composite(subs) => {
@@ -310,7 +310,6 @@ impl DetailContent {
         }
     }
 
-    /// Returns the table header row, if present.
     /// Get the table header, looking through `Composite` to find the first `Table`.
     pub fn table_header(&self) -> Option<&DetailRow> {
         match self {

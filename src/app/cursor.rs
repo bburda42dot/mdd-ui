@@ -42,6 +42,15 @@ impl App {
         self.table.sort_state.clear();
     }
 
+    /// Set the tree cursor to `new_cursor`, resetting detail state only when
+    /// the cursor actually changes.
+    fn set_tree_cursor(&mut self, new_cursor: usize) {
+        if self.tree.cursor != new_cursor {
+            self.tree.cursor = new_cursor;
+            self.reset_detail_state();
+        }
+    }
+
     /// Try to restore tab selection based on section type
     fn restore_tab_from_section_type(&mut self) {
         let restored = self
@@ -97,13 +106,7 @@ impl App {
                 *cursor = cursor.saturating_sub(1);
             }
         } else {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = self.tree.cursor.saturating_sub(1);
-
-            // Reset detail state when moving to a different node
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(self.tree.cursor.saturating_sub(1));
         }
     }
 
@@ -117,13 +120,7 @@ impl App {
         } else if let Some(new_cursor) = self.tree.cursor.checked_add(1)
             && new_cursor < self.tree.visible.len()
         {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = new_cursor;
-
-            // Reset detail state when moving to a different node
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(new_cursor);
         }
     }
 
@@ -134,11 +131,7 @@ impl App {
                 *cursor = cursor.saturating_sub(n);
             }
         } else {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = self.tree.cursor.saturating_sub(n);
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(self.tree.cursor.saturating_sub(n));
         }
     }
 
@@ -149,15 +142,12 @@ impl App {
                 *cursor = cursor.saturating_add(n);
             }
         } else {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = self
+            let new_cursor = self
                 .tree
                 .cursor
                 .saturating_add(n)
                 .min(self.tree.visible.len().saturating_sub(1));
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(new_cursor);
         }
     }
 
@@ -168,11 +158,7 @@ impl App {
                 *cursor = 0;
             }
         } else {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = 0;
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(0);
         }
     }
 
@@ -183,11 +169,7 @@ impl App {
                 *cursor = usize::MAX; // clamped during render
             }
         } else {
-            let old_cursor = self.tree.cursor;
-            self.tree.cursor = self.tree.visible.len().saturating_sub(1);
-            if old_cursor != self.tree.cursor {
-                self.reset_detail_state();
-            }
+            self.set_tree_cursor(self.tree.visible.len().saturating_sub(1));
         }
     }
 

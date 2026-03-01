@@ -297,7 +297,7 @@ impl App {
             let new_count = services.len();
             if let Some(header_node) = self.tree.all_nodes.get_mut(i) {
                 // Update "Diag-Comms (X)" to reflect filtered count
-                if header_node.text.find('(').is_some() {
+                if header_node.text.contains('(') {
                     header_node.text = format!("Diag-Comms ({new_count})");
                 }
             }

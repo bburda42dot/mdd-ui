@@ -225,9 +225,7 @@ impl App {
         };
 
         // Determine horizontal scroll offset
-        while self.table.horizontal_scroll.len() <= section_idx {
-            self.table.horizontal_scroll.push(0);
-        }
+        self.table.ensure_horizontal_scroll_capacity(section_idx);
         let h_scroll = self
             .table
             .horizontal_scroll

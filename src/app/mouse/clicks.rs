@@ -134,12 +134,7 @@ impl App {
         }
 
         // Ensure section cursors and scrolls are properly sized
-        while self.detail.section_scrolls.len() <= section_idx {
-            self.detail.section_scrolls.push(0);
-        }
-        while self.detail.section_cursors.len() <= section_idx {
-            self.detail.section_cursors.push(0);
-        }
+        self.detail.ensure_section_capacity(section_idx);
 
         // Calculate clicked row (skip header which is 3 lines tall)
         let relative_row = (row.saturating_sub(area.y)) as usize;

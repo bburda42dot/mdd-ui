@@ -82,10 +82,7 @@ impl App {
     /// Scroll the table horizontally by the given pixel delta
     pub(crate) fn scroll_horizontal(&mut self, delta: i16) {
         let section_idx = self.get_section_index();
-
-        while self.table.horizontal_scroll.len() <= section_idx {
-            self.table.horizontal_scroll.push(0);
-        }
+        self.table.ensure_horizontal_scroll_capacity(section_idx);
 
         let current = self
             .table
@@ -132,9 +129,7 @@ impl App {
             if i == self.table.focused_column {
                 let col_end = col_start.saturating_add(w);
 
-                while self.table.horizontal_scroll.len() <= section_idx {
-                    self.table.horizontal_scroll.push(0);
-                }
+                self.table.ensure_horizontal_scroll_capacity(section_idx);
                 let h_scroll = self
                     .table
                     .horizontal_scroll

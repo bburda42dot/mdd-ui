@@ -176,12 +176,8 @@ impl App {
 
     /// Ensure section state vectors are properly sized
     pub(super) fn ensure_section_state_initialized(&mut self, sections: &[DetailSectionData]) {
-        while self.detail.section_scrolls.len() < sections.len() {
-            self.detail.section_scrolls.push(0);
-        }
-        while self.detail.section_cursors.len() < sections.len() {
-            self.detail.section_cursors.push(0);
-        }
+        let last_idx = sections.len().saturating_sub(1);
+        self.detail.ensure_section_capacity(last_idx);
 
         // Initialize table_sort_state and column_widths
         while self.table.sort_state.len() < sections.len() {
@@ -199,9 +195,8 @@ impl App {
             self.table.column_widths_absolute.push(false);
         }
 
-        while self.table.horizontal_scroll.len() < sections.len() {
-            self.table.horizontal_scroll.push(0);
-        }
+        self.table
+            .ensure_horizontal_scroll_capacity(sections.len().saturating_sub(1));
     }
 
     /// Initialize table sort state for a section

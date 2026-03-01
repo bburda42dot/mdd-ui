@@ -112,9 +112,7 @@ impl App {
                     self.focus_state = FocusState::Detail;
                     if self.is_current_section_composite() {
                         let section_idx = self.get_section_index();
-                        while self.detail.composite_scroll.len() <= section_idx {
-                            self.detail.composite_scroll.push(0);
-                        }
+                        self.detail.ensure_composite_capacity(section_idx);
                         if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                             *scroll = scroll.saturating_add(1);
                         }
@@ -133,9 +131,7 @@ impl App {
                     self.focus_state = FocusState::Detail;
                     if self.is_current_section_composite() {
                         let section_idx = self.get_section_index();
-                        while self.detail.composite_scroll.len() <= section_idx {
-                            self.detail.composite_scroll.push(0);
-                        }
+                        self.detail.ensure_composite_capacity(section_idx);
                         if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
                             *scroll = scroll.saturating_sub(1);
                         }

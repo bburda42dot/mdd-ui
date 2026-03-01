@@ -210,6 +210,26 @@ pub(crate) struct DetailState {
     pub last_selected_section_title: Option<String>,
 }
 
+impl DetailState {
+    /// Grow `section_scrolls` and `section_cursors` so that `idx` is a
+    /// valid index in both vectors.
+    pub fn ensure_section_capacity(&mut self, idx: usize) {
+        while self.section_scrolls.len() <= idx {
+            self.section_scrolls.push(0);
+        }
+        while self.section_cursors.len() <= idx {
+            self.section_cursors.push(0);
+        }
+    }
+
+    /// Grow `composite_scroll` so that `idx` is a valid index.
+    pub fn ensure_composite_capacity(&mut self, idx: usize) {
+        while self.composite_scroll.len() <= idx {
+            self.composite_scroll.push(0);
+        }
+    }
+}
+
 /// Table column and scrolling state
 #[derive(Default)]
 pub(crate) struct TableState {
@@ -223,6 +243,15 @@ pub(crate) struct TableState {
     pub cached_total_table_width: u16,
     pub jump_buffer: String,
     pub jump_buffer_time: Option<Instant>,
+}
+
+impl TableState {
+    /// Grow `horizontal_scroll` so that `idx` is a valid index.
+    pub fn ensure_horizontal_scroll_capacity(&mut self, idx: usize) {
+        while self.horizontal_scroll.len() <= idx {
+            self.horizontal_scroll.push(0);
+        }
+    }
 }
 
 /// Mouse interaction state

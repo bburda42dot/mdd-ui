@@ -141,9 +141,7 @@ impl App {
         };
 
         // Clamp scroll offset (block index of first visible block)
-        while self.detail.composite_scroll.len() <= section_idx {
-            self.detail.composite_scroll.push(0);
-        }
+        self.detail.ensure_composite_capacity(section_idx);
         let max_first_block = block_count.saturating_sub(1);
         self.detail.composite_max_scroll = max_first_block;
         if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {

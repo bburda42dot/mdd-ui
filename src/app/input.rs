@@ -305,9 +305,7 @@ impl App {
 
         // For Composite sections, scroll by block index
         if self.is_current_section_composite() {
-            while self.detail.composite_scroll.len() <= section_idx {
-                self.detail.composite_scroll.push(0);
-            }
+            self.detail.ensure_composite_capacity(section_idx);
             match code {
                 KeyCode::Up | KeyCode::Char('K') => {
                     if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {

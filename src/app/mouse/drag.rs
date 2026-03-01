@@ -109,9 +109,7 @@ impl App {
             0
         };
         let section_idx = self.get_section_index();
-        while self.table.horizontal_scroll.len() <= section_idx {
-            self.table.horizontal_scroll.push(0);
-        }
+        self.table.ensure_horizontal_scroll_capacity(section_idx);
         if let Some(hs) = self.table.horizontal_scroll.get_mut(section_idx) {
             *hs = new_scroll;
         }
@@ -167,9 +165,7 @@ impl App {
                 if self.is_current_section_composite() {
                     let relative_y = usize::from(row.saturating_sub(area.y));
                     let max_scroll = self.detail.composite_max_scroll;
-                    while self.detail.composite_scroll.len() <= section_idx {
-                        self.detail.composite_scroll.push(0);
-                    }
+                    self.detail.ensure_composite_capacity(section_idx);
                     let new_scroll = if area.height > 1 {
                         let divisor = usize::from(area.height.saturating_sub(1));
                         relative_y

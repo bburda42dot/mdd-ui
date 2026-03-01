@@ -157,7 +157,10 @@ impl App {
                 focused_col
             };
 
-            let cell_value = selected_row.cells.get(nav_col).cloned().unwrap_or_default();
+            let cell_value = selected_row
+                .cells
+                .get(nav_col)
+                .map_or_else(Default::default, Clone::clone);
             let jump_target = selected_row
                 .cell_jump_targets
                 .get(nav_col)

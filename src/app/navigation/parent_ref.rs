@@ -72,8 +72,7 @@ impl App {
             .detail
             .section_cursors
             .get(overview_idx)
-            .copied()
-            .unwrap_or(0);
+            .map_or(0, |&c| c);
         let sorted_rows = self.sort_rows(rows, overview_idx);
         let selected_row = sorted_rows.get(row_cursor)?;
 

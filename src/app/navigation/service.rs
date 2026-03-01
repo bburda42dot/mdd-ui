@@ -50,8 +50,7 @@ impl App {
                 .detail
                 .section_cursors
                 .get(section_idx)
-                .copied()
-                .unwrap_or(0);
+                .map_or(0, |&c| c);
             let sorted_rows = self.sort_rows(rows, section_idx);
 
             if let Some(selected_row) = sorted_rows.get(row_cursor)

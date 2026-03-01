@@ -25,13 +25,11 @@ impl App {
             let cell_type = selected_row
                 .cell_types
                 .get(focused_col)
-                .copied()
-                .unwrap_or(CellType::Text);
+                .map_or(CellType::Text, |&ct| ct);
             let cell_value = selected_row
                 .cells
                 .get(focused_col)
-                .cloned()
-                .unwrap_or_default();
+                .map_or_else(Default::default, Clone::clone);
             let jump_target = selected_row
                 .cell_jump_targets
                 .get(focused_col)
@@ -228,7 +226,10 @@ impl App {
                 .find(|(ct, _)| **ct == CellType::DopReference)
                 .map(|(_, cell)| cell.clone());
 
-            let target_name = selected_row.cells.first().cloned().unwrap_or_default();
+            let target_name = selected_row
+                .cells
+                .first()
+                .map_or_else(Default::default, Clone::clone);
 
             (ctx.node_idx, ctx.node.depth, dop_ref, target_name)
         };

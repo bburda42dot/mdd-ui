@@ -21,8 +21,7 @@ impl App {
             let Some(selected_row) = ctx.selected_row() else {
                 return;
             };
-            let focused_col =
-                self.get_focused_column(ctx.use_row_selection, &selected_row.cell_types);
+            let focused_col = self.get_focused_column(&selected_row.cell_types);
             let cell_type = selected_row
                 .cell_types
                 .get(focused_col)
@@ -124,12 +123,8 @@ impl App {
         }
     }
 
-    /// Determine which column is focused based on selection mode
-    pub(super) fn get_focused_column(
-        &self,
-        _use_row_selection: bool,
-        cell_types: &[CellType],
-    ) -> usize {
+    /// Determine which column is focused, clamped to the available cell count
+    pub(super) fn get_focused_column(&self, cell_types: &[CellType]) -> usize {
         self.table
             .focused_column
             .min(cell_types.len().saturating_sub(1))

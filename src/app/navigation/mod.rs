@@ -141,8 +141,7 @@ impl App {
                     None
                 };
 
-            let focused_col =
-                self.get_focused_column(ctx.use_row_selection, &selected_row.cell_types);
+            let focused_col = self.get_focused_column(&selected_row.cell_types);
 
             let nav_col = if ctx.use_row_selection
                 && selected_row

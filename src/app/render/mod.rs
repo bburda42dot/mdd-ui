@@ -89,39 +89,38 @@ impl App {
     /// Build breadcrumb path for the currently selected node
     /// Returns a vector of (text, `node_idx`) pairs in root-to-leaf order
     fn build_breadcrumb_segments(&self) -> Vec<(String, usize)> {
-        if let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) {
-            let mut path_segments = Vec::new();
-            let mut current_idx = node_idx;
+        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
+            return Vec::new();
+        };
+        let mut path_segments = Vec::new();
+        let mut current_idx = node_idx;
 
-            // Walk up the tree to build the path
-            while let Some(node) = self.tree.all_nodes.get(current_idx) {
-                path_segments.push((node.text.clone(), current_idx));
+        // Walk up the tree to build the path
+        while let Some(node) = self.tree.all_nodes.get(current_idx) {
+            path_segments.push((node.text.clone(), current_idx));
 
-                // Find parent by looking for previous node with lower depth
-                let current_depth = node.depth;
-                if current_depth == 0 {
-                    break;
-                }
-
-                let parent_idx = (0..current_idx).rev().find(|&i| {
-                    self.tree
-                        .all_nodes
-                        .get(i)
-                        .is_some_and(|n| n.depth < current_depth)
-                });
-
-                let Some(idx) = parent_idx else {
-                    break;
-                };
-                current_idx = idx;
+            // Find parent by looking for previous node with lower depth
+            let current_depth = node.depth;
+            if current_depth == 0 {
+                break;
             }
 
-            // Reverse to get root-to-leaf order
-            path_segments.reverse();
-            path_segments
-        } else {
-            Vec::new()
+            let parent_idx = (0..current_idx).rev().find(|&i| {
+                self.tree
+                    .all_nodes
+                    .get(i)
+                    .is_some_and(|n| n.depth < current_depth)
+            });
+
+            let Some(idx) = parent_idx else {
+                break;
+            };
+            current_idx = idx;
         }
+
+        // Reverse to get root-to-leaf order
+        path_segments.reverse();
+        path_segments
     }
 
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {

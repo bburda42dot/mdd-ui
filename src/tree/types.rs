@@ -297,46 +297,40 @@ pub enum DetailContent {
 }
 
 impl DetailContent {
-    /// Get a reference to the table rows, looking through `Composite` to find the first `Table`.
-    pub fn table_rows(&self) -> Option<&[DetailRow]> {
+    /// Locate the first `Table` variant, looking through `Composite` wrappers.
+    /// Returns references to all four table fields so callers can project any subset.
+    fn first_table(&self) -> Option<(&DetailRow, &[DetailRow], &[ColumnConstraint], bool)> {
         match self {
-            DetailContent::Table { rows, .. } => Some(rows),
-            DetailContent::Composite(subs) => subs.iter().find_map(|s| s.content.table_rows()),
+            DetailContent::Table {
+                header,
+                rows,
+                constraints,
+                use_row_selection,
+            } => Some((header, rows, constraints, *use_row_selection)),
+            DetailContent::Composite(subs) => subs.iter().find_map(|s| s.content.first_table()),
             DetailContent::PlainText(_) => None,
         }
+    }
+
+    /// Get a reference to the table rows, looking through `Composite` to find the first `Table`.
+    pub fn table_rows(&self) -> Option<&[DetailRow]> {
+        self.first_table().map(|(_, rows, _, _)| rows)
     }
 
     /// Get the table constraints, looking through `Composite` to find the first `Table`.
     pub fn table_constraints(&self) -> Option<&[ColumnConstraint]> {
-        match self {
-            DetailContent::Table { constraints, .. } => Some(constraints),
-            DetailContent::Composite(subs) => {
-                subs.iter().find_map(|s| s.content.table_constraints())
-            }
-            DetailContent::PlainText(_) => None,
-        }
+        self.first_table().map(|(_, _, constraints, _)| constraints)
     }
 
     /// Get `use_row_selection`, looking through `Composite` to find the first `Table`.
     pub fn table_use_row_selection(&self) -> Option<bool> {
-        match self {
-            DetailContent::Table {
-                use_row_selection, ..
-            } => Some(*use_row_selection),
-            DetailContent::Composite(subs) => subs
-                .iter()
-                .find_map(|s| s.content.table_use_row_selection()),
-            DetailContent::PlainText(_) => None,
-        }
+        self.first_table()
+            .map(|(_, _, _, use_row_selection)| use_row_selection)
     }
 
     /// Get the table header, looking through `Composite` to find the first `Table`.
     pub fn table_header(&self) -> Option<&DetailRow> {
-        match self {
-            DetailContent::Table { header, .. } => Some(header),
-            DetailContent::Composite(subs) => subs.iter().find_map(|s| s.content.table_header()),
-            DetailContent::PlainText(_) => None,
-        }
+        self.first_table().map(|(header, _, _, _)| header)
     }
 }
 

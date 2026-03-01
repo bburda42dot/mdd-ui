@@ -81,9 +81,7 @@ impl App {
         // Calculate percentage (clamped between 20% and 80%)
         let percentage_f32 = (f32::from(new_tree_width) / f32::from(total_width)) * 100.0;
         let clamped = percentage_f32.clamp(f32::from(DIVIDER_MIN_PCT), f32::from(DIVIDER_MAX_PCT));
-        // clamped percentage (20..=80) always fits in u16
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let percentage = clamped.round().clamp(0.0, 100.0) as u16;
+        let percentage = u16::try_from(clamped.round() as u32).unwrap_or(DIVIDER_MIN_PCT);
         self.layout.tree_width_percentage = percentage;
     }
 
@@ -102,9 +100,11 @@ impl App {
         let new_scroll = if area.width > 1 {
             let numerator = u32::from(relative_x).saturating_mul(u32::from(max_scroll));
             let divisor = u32::from(area.width.saturating_sub(1));
-            #[allow(clippy::cast_possible_truncation)]
-            let result = numerator.checked_div(divisor).unwrap_or(0) as u16;
-            result.min(max_scroll)
+            let result = numerator
+                .checked_div(divisor)
+                .unwrap_or(0)
+                .min(u32::from(max_scroll));
+            u16::try_from(result).unwrap_or(max_scroll)
         } else {
             0
         };

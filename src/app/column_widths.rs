@@ -184,10 +184,15 @@ impl App {
             *widths = widths
                 .iter()
                 .map(|&w| {
-                    // f32 percentage value always fits in u16 (0..=100)
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    let result = ((f32::from(w) / f32::from(total)) * 100.0).round() as u16;
-                    result
+                    // Integer-only rounding: (w * 100 + total/2) / total
+                    let total_32 = u32::from(total);
+                    u16::try_from(
+                        (u32::from(w) * 100 + total_32 / 2)
+                            .checked_div(total_32)
+                            .unwrap_or(0)
+                            .min(100),
+                    )
+                    .unwrap_or(100)
                 })
                 .collect();
 

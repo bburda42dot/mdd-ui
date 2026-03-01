@@ -129,9 +129,7 @@ impl App {
                 let span = Span::styled(tab_str.as_str(), style);
                 let line = Line::from(span);
 
-                // str::len() fits in u16 for any realistic tab label
-                #[allow(clippy::cast_possible_truncation)]
-                let tab_width = tab_str.len() as u16;
+                let tab_width = u16::try_from(tab_str.len()).unwrap_or(u16::MAX);
                 frame.render_widget(
                     Paragraph::new(line),
                     Rect {
@@ -146,10 +144,7 @@ impl App {
             }
         }
 
-        // Draw a horizontal separator line below all tabs
-        // tab line count is always a small number that fits in u16
-        #[allow(clippy::cast_possible_truncation)]
-        let num_tab_lines_u16 = num_tab_lines as u16;
+        let num_tab_lines_u16 = u16::try_from(num_tab_lines).unwrap_or(u16::MAX);
         if num_tab_lines > 0 && area.height > num_tab_lines_u16 {
             let separator_y = area.y.saturating_add(num_tab_lines_u16);
             let separator_line = "─".repeat(available_width);

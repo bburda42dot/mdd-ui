@@ -667,10 +667,14 @@ impl App {
                     let scaled_widths = widths
                         .iter()
                         .map(|&w| {
-                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                            {
-                                ((f64::from(w) / f64::from(total)) * 100.0).round() as u16
-                            }
+                            let total_32 = u32::from(total);
+                            u16::try_from(
+                                (u32::from(w) * 100 + total_32 / 2)
+                                    .checked_div(total_32)
+                                    .unwrap_or(0)
+                                    .min(100),
+                            )
+                            .unwrap_or(100)
                         })
                         .collect();
                     widths = scaled_widths;

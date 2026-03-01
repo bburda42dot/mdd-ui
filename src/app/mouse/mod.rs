@@ -82,7 +82,6 @@ impl App {
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                // Stop dragging when mouse button is released
                 self.mouse.drag_state = DragState::None;
             }
             MouseEventKind::Drag(MouseButton::Left) => {

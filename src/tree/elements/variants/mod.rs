@@ -80,7 +80,6 @@ pub(crate) fn format_service_id(ds: &DiagService<'_>) -> String {
 
 /// Add all variants to the tree
 pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
-    // Add Variants section
     if let Some(variants) = ecu.variants() {
         // Collect all variants for cross-variant lookups (e.g., functional classes)
         let all_variants_vec: Vec<VariantWrap> = variants.iter().map(VariantWrap).collect();
@@ -96,7 +95,6 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
             SectionType::Variants,
         );
 
-        // Add each variant
         for (vi, variant) in variants.iter().enumerate() {
             let vw = VariantWrap(variant);
             let mut name = vw
@@ -110,10 +108,8 @@ pub fn add_variants(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
                 name.push_str(" [base]");
             }
 
-            // Build detail sections
             let mut detail_sections = vec![];
 
-            // Add summary sections (overview and children)
             detail_sections.extend(build_variant_summary_section(&vw, &name));
 
             // Note: Parent refs are not shown in variant detail view per user request

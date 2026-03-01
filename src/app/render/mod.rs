@@ -95,11 +95,9 @@ impl App {
         let mut path_segments = Vec::new();
         let mut current_idx = node_idx;
 
-        // Walk up the tree to build the path
         while let Some(node) = self.tree.all_nodes.get(current_idx) {
             path_segments.push((node.text.clone(), current_idx));
 
-            // Find parent by looking for previous node with lower depth
             let current_depth = node.depth;
             if current_depth == 0 {
                 break;
@@ -118,13 +116,11 @@ impl App {
             current_idx = idx;
         }
 
-        // Reverse to get root-to-leaf order
         path_segments.reverse();
         path_segments
     }
 
     pub(super) fn draw_breadcrumb(&mut self, frame: &mut Frame, area: Rect) {
-        // Get breadcrumb segments with their node indices
         let segments = self.build_breadcrumb_segments();
 
         // Build the display text and track segment positions

@@ -66,11 +66,6 @@ impl App {
 
                 let target_type = self.detail.last_selected_section_type;
                 let target_title = self.detail.last_selected_section_title.as_deref();
-                let mut sections = node
-                    .detail_sections
-                    .iter()
-                    .enumerate()
-                    .filter(|(idx, _)| *idx >= section_offset);
 
                 // First pass: match both title and type (precise match for Custom sections)
                 let by_title = target_title.and_then(|title| {
@@ -83,7 +78,11 @@ impl App {
                 });
 
                 // Second pass: match type only (fallback)
-                let by_type = sections
+                let by_type = node
+                    .detail_sections
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, _)| *idx >= section_offset)
                     .find(|(_, s)| target_type == Some(s.section_type))
                     .map(|(idx, _)| idx);
 

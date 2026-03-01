@@ -299,6 +299,20 @@ impl App {
         }
     }
 
+    /// Apply `f` to the section cursor at `section_idx`, if it exists.
+    fn adjust_section_cursor(&mut self, section_idx: usize, f: impl Fn(usize) -> usize) {
+        if let Some(c) = self.detail.section_cursors.get_mut(section_idx) {
+            *c = f(*c);
+        }
+    }
+
+    /// Apply `f` to the composite scroll at `section_idx`, if it exists.
+    fn adjust_composite_scroll(&mut self, section_idx: usize, f: impl Fn(usize) -> usize) {
+        if let Some(s) = self.detail.composite_scroll.get_mut(section_idx) {
+            *s = f(*s);
+        }
+    }
+
     /// Handle navigation keys when the detail pane is focused.
     fn handle_detail_navigation(&mut self, code: KeyCode) {
         let section_idx = self.get_section_index();
@@ -308,34 +322,27 @@ impl App {
             self.detail.ensure_composite_capacity(section_idx);
             match code {
                 KeyCode::Up | KeyCode::Char('K') => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_sub(1);
-                    }
+                    self.adjust_composite_scroll(section_idx, |s| s.saturating_sub(1));
                 }
                 KeyCode::Down | KeyCode::Char('J') => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_add(1);
-                    }
+                    self.adjust_composite_scroll(section_idx, |s| s.saturating_add(1));
                 }
                 KeyCode::PageUp => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_sub(COMPOSITE_SCROLL_STEP);
-                    }
+                    self.adjust_composite_scroll(section_idx, |s| {
+                        s.saturating_sub(COMPOSITE_SCROLL_STEP)
+                    });
                 }
                 KeyCode::PageDown => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = scroll.saturating_add(COMPOSITE_SCROLL_STEP);
-                    }
+                    self.adjust_composite_scroll(section_idx, |s| {
+                        s.saturating_add(COMPOSITE_SCROLL_STEP)
+                    });
                 }
                 KeyCode::Home => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = 0;
-                    }
+                    self.adjust_composite_scroll(section_idx, |_| 0);
                 }
                 KeyCode::End => {
-                    if let Some(scroll) = self.detail.composite_scroll.get_mut(section_idx) {
-                        *scroll = self.detail.composite_max_scroll;
-                    }
+                    let max = self.detail.composite_max_scroll;
+                    self.adjust_composite_scroll(section_idx, |_| max);
                 }
                 KeyCode::Left | KeyCode::Char('H') => {
                     let new_tab = self.detail.selected_tab.saturating_sub(1);
@@ -354,29 +361,19 @@ impl App {
 
         match code {
             KeyCode::Up | KeyCode::Char('K') => {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_sub(1);
-                }
+                self.adjust_section_cursor(section_idx, |c| c.saturating_sub(1));
             }
             KeyCode::Down | KeyCode::Char('J') => {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_add(1);
-                }
+                self.adjust_section_cursor(section_idx, |c| c.saturating_add(1));
             }
             KeyCode::PageUp => {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_sub(PAGE_SIZE);
-                }
+                self.adjust_section_cursor(section_idx, |c| c.saturating_sub(PAGE_SIZE));
             }
             KeyCode::PageDown => {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = cursor.saturating_add(PAGE_SIZE);
-                }
+                self.adjust_section_cursor(section_idx, |c| c.saturating_add(PAGE_SIZE));
             }
             KeyCode::Home => {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = 0;
-                }
+                self.adjust_section_cursor(section_idx, |_| 0);
             }
             KeyCode::End => {
                 let row_count = self
@@ -387,9 +384,7 @@ impl App {
                     .and_then(|node| node.detail_sections.get(section_idx))
                     .and_then(|s| s.content.table_rows())
                     .map_or(0, |rows| rows.len());
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = row_count.saturating_sub(1);
-                }
+                self.adjust_section_cursor(section_idx, |_| row_count.saturating_sub(1));
             }
             KeyCode::Left | KeyCode::Char('H') => {
                 let new_tab = self.detail.selected_tab.saturating_sub(1);

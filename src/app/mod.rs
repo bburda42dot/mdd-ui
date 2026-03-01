@@ -289,6 +289,16 @@ pub(crate) struct HistoryState {
     pub position: usize,
 }
 
+/// A single segment within the breadcrumb bar, tracking text, which tree node
+/// it represents, and its column range for mouse hit-testing.
+#[derive(Default, Clone)]
+pub(crate) struct BreadcrumbSegment {
+    pub text: String,
+    pub node_idx: usize,
+    pub start_col: u16,
+    pub end_col: u16,
+}
+
 /// Cached layout areas for mouse handling
 #[derive(Default)]
 pub(crate) struct LayoutCache {
@@ -298,7 +308,7 @@ pub(crate) struct LayoutCache {
     pub tab_titles: Vec<String>,
     pub table_content_area: Option<Rect>,
     pub breadcrumb_area: Rect,
-    pub breadcrumb_segments: Vec<(String, usize, u16, u16)>,
+    pub breadcrumb_segments: Vec<BreadcrumbSegment>,
     pub tree_scrollbar_area: Option<Rect>,
     pub detail_scrollbar_area: Option<Rect>,
     pub detail_hscrollbar_area: Option<Rect>,

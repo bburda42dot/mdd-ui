@@ -17,9 +17,9 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use super::FocusState;
+use super::{App, BreadcrumbSegment, FocusState};
 use crate::{
-    app::{App, config::ResolvedTheme},
+    app::config::ResolvedTheme,
     tree::{NodeType, TreeNode},
 };
 
@@ -135,7 +135,12 @@ impl App {
             let text_len = u16::try_from(text.len()).unwrap_or(u16::MAX);
             let end_col = start_col.saturating_add(text_len);
 
-            breadcrumb_segments.push((text.clone(), *node_idx, start_col, end_col));
+            breadcrumb_segments.push(BreadcrumbSegment {
+                text: text.clone(),
+                node_idx: *node_idx,
+                start_col,
+                end_col,
+            });
             col_position = end_col;
 
             // Add separator if not the last segment

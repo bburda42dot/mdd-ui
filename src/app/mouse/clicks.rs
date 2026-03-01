@@ -256,8 +256,8 @@ impl App {
             .layout
             .breadcrumb_segments
             .iter()
-            .find(|(_, _, start_col, end_col)| column >= *start_col && column < *end_col)
-            .map(|(text, node_idx, _, _)| (text.clone(), *node_idx));
+            .find(|seg| column >= seg.start_col && column < seg.end_col)
+            .map(|seg| (seg.text.clone(), seg.node_idx));
 
         if let Some((text, node_idx)) = clicked_segment {
             // Navigate to this node

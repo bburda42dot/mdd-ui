@@ -62,8 +62,8 @@ impl App {
             .collect();
 
         // Calculate positions and line breaks
-        let mut lines: Vec<Vec<(usize, &String)>> = Vec::new();
-        let mut current_line: Vec<(usize, &String)> = Vec::new();
+        let mut lines: Vec<Vec<(usize, &str)>> = Vec::new();
+        let mut current_line: Vec<(usize, &str)> = Vec::new();
         let mut current_width: usize = 0;
 
         for (idx, tab_str) in tab_strings.iter().enumerate() {
@@ -77,7 +77,7 @@ impl App {
                 current_width = 0;
             }
 
-            current_line.push((idx, tab_str));
+            current_line.push((idx, tab_str.as_str()));
             current_width = current_width.saturating_add(tab_width);
         }
 
@@ -126,7 +126,7 @@ impl App {
                 }
 
                 // Render the tab
-                let span = Span::styled(tab_str.as_str(), style);
+                let span = Span::styled(*tab_str, style);
                 let line = Line::from(span);
 
                 let tab_width = u16::try_from(tab_str.len()).unwrap_or(u16::MAX);

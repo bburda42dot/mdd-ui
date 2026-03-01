@@ -77,18 +77,11 @@ impl App {
         }
 
         // Handle other node types with detail sections
-        self.handle_generic_detail_enter();
+        self.handle_generic_detail_enter(node_idx);
     }
 
     /// Handle Enter key for generic nodes with detail sections
-    fn handle_generic_detail_enter(&mut self) {
-        if self.tree.cursor >= self.tree.visible.len() {
-            return;
-        }
-
-        let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-            return;
-        };
+    fn handle_generic_detail_enter(&mut self, node_idx: usize) {
         let Some(node) = self.tree.all_nodes.get(node_idx) else {
             return;
         };

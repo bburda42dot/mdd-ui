@@ -192,220 +192,133 @@ pub fn add_functional_groups(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
     }
 }
 
-/// Add all ECU shared data to the tree
-pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
-    // ECU shared data is accessed through functional groups -> parent refs
-    // Following the pattern from the provided find_ecu_shared_services function
-
-    // Collect ECU shared data from functional groups
-    let ecu_shared_data_refs: Vec<_> = ecu
+/// Collect `DiagLayer`s reachable via functional-group parent refs, using
+/// `get_layer` to extract the inner layer for a chosen parent-ref type (all
+/// other types should return `None`). Deduplicates by short name.
+fn collect_parent_ref_layers<'a>(
+    ecu: &EcuDb<'a>,
+    get_layer: impl Fn(cda_database::datatypes::ParentRef<'a>) -> Option<DiagLayer<'a>>,
+) -> Vec<DiagLayer<'a>> {
+    let all: Vec<DiagLayer<'a>> = ecu
         .functional_groups()
         .into_iter()
         .flatten()
         .filter_map(|fg| {
             fg.parent_refs().and_then(|parent_refs| {
-                // Find EcuSharedData parent refs
-                let esd_refs: Vec<_> = parent_refs
+                let layers: Vec<DiagLayer<'a>> = parent_refs
                     .iter()
-                    .filter_map(|parent_ref| {
-                        let parent_ref = cda_database::datatypes::ParentRef(parent_ref);
-                        match parent_ref.ref_type().try_into() {
-                            Ok(cda_database::datatypes::ParentRefType::EcuSharedData) => {
-                                parent_ref.ref__as_ecu_shared_data()
-                            }
-                            Ok(
-                                cda_database::datatypes::ParentRefType::Variant
-                                | cda_database::datatypes::ParentRefType::Protocol
-                                | cda_database::datatypes::ParentRefType::FunctionalGroup
-                                | cda_database::datatypes::ParentRefType::TableDop
-                                | cda_database::datatypes::ParentRefType::NONE,
-                            )
-                            | Err(_) => None,
-                        }
-                    })
+                    .filter_map(|pr| get_layer(cda_database::datatypes::ParentRef(pr)))
                     .collect();
-
-                if esd_refs.is_empty() {
-                    None
-                } else {
-                    Some(esd_refs)
-                }
+                (!layers.is_empty()).then_some(layers)
             })
         })
         .flatten()
         .collect();
 
-    // Deduplicate by layer short name (same ECU shared data may be referenced by multiple FGs)
-    let mut seen_names = std::collections::HashSet::new();
-    let unique_esd: Vec<_> = ecu_shared_data_refs
-        .into_iter()
-        .filter(|esd| {
-            if let Some(dl) = esd.diag_layer() {
-                let name = dl.short_name().unwrap_or("");
-                if !name.is_empty() && seen_names.contains(name) {
-                    return false;
-                }
-                seen_names.insert(name.to_owned());
-                true
-            } else {
-                false
-            }
+    let mut seen = std::collections::HashSet::new();
+    all.into_iter()
+        .filter(|dl| {
+            let name = dl.short_name().unwrap_or("");
+            !name.is_empty() && seen.insert(name.to_owned())
         })
+        .collect()
+}
+
+/// Add a section of `DiagLayer`s to the tree (section header + one child node
+/// per layer with its full sub-structure).
+fn add_layer_section(
+    b: &mut TreeBuilder,
+    layers: Vec<DiagLayer<'_>>,
+    section_name: &str,
+    section_type: SectionType,
+    overview_title: &str,
+) {
+    if layers.is_empty() {
+        return;
+    }
+
+    let names: Vec<String> = layers
+        .iter()
+        .filter_map(|dl| dl.short_name().map(str::to_owned))
         .collect();
+    let overview = build_names_overview_table(&names, overview_title);
 
-    if !unique_esd.is_empty() {
-        let names: Vec<String> = unique_esd
-            .iter()
-            .filter_map(|esd| {
-                esd.diag_layer()
-                    .and_then(|dl| dl.short_name().map(str::to_owned))
-            })
-            .collect();
-        let overview = build_names_overview_table(&names, "ECU Shared Data Overview");
+    b.push_section_header(
+        section_name.to_string(),
+        false,
+        true,
+        overview,
+        section_type,
+    );
 
-        b.push_section_header(
-            "ECU Shared Data".to_string(),
+    for layer in &layers {
+        let name = layer.short_name().unwrap_or("unnamed");
+        let detail_sections = build_layer_summary_section(layer, name);
+
+        b.push_details_structured(
+            1,
+            name.to_string(),
             false,
             true,
-            overview,
-            SectionType::EcuSharedData,
+            detail_sections,
+            NodeType::Container,
         );
 
-        for esd in &unique_esd {
-            if let Some(dl) = esd.diag_layer() {
-                let layer = DiagLayer(dl);
-                let name = layer.short_name().unwrap_or("unnamed");
-
-                let detail_sections = build_layer_summary_section(&layer, name);
-
-                b.push_details_structured(
-                    1,
-                    name.to_string(),
-                    false,
-                    true,
-                    detail_sections,
-                    NodeType::Container,
-                );
-
-                // ECU shared data doesn't have parent refs like variants
-                // add_diag_layer_structured will handle adding functional classes
-                b.add_diag_layer_structured(
-                    &layer,
-                    2,
-                    None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
-                    None::<std::iter::Empty<cda_database::datatypes::Variant>>,
-                );
-            }
-        }
+        b.add_diag_layer_structured(
+            layer,
+            2,
+            None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
+            None::<std::iter::Empty<cda_database::datatypes::Variant>>,
+        );
     }
+}
+
+/// Add all ECU shared data to the tree
+pub fn add_ecu_shared_data(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
+    let layers = collect_parent_ref_layers(ecu, |pr| match pr.ref_type().try_into() {
+        Ok(cda_database::datatypes::ParentRefType::EcuSharedData) => pr
+            .ref__as_ecu_shared_data()
+            .and_then(|esd| esd.diag_layer().map(DiagLayer)),
+        Ok(
+            cda_database::datatypes::ParentRefType::Variant
+            | cda_database::datatypes::ParentRefType::Protocol
+            | cda_database::datatypes::ParentRefType::FunctionalGroup
+            | cda_database::datatypes::ParentRefType::TableDop
+            | cda_database::datatypes::ParentRefType::NONE,
+        )
+        | Err(_) => None,
+    });
+    add_layer_section(
+        b,
+        layers,
+        "ECU Shared Data",
+        SectionType::EcuSharedData,
+        "ECU Shared Data Overview",
+    );
 }
 
 /// Add all protocols to the tree
 pub fn add_protocols(b: &mut TreeBuilder, ecu: &EcuDb<'_>) {
-    // Protocols are accessed through functional groups -> parent refs
-    // Similar to ECU shared data
-
-    // Collect protocols from functional groups
-    let protocol_refs: Vec<_> = ecu
-        .functional_groups()
-        .into_iter()
-        .flatten()
-        .filter_map(|fg| {
-            fg.parent_refs().and_then(|parent_refs| {
-                // Find Protocol parent refs
-                let proto_refs: Vec<_> = parent_refs
-                    .iter()
-                    .filter_map(|parent_ref| {
-                        let parent_ref = cda_database::datatypes::ParentRef(parent_ref);
-                        match parent_ref.ref_type().try_into() {
-                            Ok(cda_database::datatypes::ParentRefType::Protocol) => {
-                                parent_ref.ref__as_protocol()
-                            }
-                            Ok(
-                                cda_database::datatypes::ParentRefType::Variant
-                                | cda_database::datatypes::ParentRefType::EcuSharedData
-                                | cda_database::datatypes::ParentRefType::FunctionalGroup
-                                | cda_database::datatypes::ParentRefType::TableDop
-                                | cda_database::datatypes::ParentRefType::NONE,
-                            )
-                            | Err(_) => None,
-                        }
-                    })
-                    .collect();
-
-                if proto_refs.is_empty() {
-                    None
-                } else {
-                    Some(proto_refs)
-                }
-            })
-        })
-        .flatten()
-        .collect();
-
-    // Deduplicate by layer short name
-    let mut seen_names = std::collections::HashSet::new();
-    let unique_protocols: Vec<_> = protocol_refs
-        .into_iter()
-        .filter(|protocol| {
-            protocol.diag_layer().is_some_and(|dl| {
-                let name = dl.short_name().unwrap_or("");
-                if !name.is_empty() && seen_names.contains(name) {
-                    return false;
-                }
-                seen_names.insert(name.to_owned());
-                true
-            })
-        })
-        .collect();
-
-    if !unique_protocols.is_empty() {
-        let names: Vec<String> = unique_protocols
-            .iter()
-            .filter_map(|p| {
-                p.diag_layer()
-                    .and_then(|dl| dl.short_name().map(str::to_owned))
-            })
-            .collect();
-        let overview = build_names_overview_table(&names, "Protocols Overview");
-
-        b.push_section_header(
-            "Protocols".to_string(),
-            false,
-            true,
-            overview,
-            SectionType::Protocols,
-        );
-
-        for protocol_wrap in &unique_protocols {
-            let Some(dl) = protocol_wrap.diag_layer() else {
-                continue;
-            };
-            let layer = DiagLayer(dl);
-            let name = layer.short_name().unwrap_or("unnamed");
-
-            let detail_sections = build_layer_summary_section(&layer, name);
-
-            b.push_details_structured(
-                1,
-                name.to_string(),
-                false,
-                true,
-                detail_sections,
-                NodeType::Container,
-            );
-
-            // For protocols, pass None for parent_refs since DOPs
-            // come from the protocol's own ComParamSpec
-            // The add_dops_section function already handles collecting DOPs from protocols
-            b.add_diag_layer_structured(
-                &layer,
-                2,
-                None::<std::iter::Empty<cda_database::datatypes::ParentRef>>,
-                None::<std::iter::Empty<cda_database::datatypes::Variant>>,
-            );
-        }
-    }
+    let layers = collect_parent_ref_layers(ecu, |pr| match pr.ref_type().try_into() {
+        Ok(cda_database::datatypes::ParentRefType::Protocol) => pr
+            .ref__as_protocol()
+            .and_then(|p| p.diag_layer().map(DiagLayer)),
+        Ok(
+            cda_database::datatypes::ParentRefType::Variant
+            | cda_database::datatypes::ParentRefType::EcuSharedData
+            | cda_database::datatypes::ParentRefType::FunctionalGroup
+            | cda_database::datatypes::ParentRefType::TableDop
+            | cda_database::datatypes::ParentRefType::NONE,
+        )
+        | Err(_) => None,
+    });
+    add_layer_section(
+        b,
+        layers,
+        "Protocols",
+        SectionType::Protocols,
+        "Protocols Overview",
+    );
 }
 
 /// Build variant summary section with info and children table

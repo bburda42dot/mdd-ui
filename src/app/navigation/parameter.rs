@@ -5,7 +5,7 @@
 
 use crate::{
     app::{App, FocusState, SCROLL_CONTEXT_LINES},
-    tree::{CellType, DetailSectionType, NodeType},
+    tree::{CellType, DetailSectionType, NodeTextPrefix, NodeType},
 };
 
 impl App {
@@ -74,7 +74,7 @@ impl App {
 
         let service_name = node
             .text
-            .strip_prefix("[Service] ")
+            .strip_prefix(NodeTextPrefix::Service.as_str())
             .unwrap_or(&node.text)
             .to_owned();
 

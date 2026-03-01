@@ -8,6 +8,25 @@ use std::{fmt, rc::Rc};
 /// Sentinel value for an unset bit position in the database.
 pub(crate) const BIT_POSITION_UNSET: u32 = 255;
 
+/// Strongly-typed prefixes embedded in tree node text to distinguish categories
+/// that share the same parent node (e.g. services vs. jobs inside a Diag-Comm).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeTextPrefix {
+    /// Prefix for diagnostic service nodes: `"[Service] "`.
+    Service,
+    /// Prefix for job nodes: `"[Job] "`.
+    Job,
+}
+
+impl NodeTextPrefix {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            NodeTextPrefix::Service => "[Service] ",
+            NodeTextPrefix::Job => "[Job] ",
+        }
+    }
+}
+
 /// Type of top-level section in the tree hierarchy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SectionType {

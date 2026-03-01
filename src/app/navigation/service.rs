@@ -5,7 +5,7 @@
 
 use crate::{
     app::{App, FocusState, SCROLL_CONTEXT_LINES},
-    tree::{DetailSectionType, NodeType, TreeNode},
+    tree::{DetailSectionType, NodeTextPrefix, NodeType, TreeNode},
 };
 
 impl App {
@@ -196,7 +196,10 @@ impl App {
             }
 
             if node.node_type == NodeType::Job {
-                let job_name = node.text.strip_prefix("[Job] ").unwrap_or(&node.text);
+                let job_name = node
+                    .text
+                    .strip_prefix(NodeTextPrefix::Job.as_str())
+                    .unwrap_or(&node.text);
                 job_name == target_name
             } else {
                 node.text.contains(target_name)
@@ -310,7 +313,10 @@ impl App {
                     .map_or(n.text.as_str(), |idx| &n.text[idx.saturating_add(3)..]);
                 service_name == target_short_name
             } else if n.node_type == NodeType::Job {
-                let job_name = n.text.strip_prefix("[Job] ").unwrap_or(&n.text);
+                let job_name = n
+                    .text
+                    .strip_prefix(NodeTextPrefix::Job.as_str())
+                    .unwrap_or(&n.text);
                 job_name == target_short_name
             } else {
                 false

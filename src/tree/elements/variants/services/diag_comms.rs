@@ -14,7 +14,7 @@ use crate::tree::{
     elements::variants::format_service_display_name,
     types::{
         CellType, ColumnConstraint, DetailContent, DetailRow, DetailSectionData, DetailSectionType,
-        NodeType,
+        NodeTextPrefix, NodeType,
     },
 };
 
@@ -90,7 +90,7 @@ pub fn add_diag_comms<'a>(
 
             b.push_details_structured(
                 depth.saturating_add(1),
-                format!("[Service] {display_name}"),
+                format!("{}{display_name}", NodeTextPrefix::Service.as_str()),
                 false,
                 false,
                 sections,
@@ -106,7 +106,7 @@ pub fn add_diag_comms<'a>(
 
             b.push_details_structured(
                 depth.saturating_add(1),
-                format!("[Service] {display_name}"),
+                format!("{}{display_name}", NodeTextPrefix::Service.as_str()),
                 false,
                 false,
                 sections,
@@ -194,7 +194,7 @@ fn add_single_ecu_jobs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize)
 
         b.push_details_structured(
             depth.saturating_add(1),
-            format!("[Job] {short_name}"),
+            format!("{}{short_name}", NodeTextPrefix::Job.as_str()),
             false,
             false,
             sections,

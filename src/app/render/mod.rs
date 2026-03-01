@@ -23,6 +23,9 @@ use crate::{
     tree::{NodeType, TreeNode},
 };
 
+const BREADCRUMB_SEPARATOR: &str = " > ";
+const BREADCRUMB_SEPARATOR_LEN: u16 = 3;
+
 // -----------------------------------------------------------------------
 // Colour theme helpers (use the configurable ResolvedTheme)
 // -----------------------------------------------------------------------
@@ -137,7 +140,7 @@ impl App {
 
             // Add separator if not the last segment
             if i < segments.len().saturating_sub(1) {
-                col_position = col_position.saturating_add(3); // " > " is 3 characters
+                col_position = col_position.saturating_add(BREADCRUMB_SEPARATOR_LEN);
             }
         }
 
@@ -149,7 +152,7 @@ impl App {
             .iter()
             .map(|(text, _)| text.as_str())
             .collect::<Vec<_>>()
-            .join(" > ");
+            .join(BREADCRUMB_SEPARATOR);
 
         let paragraph = Paragraph::new(breadcrumb_text).style(
             Style::default()

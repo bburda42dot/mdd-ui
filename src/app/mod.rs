@@ -418,53 +418,37 @@ impl App {
 
     /// Get the actual section index accounting for header section offset
     fn get_section_index(&self) -> usize {
-        // Check if current node has a header section (rendered above tabs)
-        if let Some(&idx) = self.tree.visible.get(self.tree.cursor) {
-            let Some(node) = self.tree.all_nodes.get(idx) else {
-                return self.detail.selected_tab;
-            };
-            let sections = &node.detail_sections;
-            if sections.len() > 1
-                && let Some(first_section) = sections.first()
-                && first_section.render_as_header
-                && matches!(
-                    &first_section.content,
-                    crate::tree::DetailContent::PlainText(_)
-                )
-            {
-                // Has header section, so selected_tab needs offset of 1
-                return self.detail.selected_tab.saturating_add(1);
-            }
-        }
-        self.detail.selected_tab
+        self.detail
+            .selected_tab
+            .saturating_add(self.section_offset())
     }
 
-    /// Get the section offset for rendering (0 or 1 if there's a header section)
-    fn get_section_offset(&self) -> usize {
-        if let Some(&idx) = self.tree.visible.get(self.tree.cursor) {
-            let Some(node) = self.tree.all_nodes.get(idx) else {
-                return 0;
-            };
-            let sections = &node.detail_sections;
-            if sections.len() > 1
-                && let Some(first_section) = sections.first()
-                && first_section.render_as_header
-                && matches!(
-                    &first_section.content,
-                    crate::tree::DetailContent::PlainText(_)
-                )
-            {
-                return 1;
-            }
+    /// Returns 1 when the current node's first section is a plain-text header
+    /// rendered above the tab bar, 0 otherwise.
+    fn section_offset(&self) -> usize {
+        let Some(&idx) = self.tree.visible.get(self.tree.cursor) else {
+            return 0;
+        };
+        let Some(node) = self.tree.all_nodes.get(idx) else {
+            return 0;
+        };
+        let sections = &node.detail_sections;
+        if sections.len() > 1
+            && let Some(first_section) = sections.first()
+            && first_section.render_as_header
+            && matches!(
+                &first_section.content,
+                crate::tree::DetailContent::PlainText(_)
+            )
+        {
+            return 1;
         }
         0
     }
 
     /// Get the actual table section index for storing/retrieving sort state
     fn get_table_section_idx(&self) -> usize {
-        self.detail
-            .selected_tab
-            .saturating_add(self.get_section_offset())
+        self.get_section_index()
     }
 
     /// Returns true if the currently selected detail section is a Composite
@@ -502,7 +486,7 @@ impl App {
 
             // Save tab for any node with detail sections that have a section type
             if !node.detail_sections.is_empty() {
-                let section_offset = self.get_section_offset();
+                let section_offset = self.section_offset();
                 let section_idx = new_tab.saturating_add(section_offset);
                 if let Some(section) = node.detail_sections.get(section_idx) {
                     self.detail

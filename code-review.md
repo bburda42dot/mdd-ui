@@ -3,406 +3,250 @@ SPDX-License-Identifier: Apache-2.0
 SPDX-FileCopyrightText: 2026 Alexander Mohr
 -->
 
-# Code Review — Full Codebase
-
-**Date:** 2026-03-01
-**Branch:** `feature` (PR #11)
-
----
+# Code Review
 
 ## Summary
 
-The codebase is generally well-structured with good error handling — no `unwrap()`/`expect()` in
-application logic, proper `?` operator usage, and clean module organization. The main recurring
-themes are:
-
-- **For-loops instead of iterator chains** (style guide preference)
-- **Clippy `#[allow]` directives** that can be removed by fixing the underlying code
-- **One user-facing bug** (double history push on double-click)
-- **One unused/broken file** (`dtcs.rs`)
-- **One performance concern** (per-frame deep clone of `detail_sections`)
-
-| Severity | Count |
-|----------|-------|
-| High     | 3     |
-| Medium   | 17    |
-| Low      | 40+   |
+The codebase is well-structured, follows the style guide closely, and compiles clean under
+`cargo +nightly clippy`. The module decomposition is logical and file sizes are reasonable.
+The findings below range from bugs/logic issues to style deviations and minor structural notes.
 
 ---
 
-## High Severity
+## Bugs / Logic Issues
 
-### H1. Per-frame deep clone of `detail_sections`
+### 1. `compare_cells` mixed-type ordering is inconsistent (`render/table.rs`)
 
-**File:** `src/app/render/detail.rs` ~L38-39
-
-`selected_node.detail_sections.clone()` performs a recursive deep clone of
-`Vec<DetailSectionData>` (which contains `Vec<DetailRow>`, etc.) on **every frame render**. For
-large nodes with many parameters this creates significant allocation pressure.
-
-**Suggestion:** Use `Rc<[DetailSectionData]>` to make clones cheap, or restructure borrows to
-avoid cloning entirely (e.g., index-based lookup to split the borrow from `&mut self`).
-
----
-
-### H2. Double history push on double-click
-
-**File:** `src/app/mouse/mod.rs` ~L75-83
-
-On a double-click, `handle_click` is invoked first (L77), which calls `push_to_history()` for
-detail-area clicks. Then `handle_double_click` (L79) calls `handle_enter_in_detail_pane()` →
-`navigate_to_node` → `push_to_history()` again. This pushes **two** history entries for one
-navigation action, forcing the user to press Back twice.
-
-**Suggestion:** Either skip `push_to_history` inside `handle_click` when a double-click follows,
-or have `handle_double_click` pop the duplicate entry before navigating.
-
----
-
-### H3. `dtcs.rs` is dead code that won't compile
-
-**File:** `src/tree/elements/dtcs.rs`
-
-This file exists but is never included in the module tree (`elements/mod.rs` has no
-`pub mod dtcs;`). It references `SectionType::DTCs` which doesn't exist in the `SectionType`
-enum — the file would fail to compile if added.
-
-**Suggestion:** Either finish the implementation (add `DTCs` to `SectionType`, add `pub mod dtcs`,
-wire it into the builder) or delete the file.
-
----
-
-## Medium Severity
-
-### M1. Missing `tab_active_fg` in `ResolvedTheme`
-
-**File:** `src/app/config.rs` ~L62, L140-170
-
-`TableColors` defines `tab_active_fg` (L62) with a default of `"white"` (L117), but
-`ResolvedTheme` has no corresponding field and never parses it. The config value is silently
-ignored.
-
-**Suggestion:** Add `pub tab_active_fg: Color` to `ResolvedTheme` and parse it in the `From` impl.
-
----
-
-### M2. `#[allow(clippy::upper_case_acronyms)]` on `NodeType`
-
-**File:** `src/tree/types.rs` ~L42
-
-Suppresses clippy instead of fixing the lint for `DOP` and `SDG` variants. The project
-instructions say not to disable clippy warnings.
-
-**Suggestion:** If these must remain all-caps as domain abbreviations, document the exception.
-Otherwise rename to `Dop` / `Sdg` and update all usages.
-
----
-
-### M3. `#[allow(clippy::cast_possible_truncation)]` directives (5 occurrences)
-
-| File | Line | Notes |
-|------|------|-------|
-| `src/app/column_widths.rs` | ~L188 | Float→int; replace with integer-only arithmetic |
-| `src/app/render/tabs.rs` | ~L132 | Use `u16::try_from(...).unwrap_or(u16::MAX)` |
-| `src/app/render/tabs.rs` | ~L150 | Same as above |
-| `src/app/render/table.rs` | ~L670 | Clamp then cast, or use `try_from` |
-| `src/app/mouse/drag.rs` | ~L85 | Value clamped to 20-80; use intermediate `u32` |
-
-**Suggestion:** Replace each `as` cast with safe conversion logic and remove the `#[allow]`.
-
----
-
-### M4. Potential truncation bug in scroll calculation
-
-**File:** `src/app/mouse/drag.rs` ~L105-106
-
-`as u16` truncates *before* `.min(max_scroll)` is applied. If
-`relative_x * max_scroll / (width-1)` exceeds 65535, silent wrapping occurs.
-
-**Suggestion:** Compute `.min()` on the `u32` result first, then cast:
 ```rust
-let result = numerator
-    .checked_div(divisor)
-    .unwrap_or(0)
-    .min(u32::from(max_scroll)) as u16;
+match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
+    (Ok(a_num), Ok(b_num)) => a_num.total_cmp(&b_num),
+    (Ok(_), Err(_)) | (Err(_), Ok(_) | Err(_)) => a_cell.cmp(b_cell),
+}
+```
+
+When one cell is numeric and the other is a string, `a_cell.cmp(b_cell)` is used — a
+lexicographic comparison of the raw strings (e.g. `"123"` vs `"abc"`). This means the sort
+order for mixed columns is non-deterministic depending on which direction the comparison runs.
+Explicit branching should make numbers sort before (or after) strings consistently:
+
+```rust
+match (a_cell.parse::<f64>(), b_cell.parse::<f64>()) {
+    (Ok(a_num), Ok(b_num)) => a_num.total_cmp(&b_num),
+    (Ok(_), Err(_)) => std::cmp::Ordering::Less,    // numbers before strings
+    (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+    (Err(_), Err(_)) => a_cell.cmp(b_cell),
+}
+```
+
+### 2. Misleading O(N) comment in `visibility.rs`
+
+```rust
+// Pass 2: Include parents using a depth-indexed stack for O(N) total
+```
+
+The inner loop `for d in (0..node.depth).rev()` iterates up to `depth` times per node,
+making the overall complexity O(N × D) where D is the maximum tree depth. The comment should
+be corrected. For the typical shallowness of these trees this is not a performance concern,
+but the claim is wrong.
+
+---
+
+## Style Guide Violations
+
+### 3. `as` casts instead of `usize::from` / `u16::from` (`mouse/clicks.rs`)
+
+```rust
+let relative_row = (row.saturating_sub(area.y)) as usize;
+let available_width = tab_area.width as usize;
+```
+
+`u16` fits in `usize` on all supported platforms — use the infallible, self-documenting
+conversion:
+
+```rust
+let relative_row = usize::from(row.saturating_sub(area.y));
+let available_width = usize::from(tab_area.width);
+```
+
+### 4. `display_name()` on `ChildElementType` should be `Display` (`tree/types.rs`)
+
+Per the style guide: _"Implement `Display`, Not Custom `to_string()` Methods"_, the same
+principle applies to named display helpers:
+
+```rust
+// Current
+pub fn display_name(&self) -> &'static str { ... }
+
+// Preferred
+impl fmt::Display for ChildElementType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self { ... })
+    }
+}
+```
+
+Call sites can then use `element_type.to_string()` or `format!("{element_type}")`, and
+`matches_node_text` can use `text.starts_with(&element_type.to_string())`.
+
+### 5. Magic string literals for structural prefixes
+
+The tree-node text format prefixes appear as bare string literals in multiple places:
+
+| Literal | File |
+|---|---|
+| `"[Service] "` | `navigation/parameter.rs` |
+| `"[Job] "` | `navigation/service.rs` |
+| `" > "` (breadcrumb sep) | `render/mod.rs` |
+| `3` (breadcrumb separator width) | `render/mod.rs` |
+
+These should be done via strongly typed enums instead.
+---
+
+## Architecture / Design
+
+### 6. `get_section_index` and `get_section_offset` duplicate the same condition (`app/mod.rs`)
+
+Both functions check:
+
+```rust
+if sections.len() > 1
+    && first_section.render_as_header
+    && matches!(&first_section.content, DetailContent::PlainText(_))
+```
+
+and differ only in their return value. Merge into one:
+
+```rust
+fn section_offset(&self) -> usize { ... } // returns 0 or 1
+
+fn get_section_index(&self) -> usize {
+    self.detail.selected_tab.saturating_add(self.section_offset())
+}
+```
+
+This eliminates the three-copy divergence and any future risk of the two functions drifting.
+
+### 7. `LayoutCache.breadcrumb_segments` uses an opaque tuple
+
+```rust
+pub breadcrumb_segments: Vec<(String, usize, u16, u16)>,
+```
+
+The meaning of the four fields is not obvious at a glance. A small named struct would
+communicate intent:
+
+```rust
+pub struct BreadcrumbSegment {
+    pub text: String,
+    pub node_idx: usize,
+    pub start_col: u16,
+    pub end_col: u16,
+}
+pub breadcrumb_segments: Vec<BreadcrumbSegment>,
+```
+
+### 8. `get_ecu_name` in `render/tree.rs` couples rendering to tree structure
+
+```rust
+fn get_ecu_name(&self) -> &str {
+    self.tree.all_nodes.first()
+        .and_then(|node| {
+            if node.text != "General" { return None; }
+            node.detail_sections.first().and_then(|sec| {
+                if let DetailContent::PlainText(lines) = &sec.content {
+                    lines.first()?.strip_prefix("ECU Name: ")
+                } else { None }
+            })
+        })
+        .unwrap_or("Tree")
+}
+```
+
+This encodes knowledge of the specific tree layout ("first node must be General", "first
+section first line starts with `ECU Name: `") inside the renderer. If `build_tree` changes
+the structure, this breaks silently. The ECU name should be stored on `App` directly and set
+from `DatabaseData` at construction time.
+Furthermore, this _again_ is string based logic which should be replaced with data driven approach
+
+### 9. History `remove(0)` is O(N) — use `VecDeque` (`app/history.rs`)
+
+```rust
+if self.history.entries.len() > MAX_HISTORY {
+    self.history.entries.remove(0);
+    ...
+}
+```
+
+`Vec::remove(0)` shifts all remaining elements. `MAX_HISTORY = 100` keeps this negligible in
+practice, but `VecDeque` is the idiomatic structure for a capped FIFO and removes this
+concern entirely:
+
+```rust
+use std::collections::VecDeque;
+pub entries: VecDeque<HistoryEntry>,
+```
+
+### 11. `collapse_all` leaves root node expanded by relying on index (`app/sort.rs`)
+
+```rust
+self.tree
+    .all_nodes
+    .iter_mut()
+    .enumerate()
+    .filter(|(_, n)| n.has_children)
+    .for_each(|(i, n)| n.expanded = i == 0);
+```
+
+This keeps the root (index 0) expanded by position rather than by semantic role. If the
+tree ever places the root at a different index, or if the meaning of "leave the first one
+open" changes, this silently misbehaves. Prefer an explicit predicate:
+
+```rust
+.for_each(|(_, n)| n.expanded = n.depth == 0);
 ```
 
 ---
 
-### M5. String comparison for logic
+## Minor Notes
 
-**File:** `src/app/navigation/mod.rs` ~L108
+### 12. `render/detail.rs` `calculate_header_height` caps at `u16::MAX` before `min()`
 
 ```rust
-section.title == "Parent References"
+let height = u16::try_from(lines.len())
+    .unwrap_or(u16::MAX)   // fallback before the real cap
+    .max(1)
+    .min(outer_inner.height / 4);
 ```
 
-The style guide says "Do not use String comparisons for logic. Use Enums or Structs instead."
-`DetailSectionType::RelatedRefs` is already available and checked on L107.
+The `unwrap_or(u16::MAX)` intermediate is never actually visible after the `.min()`, but
+reads as if `u16::MAX` is a valid fallback. A tighter `unwrap_or` makes intent clearer:
 
-**Suggestion:** Remove the string comparison and rely solely on the enum.
-
----
-
-### M6. `NodeType` should derive `Copy`
-
-**File:** `src/tree/types.rs` ~L40
-
-`NodeType` is an enum of unit variants. Multiple files do `.node_type.clone()` unnecessarily.
-Adding `Copy` eliminates these clones.
-
-**Suggestion:** `#[derive(Copy, Clone, Debug, PartialEq, Eq)]`
-
----
-
-### M7. Returns `&Vec<T>` instead of `&[T]`
-
-**File:** `src/tree/types.rs` ~L281, L290
-
-`table_rows()` returns `Option<&Vec<DetailRow>>` and `table_constraints()` returns
-`Option<&Vec<ColumnConstraint>>`.
-
-**Suggestion:** Change to `Option<&[DetailRow]>` and `Option<&[ColumnConstraint]>`.
-
----
-
-### M8. `if let` instead of `let...else`
-
-**File:** `src/app/render/mod.rs` ~L92-120
-
-The entire `build_breadcrumb_segments` body is wrapped in `if let Some(...)` with an
-`else { Vec::new() }`. Should use `let...else`:
 ```rust
-let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
-    return Vec::new();
-};
+let height = u16::try_from(lines.len())
+    .unwrap_or(outer_inner.height / 4)
+    .clamp(1, outer_inner.height / 4);
 ```
 
----
+### 13. `visibility.rs` `is_under_section_type` is called per-node during search
 
-### M9. `App::new` doesn't use `..Default::default()`
+`node_matches_scope_and_query` calls `is_under_section_type` for every node during search
+filtering. `is_under_section_type` itself walks backward through all ancestors (O(depth)).
+For the scoped search modes (Variants, FunctionalGroups, etc.) this is called in a tight
+loop. Caching the section ancestor for each node (e.g. a `Vec<Option<SectionType>>` parallel
+to `all_nodes`) would make filtering O(1) per node.
 
-**File:** `src/app/mod.rs` ~L345-406
+### 14. `find_in_hierarchy` collects parent ref names into a `Vec<String>` unnecessarily
 
-All sub-structs derive `Default` but the constructor explicitly lists every field. Use struct
-update syntax per the style guide:
 ```rust
-tree: TreeState {
-    all_nodes: nodes,
-    diagcomm_sort_by_id: true,
-    ..TreeState::default()
-},
+let parent_refs_names: Vec<String> = self.tree.all_nodes
+    .iter()
+    .enumerate()
+    ...
+    .flat_map(|(pr_idx, pr_node)| { ... })
+    .collect();
+
+parent_refs_names.iter().find_map(...)
 ```
 
----
-
-### M10. Wildcard match in `toggle_table_column_sort`
-
-**File:** `src/app/sort.rs` ~L349-365
-
-`_ =>` catches both `None` and `Some(state)` where `state.column != column`.
-
-**Suggestion:** Be explicit:
-```rust
-Some(state) if state.column == column => { /* toggle */ },
-Some(_) | None => Some(TableSortState { ... }),
-```
-
----
-
-### M11. Wildcard match in `responses_of!` macro
-
-**File:** `src/tree/elements/variants/responses.rs` ~L52-58
-
-All `DetailSectionType` variants should be listed explicitly. Alternatively, restructure so
-`ResponseKind` carries the accessor directly, eliminating the match.
-
----
-
-### M12. Wildcard match in `try_navigate_parent_ref_from_detail`
-
-**File:** `src/app/navigation/parent_ref.rs` ~L155-161
-
-Match on `DetailSectionType` uses `_ => return` with 15 variants. Enumerate the remaining 11.
-
----
-
-### M13. `sort_by` allocates in comparator
-
-**File:** `src/tree/elements/variants/state_charts.rs` ~L103, L117
-
-Uses `sort_by` with `.to_lowercase()` allocation per comparison. The rest of the codebase uses
-`sort_by_cached_key` for this pattern.
-
-**Suggestion:**
-```rust
-transitions.sort_by_cached_key(|row| {
-    row.cells.first().map(|s| s.to_lowercase())
-});
-```
-
----
-
-### M14. Duplicated column-width initialization logic
-
-**Files:** `src/app/render/table.rs` ~L628-632 and `src/app/render/detail.rs` ~L191-197
-
-The `while self.table.column_widths.len() ...` pattern is duplicated.
-
-**Suggestion:** Extract a single `ensure_capacity(section_idx)` method on the table state.
-
----
-
-### M15. `ensure_*_capacity` uses while-push loops
-
-**File:** `src/app/mod.rs` ~L224-238
-
-Three methods use `while vec.len() <= idx { vec.push(0); }`.
-
-**Suggestion:** Use `Vec::resize`:
-```rust
-self.section_scrolls.resize(idx.saturating_add(1), 0);
-```
-
----
-
-### M16. Redundant double `.get()` lookups in parent_ref navigation
-
-**File:** `src/app/navigation/parent_ref.rs` ~L112-123
-
-Calls `.get(i)` twice on the same index checking different properties each time.
-
-**Suggestion:** Combine into a single `.get(i).is_some_and(|n| ...conditions...)`.
-
----
-
-### M17. Repetitive `parent_refs_vec.as_ref().map(...)` pattern (6x)
-
-**File:** `src/tree/elements/layers.rs` ~L63-110
-
-The same expression repeated 6 times.
-
-**Suggestion:** Extract a closure:
-```rust
-let parent_ref_iter = || parent_refs_vec.as_ref().map(|v| v.iter().cloned());
-```
-
----
-
-## Low Severity
-
-### Style: For-loops → iterator chains
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/app/sort.rs` | ~L83-95 | `expand_all` / `collapse_all` → `.for_each()` |
-| `src/app/sort.rs` | ~L67-75 | `try_collapse_or_parent` backward search → `.find()` |
-| `src/app/visibility.rs` | ~L24-40 | `is_under_section_type` → `.any()` chain |
-| `src/app/history.rs` | ~L22-33 | `build_node_path` → `.scan()` |
-| `src/app/mod.rs` | ~L547-559 | `jump_to_matching_row` → `.position()` |
-| `src/app/sort.rs` | ~L165-177 | `sort_diagcomm_nodes_in_place` section boundary → `.position()` |
-| `src/app/navigation/helpers.rs` | ~L86-98 | `expand_node_ancestors` |
-| `src/app/navigation/helpers.rs` | ~L197-216 | `find_in_hierarchy` → `.find_map()` |
-| `src/tree/elements/variants/sdgs.rs` | ~L41-72 | Collecting sdg_data → `filter_map().collect()` |
-| `src/tree/elements/variants/tables.rs` | ~L35-78 | Outer+inner loops → `flat_map` |
-| `src/tree/elements/variants/unit_spec.rs` | ~L33-85 | Triple-nested for-loops |
-| `src/tree/elements/variants/services/details.rs` | ~L139 | `rows.extend(iter.map(...))` |
-| `src/tree/elements/variants/functional_classes.rs` | ~L121, ~L175 | Map/collect patterns |
-
----
-
-### Style: `map_or` preference
-
-| File | Lines | Current | Suggested |
-|------|-------|---------|-----------|
-| `src/app/navigation/parameter.rs` | ~L30-34 | `.copied().unwrap_or(CellType::Text)` | `.map_or(CellType::Text, \|&ct\| ct)` |
-| `src/app/navigation/parameter.rs` | ~L35-38 | `.cloned().unwrap_or_default()` | `.map_or_else(<_>::default, Clone::clone)` |
-| `src/app/navigation/parameter.rs` | ~L231 | `.first().cloned().unwrap_or_default()` | `.first().map_or_else(...)` |
-| `src/app/navigation/mod.rs` | ~L162 | `.get(nav_col).cloned().unwrap_or_default()` | `.get(nav_col).map_or_else(...)` |
-| `src/app/navigation/service.rs` | ~L52-54 | `.copied().unwrap_or(0)` | `.map_or(0, \|&c\| c)` |
-| `src/app/navigation/parent_ref.rs` | ~L74-76 | `.copied().unwrap_or(0)` | `.map_or(0, \|&c\| c)` |
-
----
-
-### Quality: Unnecessary clones
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/tree/mod.rs` | ~L34 | `ecu_details.clone()` unnecessary — value not used after |
-
----
-
-### Quality: Redundant bound checks
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/app/navigation/service.rs` | ~L15-18, L73-76 | Manual bounds check before `.get()` which already returns `None` |
-| `src/app/navigation/service.rs` | ~L26-28 | Same pattern for section index |
-| `src/app/sort.rs` | ~L16-25 | Double `.get()` then `.get_mut()` on same index |
-
----
-
-### Quality: Code organization
-
-| File | Description |
-|------|-------------|
-| `src/app/search.rs` ~L109 | `toggle_mouse_mode` has nothing to do with search — move to `input.rs` |
-| `src/tree/elements/variants/placeholders.rs` | Uses fully-qualified paths (`crate::tree::types::DetailRow::normal`) instead of `use` imports |
-
----
-
-### Quality: Miscellaneous
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/app/sort.rs` | ~L300 | `find('(').is_some()` → use `contains('(')` |
-| `src/tree/types.rs` | ~L313-314 | Duplicate doc comment on `table_header()` |
-| `src/tree/elements/variants/dops/mod.rs` | ~L169 | Pointless rename: `let unique_dops = all_dops;` |
-| `src/tree/elements/variants/dops/mod.rs` | ~L240 | Redundant `!dops.is_empty()` — already filtered |
-| `src/tree/elements/variants/mod.rs` | ~L47, L52 | Nested `format!()` → extract local variable |
-| `src/app/render/table.rs` | ~L112 | `partial_cmp().unwrap_or(Equal)` — use `total_cmp()` for NaN safety |
-| `src/app/column_widths.rs` | ~L186 | `normalize_column_widths` accepts `&mut Vec<u16>` → `&mut [u16]` |
-| `src/app/render/composite.rs` | ~L69 | `lines.clone()` for `PlainText` block — borrow instead |
-
----
-
-### Style: `as` casts that should use `From`/`try_from`
-
-| File | Lines |
-|------|-------|
-| `src/app/render/tree.rs` | ~L53 |
-| `src/app/render/table.rs` | ~L162 |
-| `src/app/render/tabs.rs` | ~L53, L91 |
-| `src/app/render/detail.rs` | ~L314 |
-
-All are `u16 → usize` which is always safe — use `usize::from(...)` for consistency.
-
----
-
-### Style: Obvious comments to remove
-
-| File | Lines | Comment text |
-|------|-------|-------------|
-| `src/app/render/mod.rs` | ~L97, L101, L116 | "Walk up the tree", "Find parent", "Reverse to get root-to-leaf" |
-| `src/app/mouse/mod.rs` | ~L93-94 | "Stop dragging when mouse button is released" |
-| `src/app/mouse/clicks.rs` | ~L160-164 | "Check if click is in breadcrumb area first", "Click in tree area" |
-| `src/tree/elements/variants/mod.rs` | ~L82, L100, L104, L109 | "Add Variants section", "Add each variant", etc. |
-
----
-
-### Style: `&String` → `&str`
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/app/render/tabs.rs` | ~L65-66 | `Vec<Vec<(usize, &String)>>` → `Vec<Vec<(usize, &str)>>` |
-
----
-
-### Style: Wildcard matches on small enums
-
-| File | Lines | Description |
-|------|-------|-------------|
-| `src/app/navigation/parent_ref.rs` | ~L85-88 | `_` in `RowMetadata` match (3 variants) — enumerate explicitly |
-| `src/app/render/detail.rs` | ~L160 | `_` in `DetailContent` match (3 variants) |
-| `src/app/render/detail.rs` | ~L231 | `_` in tuple match — enumerate cases |
-| `src/app/render/table.rs` | ~L114 | `_` in `Result` match — enumerate `Ok`/`Err` combos |
+The intermediate `Vec` can be replaced with a single iterator chain (no collect), avoiding
+the allocation on the common path.

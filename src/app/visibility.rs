@@ -137,7 +137,7 @@ impl App {
             }
         }
 
-        // Pass 2: Include parents using a depth-indexed stack for O(N) total
+        // Pass 2: Include parents using a depth-indexed stack — O(N × D) where D is max depth
         let max_depth = self
             .tree
             .all_nodes

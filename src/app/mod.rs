@@ -540,21 +540,20 @@ impl App {
         let rows = self.sort_rows(rows, section_idx);
 
         let buffer_lower = self.table.jump_buffer.to_lowercase();
+        let match_idx = rows.iter().position(|row| {
+            row.cells
+                .get(self.table.focused_column)
+                .is_some_and(|cell| cell.to_lowercase().starts_with(&buffer_lower))
+        });
 
-        // Find first row where the focused column starts with the buffer (case-insensitive)
-        for (i, row) in rows.iter().enumerate() {
-            if let Some(cell) = row.cells.get(self.table.focused_column)
-                && cell.to_lowercase().starts_with(&buffer_lower)
-            {
-                if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
-                    *cursor = i;
-                }
-                self.status = format!("Jump: \"{}\"", self.table.jump_buffer);
-                return;
+        if let Some(i) = match_idx {
+            if let Some(cursor) = self.detail.section_cursors.get_mut(section_idx) {
+                *cursor = i;
             }
+            self.status = format!("Jump: \"{}\"", self.table.jump_buffer);
+        } else {
+            self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);
         }
-
-        self.status = format!("Jump: \"{}\" (no match)", self.table.jump_buffer);
     }
 
     /// Jump to the first visible tree node whose text starts with the `jump_buffer`

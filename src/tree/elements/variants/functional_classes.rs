@@ -115,17 +115,17 @@ pub fn add_functional_classes<'a>(
 fn build_functional_classes_table_section(items: &[String]) -> DetailSectionData {
     let header = DetailRow::header(vec!["Short Name".to_owned()], vec![CellType::Text]);
 
-    let mut rows = Vec::new();
-
-    // Add each functional class definition to the table
-    for name in items {
-        rows.push(DetailRow::with_jump_targets(
-            vec![name.clone()],
-            vec![CellType::ParameterName],
-            vec![Some(CellJumpTarget::TreeNodeByName)],
-            0,
-        ));
-    }
+    let rows: Vec<_> = items
+        .iter()
+        .map(|name| {
+            DetailRow::with_jump_targets(
+                vec![name.clone()],
+                vec![CellType::ParameterName],
+                vec![Some(CellJumpTarget::TreeNodeByName)],
+                0,
+            )
+        })
+        .collect();
 
     DetailSectionData::new(
         format!("Functional Classes ({})", items.len()),

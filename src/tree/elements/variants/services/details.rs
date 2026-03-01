@@ -142,34 +142,32 @@ pub(super) fn build_diag_comms_table_section(
             .filter_map(|(ds, _)| build_service_row(ds, "true")),
     );
 
-    for job_name in job_names {
-        rows.push(DetailRow {
-            row_type: DetailRowType::Normal,
-            metadata: None,
-            cells: vec![
-                job_name.clone(),
-                "-".to_owned(),
-                "-".to_owned(),
-                "Job".to_owned(),
-                "false".to_owned(),
-            ],
-            cell_types: vec![
-                CellType::ParameterName,
-                CellType::Text,
-                CellType::Text,
-                CellType::Text,
-                CellType::Text,
-            ],
-            cell_jump_targets: vec![
-                Some(crate::tree::CellJumpTarget::TreeNodeByName),
-                None,
-                None,
-                None,
-                None,
-            ],
-            indent: 0,
-        });
-    }
+    rows.extend(job_names.iter().map(|job_name| DetailRow {
+        row_type: DetailRowType::Normal,
+        metadata: None,
+        cells: vec![
+            job_name.clone(),
+            "-".to_owned(),
+            "-".to_owned(),
+            "Job".to_owned(),
+            "false".to_owned(),
+        ],
+        cell_types: vec![
+            CellType::ParameterName,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+            CellType::Text,
+        ],
+        cell_jump_targets: vec![
+            Some(crate::tree::CellJumpTarget::TreeNodeByName),
+            None,
+            None,
+            None,
+            None,
+        ],
+        indent: 0,
+    }));
 
     DetailSectionData {
         title: format!(

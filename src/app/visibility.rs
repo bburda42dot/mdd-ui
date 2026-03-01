@@ -22,25 +22,13 @@ impl App {
         };
         let node_depth = node.depth;
 
-        // Search backwards from node_idx to find parent section
-        for i in (0..node_idx).rev() {
-            let Some(parent) = self.tree.all_nodes.get(i) else {
-                continue;
-            };
-
-            // Stop if we reach a node at the same or lower depth (not a parent)
-            if parent.depth >= node_depth {
-                continue;
-            }
-
-            // If this is a section header at depth 0, check if it matches
-            if parent.depth == 0 && matches!(&parent.section_type, Some(st) if *st == section_type)
-            {
-                return true;
-            }
-        }
-
-        false
+        (0..node_idx)
+            .rev()
+            .filter_map(|i| self.tree.all_nodes.get(i))
+            .filter(|parent| parent.depth < node_depth)
+            .any(|parent| {
+                parent.depth == 0 && matches!(&parent.section_type, Some(st) if *st == section_type)
+            })
     }
 
     /// Check if `node_idx` is within the subtree rooted at `root_idx`.

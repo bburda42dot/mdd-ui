@@ -83,15 +83,19 @@ impl App {
             return;
         }
 
-        for i in 0..node_idx {
-            if let Some(node) = self.tree.all_nodes.get(i)
-                && node.depth < target_depth
-                && node.has_children
-                && let Some(node_mut) = self.tree.all_nodes.get_mut(i)
-            {
-                node_mut.expanded = true;
+        let to_expand: Vec<usize> = (0..node_idx)
+            .filter(|&i| {
+                self.tree
+                    .all_nodes
+                    .get(i)
+                    .is_some_and(|n| n.depth < target_depth && n.has_children)
+            })
+            .collect();
+        to_expand.iter().for_each(|&i| {
+            if let Some(n) = self.tree.all_nodes.get_mut(i) {
+                n.expanded = true;
             }
-        }
+        });
     }
 
     /// Find a container (variant/functional group) by name
@@ -209,9 +213,8 @@ impl App {
             })
             .collect();
 
-        for parent_name in &parent_refs_names {
-            // Find the container node for this parent ref
-            let parent_container_idx = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
+        parent_refs_names.iter().find_map(|parent_name| {
+            let (pc_idx, _) = self.tree.all_nodes.iter().enumerate().find(|(_, n)| {
                 matches!(n.node_type, NodeType::Container) && {
                     let name = n
                         .text
@@ -219,17 +222,10 @@ impl App {
                         .map_or(n.text.as_str(), |idx| &n.text[..idx]);
                     name == parent_name
                 }
-            });
-
-            if let Some((pc_idx, _)) = parent_container_idx {
-                let (pc_start, pc_end) = self.subtree_range(pc_idx);
-                if let Some(found) = self.find_in_subtree(pc_start, pc_end, &predicate) {
-                    return Some(found);
-                }
-            }
-        }
-
-        None
+            })?;
+            let (pc_start, pc_end) = self.subtree_range(pc_idx);
+            self.find_in_subtree(pc_start, pc_end, &predicate)
+        })
     }
 
     /// Navigate to a child tree node whose text matches the given `ChildElementType`.

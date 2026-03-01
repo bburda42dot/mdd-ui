@@ -14,24 +14,24 @@ impl App {
             return vec![];
         };
 
-        let mut path = vec![(target.depth, target.text.clone())];
-        let mut current_depth = target.depth;
-
-        // Walk backwards to collect ancestors
-        for i in (0..node_idx).rev() {
-            if current_depth == 0 {
-                break;
-            }
-            let Some(node) = self.tree.all_nodes.get(i) else {
-                continue;
-            };
-            if node.depth < current_depth {
-                path.push((node.depth, node.text.clone()));
-                current_depth = node.depth;
-            }
-        }
+        let mut path: Vec<(usize, String)> = (0..node_idx)
+            .rev()
+            .filter_map(|i| self.tree.all_nodes.get(i))
+            .scan(target.depth, |cur_depth, node| {
+                if *cur_depth == 0 {
+                    None
+                } else if node.depth < *cur_depth {
+                    *cur_depth = node.depth;
+                    Some(Some((node.depth, node.text.clone())))
+                } else {
+                    Some(None)
+                }
+            })
+            .flatten()
+            .collect();
 
         path.reverse();
+        path.push((target.depth, target.text.clone()));
         path
     }
 

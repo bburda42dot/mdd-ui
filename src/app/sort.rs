@@ -56,32 +56,33 @@ impl App {
         if my_depth == 0 {
             return;
         }
-        for i in (0..self.tree.cursor).rev() {
-            if let Some(&visible_idx) = self.tree.visible.get(i)
-                && let Some(visible_node) = self.tree.all_nodes.get(visible_idx)
-                && visible_node.depth < my_depth
-            {
-                self.tree.cursor = i;
-                break;
-            }
+        if let Some(parent_i) = (0..self.tree.cursor).rev().find(|&i| {
+            self.tree
+                .visible
+                .get(i)
+                .and_then(|&visible_idx| self.tree.all_nodes.get(visible_idx))
+                .is_some_and(|n| n.depth < my_depth)
+        }) {
+            self.tree.cursor = parent_i;
         }
     }
 
     pub(crate) fn expand_all(&mut self) {
-        for n in &mut self.tree.all_nodes {
-            if n.has_children {
-                n.expanded = true;
-            }
-        }
+        self.tree
+            .all_nodes
+            .iter_mut()
+            .filter(|n| n.has_children)
+            .for_each(|n| n.expanded = true);
         self.rebuild_visible();
     }
 
     pub(crate) fn collapse_all(&mut self) {
-        for (i, n) in self.tree.all_nodes.iter_mut().enumerate() {
-            if n.has_children {
-                n.expanded = i == 0;
-            }
-        }
+        self.tree
+            .all_nodes
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, n)| n.has_children)
+            .for_each(|(i, n)| n.expanded = i == 0);
         self.rebuild_visible();
         self.tree.cursor = 0;
         self.tree.scroll_offset = 0;

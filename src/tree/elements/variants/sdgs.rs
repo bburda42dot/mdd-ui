@@ -29,38 +29,37 @@ pub fn add_sdgs(b: &mut TreeBuilder, layer: &DiagLayer<'_>, depth: usize) {
     }
 
     // Extract all SDG data including SD elements
-    let mut sdg_data_list = Vec::new();
-    for sdg in sdg_list {
-        let Some(caption) = sdg.caption_sn() else {
-            continue;
-        };
-        let si = sdg.si().unwrap_or("-");
+    let sdg_data_list: Vec<SdgData> = sdg_list
+        .iter()
+        .filter_map(|sdg| {
+            let caption = sdg.caption_sn()?;
+            let si = sdg.si().unwrap_or("-");
 
-        // Extract SD elements from this SDG
-        let sd_elements: Vec<_> = sdg
-            .sds()
-            .into_iter()
-            .flat_map(|sds| sds.iter().enumerate())
-            .filter_map(|(index, sd_or_sdg)| {
-                let sd = sd_or_sdg.sd_or_sdg_as_sd()?;
-                let short_name = sd.si().map_or_else(
-                    || format!("SD #{}", index.saturating_add(1)),
-                    std::borrow::ToOwned::to_owned,
-                );
-                Some(SdElement {
-                    short_name,
-                    value: sd.value().unwrap_or("-").to_owned(),
-                    depth: 0,
+            let sd_elements: Vec<_> = sdg
+                .sds()
+                .into_iter()
+                .flat_map(|sds| sds.iter().enumerate())
+                .filter_map(|(index, sd_or_sdg)| {
+                    let sd = sd_or_sdg.sd_or_sdg_as_sd()?;
+                    let short_name = sd.si().map_or_else(
+                        || format!("SD #{}", index.saturating_add(1)),
+                        std::borrow::ToOwned::to_owned,
+                    );
+                    Some(SdElement {
+                        short_name,
+                        value: sd.value().unwrap_or("-").to_owned(),
+                        depth: 0,
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        sdg_data_list.push(SdgData {
-            caption: caption.to_owned(),
-            si: si.to_owned(),
-            sd_elements,
-        });
-    }
+            Some(SdgData {
+                caption: caption.to_owned(),
+                si: si.to_owned(),
+                sd_elements,
+            })
+        })
+        .collect();
 
     if sdg_data_list.is_empty() {
         return;

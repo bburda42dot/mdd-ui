@@ -229,6 +229,13 @@ impl App {
                 Style::default().fg(self.theme.status_fg),
             )
         };
+        // Truncate to terminal width to avoid overlong strings confusing terminal emulators
+        let display_width = usize::from(area.width);
+        let text = if text.chars().count() > display_width {
+            text.chars().take(display_width).collect::<String>()
+        } else {
+            text
+        };
         frame.render_widget(Paragraph::new(text).style(st), area);
     }
 }

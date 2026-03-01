@@ -3,7 +3,10 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use crossterm::event::KeyCode;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture, KeyCode},
+    execute,
+};
 
 use super::{
     App, COMPOSITE_SCROLL_STEP, DIVIDER_MAX_PCT, DIVIDER_MIN_PCT, FocusState, PAGE_SIZE,
@@ -391,6 +394,29 @@ impl App {
                 self.table.focused_column = 0;
             }
             _ => {}
+        }
+    }
+
+    pub(crate) fn toggle_mouse_mode(&mut self) {
+        self.mouse.enabled = !self.mouse.enabled;
+
+        let result = if self.mouse.enabled {
+            execute!(std::io::stdout(), EnableMouseCapture)
+        } else {
+            execute!(std::io::stdout(), DisableMouseCapture)
+        };
+
+        if result.is_ok() {
+            self.status = format!(
+                "Mouse: {}",
+                if self.mouse.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+        } else {
+            self.status = "Failed to toggle mouse mode".into();
         }
     }
 }

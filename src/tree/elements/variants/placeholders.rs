@@ -5,7 +5,11 @@
 
 use cda_database::datatypes::DiagLayer;
 
-use crate::tree::{builder::TreeBuilder, types::NodeType};
+use crate::tree::{
+    DetailContent,
+    builder::TreeBuilder,
+    types::{CellType, ColumnConstraint, DetailRow, DetailSectionData, NodeType},
+};
 
 /// Add placeholder sections that are not fully implemented yet.
 /// These are kept for structure but may be expanded in the future.
@@ -27,33 +31,27 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
                     .unwrap_or("")
                     .to_owned();
 
-                crate::tree::types::DetailRow::normal(
+                DetailRow::normal(
                     vec![short_name, long_name],
-                    vec![
-                        crate::tree::types::CellType::Text,
-                        crate::tree::types::CellType::Text,
-                    ],
+                    vec![CellType::Text, CellType::Text],
                     0,
                 )
             })
             .collect();
 
-        let header = crate::tree::types::DetailRow::header(
+        let header = DetailRow::header(
             vec!["Short Name".to_owned(), "Long Name".to_owned()],
-            vec![
-                crate::tree::types::CellType::Text,
-                crate::tree::types::CellType::Text,
-            ],
+            vec![CellType::Text, CellType::Text],
         );
 
-        let section = crate::tree::types::DetailSectionData::new(
+        let section = DetailSectionData::new(
             "Additional Audiences".to_owned(),
-            crate::tree::DetailContent::Table {
+            DetailContent::Table {
                 header,
                 rows,
                 constraints: vec![
-                    crate::tree::types::ColumnConstraint::Percentage(40),
-                    crate::tree::types::ColumnConstraint::Percentage(60),
+                    ColumnConstraint::Percentage(40),
+                    ColumnConstraint::Percentage(60),
                 ],
                 use_row_selection: true,
             },

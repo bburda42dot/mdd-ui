@@ -3,11 +3,6 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-};
-
 use super::{App, SearchScope};
 
 impl App {
@@ -104,30 +99,6 @@ impl App {
             root_name: root_name.clone(),
         };
         self.status = format!("Search scope: subtree '{root_name}'");
-    }
-
-    pub(crate) fn toggle_mouse_mode(&mut self) {
-        self.mouse.enabled = !self.mouse.enabled;
-
-        // Actually enable/disable mouse capture in the terminal
-        let result = if self.mouse.enabled {
-            execute!(std::io::stdout(), EnableMouseCapture)
-        } else {
-            execute!(std::io::stdout(), DisableMouseCapture)
-        };
-
-        if result.is_ok() {
-            self.status = format!(
-                "Mouse: {}",
-                if self.mouse.enabled {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            );
-        } else {
-            self.status = "Failed to toggle mouse mode".into();
-        }
     }
 
     pub(crate) fn next_search_match(&mut self) {

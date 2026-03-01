@@ -3,65 +3,30 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use ratatui::layout::{Direction, Layout};
+use ratatui::layout::{Direction, Layout, Position};
 
 use crate::app::{App, COLUMN_SPACING};
 
+/// Check whether a point falls inside an optional area.
+fn point_in_optional_rect(area: Option<ratatui::layout::Rect>, column: u16, row: u16) -> bool {
+    area.is_some_and(|a| a.contains(Position::new(column, row)))
+}
+
 impl App {
     pub(super) fn is_in_tree_area(&self, column: u16, row: u16) -> bool {
-        column >= self.layout.tree_area.x
-            && column
-                < self
-                    .layout
-                    .tree_area
-                    .x
-                    .saturating_add(self.layout.tree_area.width)
-            && row >= self.layout.tree_area.y
-            && row
-                < self
-                    .layout
-                    .tree_area
-                    .y
-                    .saturating_add(self.layout.tree_area.height)
+        self.layout.tree_area.contains(Position::new(column, row))
     }
 
     pub(super) fn is_in_detail_area(&self, column: u16, row: u16) -> bool {
-        column >= self.layout.detail_area.x
-            && column
-                < self
-                    .layout
-                    .detail_area
-                    .x
-                    .saturating_add(self.layout.detail_area.width)
-            && row >= self.layout.detail_area.y
-            && row
-                < self
-                    .layout
-                    .detail_area
-                    .y
-                    .saturating_add(self.layout.detail_area.height)
+        self.layout.detail_area.contains(Position::new(column, row))
     }
 
     pub(super) fn is_in_tab_area(&self, column: u16, row: u16) -> bool {
-        if let Some(tab_area) = self.layout.tab_area {
-            column >= tab_area.x
-                && column < tab_area.x.saturating_add(tab_area.width)
-                && row >= tab_area.y
-                && row < tab_area.y.saturating_add(tab_area.height)
-        } else {
-            false
-        }
+        point_in_optional_rect(self.layout.tab_area, column, row)
     }
 
     pub(super) fn is_in_table_content_area(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.layout.table_content_area {
-            column >= area.x
-                && column < area.x.saturating_add(area.width)
-                && row >= area.y
-                && row < area.y.saturating_add(area.height)
-        } else {
-            false
-        }
+        point_in_optional_rect(self.layout.table_content_area, column, row)
     }
 
     /// Check if the mouse is near the divider between tree and detail panes.
@@ -72,61 +37,28 @@ impl App {
             .tree_area
             .x
             .saturating_add(self.layout.tree_area.width);
-        // Allow clicking on the last column of tree or first column of detail
         column >= divider_col.saturating_sub(1) && column <= divider_col.saturating_add(1)
     }
 
     pub(super) fn is_in_breadcrumb_area(&self, column: u16, row: u16) -> bool {
-        column >= self.layout.breadcrumb_area.x
-            && column
-                < self
-                    .layout
-                    .breadcrumb_area
-                    .x
-                    .saturating_add(self.layout.breadcrumb_area.width)
-            && row >= self.layout.breadcrumb_area.y
-            && row
-                < self
-                    .layout
-                    .breadcrumb_area
-                    .y
-                    .saturating_add(self.layout.breadcrumb_area.height)
+        self.layout
+            .breadcrumb_area
+            .contains(Position::new(column, row))
     }
 
     /// Check if the mouse is in the tree scrollbar area.
     pub(super) fn is_in_tree_scrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.layout.tree_scrollbar_area {
-            column >= area.x
-                && column < area.x.saturating_add(area.width)
-                && row >= area.y
-                && row < area.y.saturating_add(area.height)
-        } else {
-            false
-        }
+        point_in_optional_rect(self.layout.tree_scrollbar_area, column, row)
     }
 
     /// Check if the mouse is in the detail scrollbar area.
     pub(super) fn is_in_detail_scrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.layout.detail_scrollbar_area {
-            column >= area.x
-                && column < area.x.saturating_add(area.width)
-                && row >= area.y
-                && row < area.y.saturating_add(area.height)
-        } else {
-            false
-        }
+        point_in_optional_rect(self.layout.detail_scrollbar_area, column, row)
     }
 
     /// Check if the mouse is in the horizontal scrollbar area.
     pub(super) fn is_in_detail_hscrollbar(&self, column: u16, row: u16) -> bool {
-        if let Some(area) = self.layout.detail_hscrollbar_area {
-            column >= area.x
-                && column < area.x.saturating_add(area.width)
-                && row >= area.y
-                && row < area.y.saturating_add(area.height)
-        } else {
-            false
-        }
+        point_in_optional_rect(self.layout.detail_hscrollbar_area, column, row)
     }
 
     /// Check if the mouse is near a column border in the table header area.

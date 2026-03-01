@@ -157,18 +157,13 @@ impl App {
     }
 
     fn handle_click(&mut self, column: u16, row: u16) {
-        // Check if click is in breadcrumb area first
         if self.is_in_breadcrumb_area(column, row) {
             self.handle_breadcrumb_click(column);
         } else if self.is_in_tree_area(column, row) {
-            // Click in tree area
             self.focus_state = FocusState::Tree;
             self.handle_tree_click(row);
         } else if self.is_in_detail_area(column, row) {
-            // Record current position so backspace returns here after a jump
-            self.push_to_history();
             self.focus_state = FocusState::Detail;
-            // Check if click is on tab area
             if self.is_in_tab_area(column, row) {
                 self.handle_tab_click(column, row);
             } else if self.is_in_table_content_area(column, row) {

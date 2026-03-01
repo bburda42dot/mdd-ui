@@ -92,23 +92,21 @@ impl App {
         self.reset_detail_state();
     }
 
-    pub(crate) fn toggle_diagcomm_sort(&mut self) {
-        // Get the currently selected node
+    pub(crate) fn toggle_tree_sort(&mut self) {
         let Some(&node_idx) = self.tree.visible.get(self.tree.cursor) else {
             return;
         };
 
-        // Find the nearest parent that has children (a sortable section)
         let sort_idx = self.find_sortable_parent(node_idx);
 
         let Some(sort_node) = self.tree.all_nodes.get(sort_idx) else {
             return;
         };
 
-        let is_service_list = sort_node.service_list_type.is_some();
+        let is_diagcomms =
+            Self::is_service_list_type(sort_node, crate::tree::ServiceListType::DiagComms);
 
-        if is_service_list {
-            // DiagComm/Request/Response sections: cycle ID/Name sort
+        if is_diagcomms {
             self.tree.diagcomm_sort_by_id = !self.tree.diagcomm_sort_by_id;
             self.sort_diagcomm_nodes_in_place();
             self.rebuild_visible();
@@ -118,7 +116,6 @@ impl App {
                 self.status = "Sort: by Name".into();
             }
         } else if sort_node.has_children {
-            // Generic sort: toggle name ascending/descending for children
             self.sort_children_by_name(sort_idx);
             self.rebuild_visible();
         } else {

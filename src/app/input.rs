@@ -200,9 +200,9 @@ impl App {
                 self.set_subtree_scope();
             }
 
-            // Toggle DiagComm sorting (only when tree is focused)
+            // Sort children of the current parent tree node
             KeyCode::Char('s') if self.focus_state != FocusState::Detail => {
-                self.toggle_diagcomm_sort();
+                self.toggle_tree_sort();
             }
 
             // Toggle table column sorting (Shift+S when detail pane is focused)

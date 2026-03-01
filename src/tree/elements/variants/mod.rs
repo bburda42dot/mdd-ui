@@ -730,29 +730,29 @@ fn build_variants_overview_table(variants: &[VariantWrap]) -> Vec<DetailSectionD
         vec![CellType::Text, CellType::Text],
     );
 
-    let mut rows = Vec::new();
+    let rows: Vec<_> = variants
+        .iter()
+        .map(|variant| {
+            let name = variant
+                .diag_layer()
+                .and_then(|l| l.short_name())
+                .unwrap_or("unnamed")
+                .to_owned();
 
-    // Add each variant to the table
-    for variant in variants {
-        let name = variant
-            .diag_layer()
-            .and_then(|l| l.short_name())
-            .unwrap_or("unnamed")
-            .to_owned();
+            let is_base = if variant.is_base_variant() {
+                "Yes"
+            } else {
+                "No"
+            };
 
-        let is_base = if variant.is_base_variant() {
-            "Yes"
-        } else {
-            "No"
-        };
-
-        rows.push(DetailRow::with_jump_targets(
-            vec![name, is_base.to_owned()],
-            vec![CellType::ParameterName, CellType::Text],
-            vec![Some(CellJumpTarget::ContainerByName), None],
-            0,
-        ));
-    }
+            DetailRow::with_jump_targets(
+                vec![name, is_base.to_owned()],
+                vec![CellType::ParameterName, CellType::Text],
+                vec![Some(CellJumpTarget::ContainerByName), None],
+                0,
+            )
+        })
+        .collect();
 
     vec![
         DetailSectionData::new(

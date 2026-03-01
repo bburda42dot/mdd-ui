@@ -395,22 +395,19 @@ impl App {
         let scroll_end = h_scroll.saturating_add(viewport_width);
 
         // Find columns that overlap with the visible window [h_scroll, scroll_end)
-        let mut vis_col_indices: Vec<usize> = Vec::new();
-        let mut vis_widths: Vec<u16> = Vec::new();
-
-        for (i, &(start, end)) in col_positions.iter().enumerate() {
-            if end <= h_scroll || start >= scroll_end {
-                continue; // fully outside viewport
-            }
-            // Clamp to viewport
-            let vis_start = start.max(h_scroll);
-            let vis_end = end.min(scroll_end);
-            let vis_width = vis_end.saturating_sub(vis_start);
-            if vis_width > 0 {
-                vis_col_indices.push(i);
-                vis_widths.push(vis_width);
-            }
-        }
+        let (vis_col_indices, vis_widths): (Vec<usize>, Vec<u16>) = col_positions
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &(start, end))| {
+                if end <= h_scroll || start >= scroll_end {
+                    return None;
+                }
+                let vis_start = start.max(h_scroll);
+                let vis_end = end.min(scroll_end);
+                let vis_width = vis_end.saturating_sub(vis_start);
+                (vis_width > 0).then_some((i, vis_width))
+            })
+            .unzip();
 
         let first_vis_col = vis_col_indices.first().copied().unwrap_or(0);
 

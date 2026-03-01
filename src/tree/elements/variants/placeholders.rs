@@ -17,25 +17,26 @@ pub fn add_additional_audiences(b: &mut TreeBuilder, layer: &DiagLayer<'_>, dept
         }
 
         // Build table with additional audiences
-        let mut rows = Vec::new();
+        let rows: Vec<_> = additional_audiences
+            .iter()
+            .map(|audience| {
+                let short_name = audience.short_name().unwrap_or("?").to_owned();
+                let long_name = audience
+                    .long_name()
+                    .and_then(|ln| ln.value())
+                    .unwrap_or("")
+                    .to_owned();
 
-        for audience in additional_audiences {
-            let short_name = audience.short_name().unwrap_or("?").to_owned();
-            let long_name = audience
-                .long_name()
-                .and_then(|ln| ln.value())
-                .unwrap_or("")
-                .to_owned();
-
-            rows.push(crate::tree::types::DetailRow::normal(
-                vec![short_name, long_name],
-                vec![
-                    crate::tree::types::CellType::Text,
-                    crate::tree::types::CellType::Text,
-                ],
-                0,
-            ));
-        }
+                crate::tree::types::DetailRow::normal(
+                    vec![short_name, long_name],
+                    vec![
+                        crate::tree::types::CellType::Text,
+                        crate::tree::types::CellType::Text,
+                    ],
+                    0,
+                )
+            })
+            .collect();
 
         let header = crate::tree::types::DetailRow::header(
             vec!["Short Name".to_owned(), "Long Name".to_owned()],

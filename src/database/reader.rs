@@ -42,12 +42,13 @@ pub fn get_ecu_summary(db: &DiagnosticDatabase, ecu_name: &str) -> Vec<String> {
         d.push(format!("DTCs: {}", dtcs.len()));
     }
 
-    // Add metadata
-    for kv in ecu_data.metadata().into_iter().flatten() {
-        if let (Some(k), Some(v)) = (kv.key(), kv.value()) {
-            d.push(format!("Metadata - {k}: {v}"));
-        }
-    }
+    d.extend(
+        ecu_data
+            .metadata()
+            .into_iter()
+            .flatten()
+            .filter_map(|kv| Some(format!("Metadata - {}: {}", kv.key()?, kv.value()?))),
+    );
 
     // Add feature flags
     if let Some(flags) = ecu_data.feature_flags()

@@ -16,6 +16,16 @@ use crate::tree::{
 /// Collected services (with source layer name) and jobs (name + layer name) for a functional class.
 type FcServicesAndJobs<'a> = (Vec<(DiagService<'a>, String)>, Vec<(String, String)>);
 
+/// Check whether a `DiagComm`'s functional-class list includes the given name.
+macro_rules! belongs_to_fc {
+    ($dc:expr, $fc_name:expr) => {
+        $dc.funct_class().is_some_and(|fcs| {
+            fcs.iter()
+                .any(|fc| fc.short_name().is_some_and(|n| n == $fc_name))
+        })
+    };
+}
+
 /// Add functional classes section from the diagnostic layer
 /// This displays the FUNCT-CLASS definitions themselves and the services that belong to them
 /// We collect services/jobs from ALL variants that have the same functional class
@@ -136,57 +146,29 @@ fn collect_services_and_jobs_from_layer<'a>(
     fc_name: &str,
     layer: &DiagLayer<'a>,
 ) -> FcServicesAndJobs<'a> {
-    let mut services = Vec::new();
-    let mut job_info = Vec::new();
-
     let layer_name = layer.short_name().unwrap_or("Unknown");
 
-    // Find services in this layer that belong to the functional class
-    if let Some(diag_services) = layer.diag_services() {
-        for service in diag_services {
+    let services: Vec<_> = layer
+        .diag_services()
+        .into_iter()
+        .flatten()
+        .filter_map(|service| {
             let service_wrap = DiagService(service);
-            let Some(dc) = service_wrap.diag_comm() else {
-                continue;
-            };
+            let dc = service_wrap.diag_comm()?;
+            belongs_to_fc!(dc, fc_name).then_some((service_wrap, layer_name.to_string()))
+        })
+        .collect();
 
-            // Check if this service belongs to our functional class
-            let belongs_to_fc = dc.funct_class().is_some_and(|funct_classes| {
-                funct_classes.iter().any(|fc| {
-                    fc.short_name()
-                        .is_some_and(|fc_short_name| fc_short_name == fc_name)
-                })
-            });
-
-            if belongs_to_fc {
-                services.push((service_wrap, layer_name.to_string()));
-            }
-        }
-    }
-
-    // Find jobs in this layer that belong to the functional class
-    if let Some(ecu_jobs) = layer.single_ecu_jobs() {
-        for job in ecu_jobs {
-            let Some(job_dc) = job.diag_comm() else {
-                continue;
-            };
-
-            let Some(short_name) = job_dc.short_name() else {
-                continue;
-            };
-
-            // Check if this job belongs to our functional class
-            let belongs_to_fc = job_dc.funct_class().is_some_and(|funct_classes| {
-                funct_classes.iter().any(|fc| {
-                    fc.short_name()
-                        .is_some_and(|fc_short_name| fc_short_name == fc_name)
-                })
-            });
-
-            if belongs_to_fc {
-                job_info.push((short_name.to_string(), layer_name.to_string()));
-            }
-        }
-    }
+    let job_info: Vec<_> = layer
+        .single_ecu_jobs()
+        .into_iter()
+        .flatten()
+        .filter_map(|job| {
+            let dc = job.diag_comm()?;
+            let name = dc.short_name()?;
+            belongs_to_fc!(dc, fc_name).then_some((name.to_string(), layer_name.to_string()))
+        })
+        .collect();
 
     (services, job_info)
 }
@@ -209,52 +191,30 @@ fn collect_services_and_jobs_for_functional_class<'a>(
 
         let variant_name = variant_layer.short_name().unwrap_or("Unknown");
 
-        // Find services in this variant's layer that belong to the functional class
         if let Some(diag_services) = variant_layer.diag_services() {
             for service in diag_services {
                 let service_wrap = DiagService(service);
                 let Some(dc) = service_wrap.diag_comm() else {
                     continue;
                 };
-
                 let Some(short_name) = dc.short_name() else {
                     continue;
                 };
-
-                // Check if this service belongs to our functional class
-                let belongs_to_fc = dc.funct_class().is_some_and(|funct_classes| {
-                    funct_classes.iter().any(|fc| {
-                        fc.short_name()
-                            .is_some_and(|fc_short_name| fc_short_name == fc_name)
-                    })
-                });
-
-                if belongs_to_fc && seen_services.insert(short_name.to_owned()) {
+                if belongs_to_fc!(dc, fc_name) && seen_services.insert(short_name.to_owned()) {
                     services.push((service_wrap, variant_name.to_string()));
                 }
             }
         }
 
-        // Find jobs in this variant's layer that belong to the functional class
         if let Some(ecu_jobs) = variant_layer.single_ecu_jobs() {
             for job in ecu_jobs {
                 let Some(job_dc) = job.diag_comm() else {
                     continue;
                 };
-
                 let Some(short_name) = job_dc.short_name() else {
                     continue;
                 };
-
-                // Check if this job belongs to our functional class
-                let belongs_to_fc = job_dc.funct_class().is_some_and(|funct_classes| {
-                    funct_classes.iter().any(|fc| {
-                        fc.short_name()
-                            .is_some_and(|fc_short_name| fc_short_name == fc_name)
-                    })
-                });
-
-                if belongs_to_fc && seen_jobs.insert(short_name.to_owned()) {
+                if belongs_to_fc!(job_dc, fc_name) && seen_jobs.insert(short_name.to_owned()) {
                     job_info.push((short_name.to_string(), variant_name.to_string()));
                 }
             }

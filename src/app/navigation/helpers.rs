@@ -249,7 +249,7 @@ impl App {
             .map(|(i, _)| i);
 
         let Some(target_node_idx) = target_idx else {
-            self.status = format!("Section '{}' not found", element_type.display_name());
+            self.status = format!("Section '{element_type}' not found");
             return;
         };
 
@@ -269,7 +269,7 @@ impl App {
         self.tree.cursor = new_cursor;
         self.reset_detail_state();
         self.tree.scroll_offset = self.tree.cursor.saturating_sub(SCROLL_CONTEXT_LINES);
-        self.status = format!("Navigated to: {}", element_type.display_name());
+        self.status = format!("Navigated to: {element_type}");
     }
 
     /// Navigate to a Container node matching the given short name

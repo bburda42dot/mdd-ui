@@ -3,7 +3,7 @@
  * SPDX-FileCopyrightText: 2026 Alexander Mohr
  */
 
-use std::rc::Rc;
+use std::{fmt, rc::Rc};
 
 /// Sentinel value for an unset bit position in the database.
 pub(crate) const BIT_POSITION_UNSET: u32 = 255;
@@ -162,10 +162,9 @@ pub enum ChildElementType {
     StateCharts,
 }
 
-impl ChildElementType {
-    /// Get the display name for the child element type
-    pub fn display_name(&self) -> &'static str {
-        match self {
+impl fmt::Display for ChildElementType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
             ChildElementType::ComParamRefs => "ComParam Refs",
             ChildElementType::DiagComms => "Diag-Comms",
             ChildElementType::FunctionalClasses => "Functional Classes",
@@ -174,12 +173,14 @@ impl ChildElementType {
             ChildElementType::Requests => "Requests",
             ChildElementType::SDGs => "SDGs",
             ChildElementType::StateCharts => "State Charts",
-        }
+        })
     }
+}
 
+impl ChildElementType {
     /// Check if a node text starts with this child element type's display name
     pub fn matches_node_text(&self, text: &str) -> bool {
-        text.starts_with(self.display_name())
+        text.starts_with(&self.to_string())
     }
 }
 

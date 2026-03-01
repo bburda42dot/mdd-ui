@@ -105,11 +105,10 @@ impl App {
         };
 
         self.history.entries.push_back(entry);
-        self.history.position = self.history.entries.len();
         if self.history.entries.len() > MAX_HISTORY {
             self.history.entries.pop_front();
-            self.history.position = self.history.entries.len();
         }
+        self.history.position = self.history.entries.len();
     }
 
     /// Navigate to the previous element in navigation history

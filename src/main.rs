@@ -91,7 +91,7 @@ fn run_browse(mdd_file: &str, theme_file: Option<&str>) -> Result<()> {
     let db = database::load_mdd(mdd_file).with_context(|| format!("Failed to load: {mdd_file}"))?;
 
     eprintln!("Building tree...");
-    let (nodes, ecu_name) = tree::build_tree(&db, &cli.mdd_file);
+    let (nodes, ecu_name) = tree::build_tree(&db, mdd_file);
     eprintln!("Loaded {} nodes. Starting UI...", nodes.len());
 
     let mut terminal = ratatui::init();
